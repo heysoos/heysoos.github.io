@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = await getCollection('blog');
+const sorted = posts.sort((a, b) =>
+  new Date(b.data.date).getTime() - new Date(a.data.date).getTime()
+);
+---
+
+<BaseLayout title="Blog">
+  <div class="content-width section">
+    <p class="section-label">Blog</p>
+    <h1>Writing</h1>
+
+    <div class="post-list">
+      {sorted.map((post) => (
+        <a href={`/blog/${post.id}`} class="post-item">
+          <article>
+            <h3>{post.data.title}</h3>
+            <p class="post-desc">{post.data.description}</p>
+            <time>{new Date(post.data.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</time>
+          </article>
+        </a>
+      ))}
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  h1 {
+    margin-bottom: 2rem;
+  }
+
+  .post-item {
+    display: block;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--bg-surface-border);
+    color: inherit;
+  }
+
+  .post-item:hover h3 {
+    color: var(--text-link-hover);
+  }
+
+  .post-item h3 {
+    font-weight: 400;
+    margin-bottom: 0.4rem;
+    transition: color var(--transition-speed);
+  }
+
+  .post-desc {
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+
+  time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+</style>
