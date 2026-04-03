@@ -1,0 +1,19 @@
+:root {
+  --bg-primary: #080610;
+  --bg-surface: #120e1a;
+  --bg-surface-hover: #181228;
+  --bg-surface-border: #201830;
+  --bg-nav: rgba(8, 6, 16, 0.85);
+  --text-primary: #e8e0f4;
+  --text-body: #887799;
+  --text-muted: #554466;
+  --text-link: #8060b0;
+  --text-link-hover: #b080f0;
+  --accent: #a070e0;
+  --accent-glow: #b080f0;
+  --accent-subtle: rgba(160, 112, 224, 0.1);
+  --hero-gradient-start: #140e20;
+  --hero-gradient-end: #080610;
+  --border-radius: 8px;
+  --transition-speed: 0.2s;
+}
