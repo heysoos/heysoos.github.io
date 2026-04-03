@@ -1,0 +1,36 @@
+---
+import Nav from '../components/Nav.astro';
+import '../styles/global.css';
+import { siteConfig } from '../config';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const pageTitle = `${title} — ${siteConfig.name}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description || title} />
+    <title>{pageTitle}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <Nav />
+    <main class="sim-main">
+      <slot />
+    </main>
+  </body>
+</html>
+
+<style>
+  .sim-main {
+    padding-top: 60px;
+  }
+</style>

@@ -1,0 +1,38 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SimulationCard from '../../components/SimulationCard.astro';
+import { getCollection } from 'astro:content';
+
+const projects = await getCollection('projects');
+const sorted = projects.sort((a, b) => a.data.order - b.data.order);
+---
+
+<BaseLayout title="Gallery">
+  <div class="content-width section">
+    <p class="section-label">Gallery</p>
+    <h1>Simulation Art</h1>
+
+    <div class="gallery-grid">
+      {sorted.map((project) => (
+        <SimulationCard
+          title={project.data.title}
+          description={project.data.description}
+          slug={project.data.simulation}
+          thumbnail={project.data.thumbnail}
+        />
+      ))}
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  h1 {
+    margin-bottom: 2rem;
+  }
+
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+</style>
