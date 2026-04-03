@@ -1,19 +1,79 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import PublicationCard from '../components/PublicationCard.astro';
+import SimulationCard from '../components/SimulationCard.astro';
 import { siteConfig } from '../config';
+import { getCollection } from 'astro:content';
+
+const featuredPubs = (await getCollection('publications'))
+  .filter((p) => p.data.featured)
+  .sort((a, b) => b.data.year - a.data.year)
+  .slice(0, 5);
+
+const projects = (await getCollection('projects'))
+  .sort((a, b) => a.data.order - b.data.order);
 ---
 
 <BaseLayout>
+  {/* Hero */}
   <section class="hero">
     <div class="hero-sim">
       <canvas id="boids-canvas"></canvas>
-      <div id="boids-fallback" class="fallback" style="display:none;">
-        <p>WebGPU is not supported in your browser.</p>
-      </div>
+      <div id="boids-fallback" class="fallback" style="display:none;"></div>
     </div>
     <div class="hero-content">
       <h1>{siteConfig.name}</h1>
       <p class="tagline">{siteConfig.tagline}</p>
+    </div>
+  </section>
+
+  {/* About teaser */}
+  <section class="section fade-in">
+    <div class="content-width">
+      <p class="section-label">About</p>
+      <p class="about-teaser">
+        Researcher at the intersection of computational neuroscience, artificial life, and machine learning.
+        Studying how complexity emerges from simple systems — from critical phase transitions to open-ended evolution.
+      </p>
+      <a href="/about" class="section-link">Read more →</a>
+    </div>
+  </section>
+
+  {/* Selected publications */}
+  {featuredPubs.length > 0 && (
+    <section class="section fade-in">
+      <div class="content-width">
+        <p class="section-label">Selected Publications</p>
+        {featuredPubs.map((pub) => (
+          <PublicationCard
+            title={pub.data.title}
+            authors={pub.data.authors}
+            journal={pub.data.journal}
+            year={pub.data.year}
+            doi={pub.data.doi}
+            tags={pub.data.tags}
+          />
+        ))}
+        <a href="/publications" class="section-link">All publications →</a>
+      </div>
+    </section>
+  )}
+
+  {/* Gallery teaser */}
+  <section class="section fade-in">
+    <div class="content-width">
+      <p class="section-label">Simulation Art</p>
+      <div class="gallery-teaser">
+        {projects.map((project) => (
+          <SimulationCard
+            title={project.data.title}
+            description={project.data.description}
+            slug={project.data.simulation}
+            thumbnail={project.data.thumbnail}
+          />
+        ))}
+      </div>
+      <a href="/gallery" class="section-link">View gallery →</a>
     </div>
   </section>
 </BaseLayout>
@@ -63,11 +123,31 @@ import { siteConfig } from '../config';
   .fallback {
     position: absolute;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: radial-gradient(ellipse at 60% 50%, var(--hero-gradient-start), var(--hero-gradient-end));
+  }
+
+  .about-teaser {
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: var(--text-body);
+    max-width: 600px;
+  }
+
+  .section-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
+  }
+
+  .section-link:hover {
+    color: var(--text-link-hover);
+  }
+
+  .gallery-teaser {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.25rem;
   }
 
   @media (max-width: 768px) {
@@ -88,6 +168,6 @@ import { siteConfig } from '../config';
     controller.start();
   } else {
     canvas.style.display = 'none';
-    fallback!.style.display = 'flex';
+    fallback.style.display = 'flex';
   }
 </script>
