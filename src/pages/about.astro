@@ -1,0 +1,66 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { siteConfig } from '../config';
+---
+
+<BaseLayout title="About">
+  <div class="content-width section">
+    <p class="section-label">About</p>
+    <h1>{siteConfig.name}</h1>
+
+    <div class="bio">
+      <p>
+        I am a researcher working at the intersection of computational neuroscience, artificial life, and machine learning. My work focuses on understanding how complexity emerges from simple systems.
+      </p>
+
+      <h2>Research Trajectory</h2>
+      <p>
+        My journey began in astrophysics (BSc), where I developed a foundation in mathematical physics. During my Master's in physics, I studied integrated information theory, the Ising model, and critical brain theory — exploring the hypothesis that the brain operates near a critical phase transition.
+      </p>
+      <p>
+        I then moved into artificial life, experimenting with evolutionary algorithms, small embodied neural networks, and their relationship to criticality. My PhD in computational neuroscience at the University of Tubingen focused on models of self-organization — how complexity emerges from simple systems, and nature-inspired approaches to machine learning and AI.
+      </p>
+      <p>
+        Most recently, during my post-doc at INRIA Bordeaux, I worked on open-endedness through autotelic exploration of complex systems using vision-language models and foundation models.
+      </p>
+
+      <p><a href="/resume.pdf" class="resume-link" target="_blank">Download CV (PDF)</a></p>
+
+      <h2>As an Artist</h2>
+      <p>
+        The simulations and computational systems I study are also my artistic medium. I create generative and interactive art through boids, particle systems, neural cellular automata, and compositional pattern-producing networks — exploring the aesthetic dimension of emergence and self-organization.
+      </p>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .bio {
+    margin-top: 2rem;
+  }
+
+  .bio p {
+    margin-bottom: 1.2rem;
+  }
+
+  .bio h2 {
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .resume-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.6rem 1.2rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    color: var(--accent);
+    transition: background var(--transition-speed), color var(--transition-speed);
+  }
+
+  .resume-link:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+  }
+</style>
