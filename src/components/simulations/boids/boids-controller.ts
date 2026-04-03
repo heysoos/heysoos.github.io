@@ -47,6 +47,7 @@ export class BoidsController {
   params: BoidsParams = { ...DEFAULT_PARAMS };
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
+    try {
     this.gpu = await initWebGPU(canvas);
     if (!this.gpu) return false;
 
@@ -150,6 +151,10 @@ export class BoidsController {
     canvas.addEventListener('mouseleave', () => { this.mouseActive = false; });
 
     return true;
+    } catch (e) {
+      console.error('BoidsController init error:', e);
+      return false;
+    }
   }
 
   start() {

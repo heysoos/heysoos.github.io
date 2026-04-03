@@ -161,12 +161,18 @@ const projects = (await getCollection('projects'))
   const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
   const fallback = document.getElementById('boids-fallback') as HTMLElement;
 
-  const controller = new BoidsController();
-  const ok = await controller.init(canvas);
+  try {
+    const controller = new BoidsController();
+    const ok = await controller.init(canvas);
 
-  if (ok) {
-    controller.start();
-  } else {
+    if (ok) {
+      controller.start();
+    } else {
+      canvas.style.display = 'none';
+      fallback.style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('Boids failed to start:', e);
     canvas.style.display = 'none';
     fallback.style.display = 'flex';
   }

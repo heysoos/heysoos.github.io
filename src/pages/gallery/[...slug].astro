@@ -18,7 +18,7 @@ const sim = project.data.simulation;
 
 <SimLayout title={project.data.title} description={project.data.description}>
   <div class="sim-page">
-    <div class="sim-viewport" id="sim-viewport">
+    <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
       <canvas id="sim-canvas"></canvas>
       <Controls simId={sim} />
       <div id="sim-fallback" class="fallback" style="display:none;">
@@ -84,60 +84,58 @@ const sim = project.data.simulation;
   }
 </style>
 
-<script define:vars={{ sim }}>
-  async function loadSimulation() {
-    const canvas = document.getElementById('sim-canvas');
-    const fallback = document.getElementById('sim-fallback');
+<script>
+  import { BoidsController } from '../../components/simulations/boids/boids-controller';
+  import { ParticleLifeController } from '../../components/simulations/particle-life/particle-life-controller';
+  import { NCAController } from '../../components/simulations/nca/nca-controller';
+  import { CPPNController } from '../../components/simulations/cppn/cppn-controller';
 
-    let Controller;
-    switch (sim) {
-      case 'boids':
-        Controller = (await import('../../components/simulations/boids/boids-controller')).BoidsController;
-        break;
-      case 'particle-life':
-        Controller = (await import('../../components/simulations/particle-life/particle-life-controller')).ParticleLifeController;
-        break;
-      case 'nca':
-        Controller = (await import('../../components/simulations/nca/nca-controller')).NCAController;
-        break;
-      case 'cppn':
-        Controller = (await import('../../components/simulations/cppn/cppn-controller')).CPPNController;
-        break;
-      default:
-        if (fallback) {
-          fallback.style.display = 'flex';
-          fallback.querySelector('p').textContent = 'Simulation coming soon.';
-        }
-        return;
-    }
+  const viewport = document.getElementById('sim-viewport') as HTMLElement;
+  const sim = viewport.dataset.sim!;
+  const canvas = document.getElementById('sim-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('sim-fallback') as HTMLElement;
 
-    const controller = new Controller();
-    const ok = await controller.init(canvas);
+  const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
+    boids: new BoidsController(),
+    'particle-life': new ParticleLifeController(),
+    nca: new NCAController(),
+    cppn: new CPPNController(),
+  };
 
-    if (ok) {
-      controller.start();
+  const controller = controllers[sim];
+  if (!controller) {
+    fallback.style.display = 'flex';
+    fallback.querySelector('p')!.textContent = 'Simulation coming soon.';
+  } else {
+    try {
+      const ok = await controller.init(canvas);
+      if (ok) {
+        controller.start();
 
-      const controls = document.getElementById(`controls-${sim}`);
-      let playing = true;
-      controls?.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const action = btn.getAttribute('data-action');
-        if (action === 'play-pause') {
-          if (playing) { controller.stop(); btn.querySelector('.ctrl-icon').textContent = '▶'; }
-          else { controller.start(); btn.querySelector('.ctrl-icon').textContent = '⏸'; }
-          playing = !playing;
-        } else if (action === 'reset') {
-          controller.reset();
-        } else if (action === 'fullscreen') {
-          document.getElementById('sim-viewport')?.requestFullscreen();
-        }
-      });
-    } else {
+        const controls = document.getElementById(`controls-${sim}`);
+        let playing = true;
+        controls?.addEventListener('click', (e) => {
+          const btn = (e.target as HTMLElement).closest('[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          if (action === 'play-pause') {
+            if (playing) { controller.stop(); btn.querySelector('.ctrl-icon')!.textContent = '▶'; }
+            else { controller.start(); btn.querySelector('.ctrl-icon')!.textContent = '⏸'; }
+            playing = !playing;
+          } else if (action === 'reset') {
+            controller.reset();
+          } else if (action === 'fullscreen') {
+            document.getElementById('sim-viewport')?.requestFullscreen();
+          }
+        });
+      } else {
+        canvas.style.display = 'none';
+        fallback.style.display = 'flex';
+      }
+    } catch (e) {
+      console.error('Simulation failed to start:', e);
       canvas.style.display = 'none';
       fallback.style.display = 'flex';
     }
   }
-
-  loadSimulation();
 </script>

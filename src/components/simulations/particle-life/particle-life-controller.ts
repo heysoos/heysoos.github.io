@@ -23,6 +23,7 @@ export class ParticleLifeController {
   private animId = 0;
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
+    try {
     this.gpu = await initWebGPU(canvas);
     if (!this.gpu) return false;
 
@@ -120,6 +121,10 @@ export class ParticleLifeController {
     });
 
     return true;
+    } catch (e) {
+      console.error('ParticleLifeController init error:', e);
+      return false;
+    }
   }
 
   start() {

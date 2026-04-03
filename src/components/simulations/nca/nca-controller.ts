@@ -9,16 +9,21 @@ export class NCAController {
   private animId = 0;
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
-    this.gpu = await initWebGPU(canvas);
-    if (!this.gpu) return false;
-    const { device, format } = this.gpu;
-    const module = device.createShaderModule({ code: shaderCode });
-    this.pipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: { module, entryPoint: 'vertexMain' },
-      fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
-    });
-    return true;
+    try {
+      this.gpu = await initWebGPU(canvas);
+      if (!this.gpu) return false;
+      const { device, format } = this.gpu;
+      const module = device.createShaderModule({ code: shaderCode });
+      this.pipeline = device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module, entryPoint: 'vertexMain' },
+        fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
+      });
+      return true;
+    } catch (e) {
+      console.error('NCAController init error:', e);
+      return false;
+    }
   }
 
   start() { if (this.running) return; this.running = true; this.tick(); }
