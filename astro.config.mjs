@@ -2,4 +2,8 @@
 import { defineConfig } from 'astro/config';
 
 // https://astro.build/config
-export default defineConfig({});
+export default defineConfig({
+  site: 'https://YOUR_USERNAME.github.io',
+  // Uncomment and set if deploying to a repo subpath (not username.github.io):
+  // base: '/website',
+});
