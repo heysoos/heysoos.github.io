@@ -1,0 +1,80 @@
+---
+interface Props {
+  title: string;
+  authors: string[];
+  journal: string;
+  year: number;
+  doi?: string;
+  tags?: string[];
+}
+
+const { title, authors, journal, year, doi, tags = [] } = Astro.props;
+---
+
+<article class="pub-card">
+  <h3 class="pub-title">
+    {doi ? <a href={`https://doi.org/${doi}`} target="_blank" rel="noopener">{title}</a> : title}
+  </h3>
+  <p class="pub-authors">{authors.join(', ')}</p>
+  <p class="pub-meta">
+    <span class="pub-journal">{journal}</span> &middot; {year}
+  </p>
+  {tags.length > 0 && (
+    <div class="pub-tags">
+      {tags.map((tag) => <span class="pub-tag">{tag}</span>)}
+    </div>
+  )}
+</article>
+
+<style>
+  .pub-card {
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--bg-surface-border);
+  }
+
+  .pub-title {
+    font-size: 1.1rem;
+    font-weight: 400;
+    margin-bottom: 0.4rem;
+  }
+
+  .pub-title a {
+    color: var(--text-primary);
+  }
+
+  .pub-title a:hover {
+    color: var(--text-link-hover);
+  }
+
+  .pub-authors {
+    font-size: 0.9rem;
+    color: var(--text-body);
+    margin-bottom: 0.25rem;
+  }
+
+  .pub-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .pub-journal {
+    font-style: italic;
+  }
+
+  .pub-tags {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .pub-tag {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent);
+    background: var(--accent-subtle);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+</style>
