@@ -1,0 +1,62 @@
+---
+interface Props {
+  fullscreen?: boolean;
+}
+const { fullscreen = false } = Astro.props;
+---
+
+<div class:list={['boids-container', { fullscreen }]}>
+  <canvas id="boids-canvas"></canvas>
+  <div id="boids-fallback" class="fallback" style="display:none;">
+    <p>WebGPU is not supported in your browser.</p>
+    <p>Try Chrome, Edge, or Firefox Nightly.</p>
+  </div>
+</div>
+
+<style>
+  .boids-container {
+    position: relative;
+    width: 100%;
+    height: 400px;
+  }
+
+  .boids-container.fullscreen {
+    height: 100vh;
+  }
+
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    gap: 0.25rem;
+  }
+</style>
+
+<script>
+  import { BoidsController } from './boids-controller';
+
+  const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('boids-fallback') as HTMLElement;
+
+  const controller = new BoidsController();
+  const ok = await controller.init(canvas);
+
+  if (ok) {
+    controller.start();
+  } else {
+    canvas.style.display = 'none';
+    fallback.style.display = 'flex';
+  }
+</script>

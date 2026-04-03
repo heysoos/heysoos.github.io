@@ -5,6 +5,12 @@ import { siteConfig } from '../config';
 
 <BaseLayout>
   <section class="hero">
+    <div class="hero-sim">
+      <canvas id="boids-canvas"></canvas>
+      <div id="boids-fallback" class="fallback" style="display:none;">
+        <p>WebGPU is not supported in your browser.</p>
+      </div>
+    </div>
     <div class="hero-content">
       <h1>{siteConfig.name}</h1>
       <p class="tagline">{siteConfig.tagline}</p>
@@ -14,14 +20,28 @@ import { siteConfig } from '../config';
 
 <style>
   .hero {
-    min-height: calc(100vh - 60px);
+    position: relative;
+    min-height: 100vh;
     display: flex;
     align-items: flex-end;
     padding: 4rem 1.5rem;
-    background: radial-gradient(ellipse at 60% 50%, var(--hero-gradient-start), var(--hero-gradient-end));
+  }
+
+  .hero-sim {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .hero-sim canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
 
   .hero-content {
+    position: relative;
+    z-index: 1;
     max-width: 1200px;
     margin: 0 auto;
     width: 100%;
@@ -40,9 +60,34 @@ import { siteConfig } from '../config';
     margin-top: 0.5rem;
   }
 
+  .fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 60% 50%, var(--hero-gradient-start), var(--hero-gradient-end));
+    color: var(--text-muted);
+  }
+
   @media (max-width: 768px) {
-    .hero h1 {
-      font-size: 2rem;
-    }
+    .hero h1 { font-size: 2rem; }
   }
 </style>
+
+<script>
+  import { BoidsController } from '../components/simulations/boids/boids-controller';
+
+  const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('boids-fallback') as HTMLElement;
+
+  const controller = new BoidsController();
+  const ok = await controller.init(canvas);
+
+  if (ok) {
+    controller.start();
+  } else {
+    canvas.style.display = 'none';
+    fallback!.style.display = 'flex';
+  }
+</script>
