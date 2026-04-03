@@ -1,0 +1,70 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { siteConfig } from '../config';
+---
+
+<BaseLayout title="Contact">
+  <div class="content-width section">
+    <p class="section-label">Contact</p>
+    <h1>Get in Touch</h1>
+
+    <div class="contact-links">
+      {siteConfig.email && (
+        <a href={`mailto:${siteConfig.email}`} class="contact-item">
+          <span class="contact-label">Email</span>
+          <span class="contact-value">{siteConfig.email}</span>
+        </a>
+      )}
+
+      {Object.entries(siteConfig.socialLinks).map(([platform, url]) =>
+        url ? (
+          <a href={url} target="_blank" rel="noopener" class="contact-item">
+            <span class="contact-label">{platform.replace(/([A-Z])/g, ' $1').trim()}</span>
+            <span class="contact-value">{url}</span>
+          </a>
+        ) : null
+      )}
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  h1 {
+    margin-bottom: 2rem;
+  }
+
+  .contact-links {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .contact-item {
+    display: block;
+    padding: 1.25rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    color: inherit;
+    transition: border-color var(--transition-speed), background var(--transition-speed);
+  }
+
+  .contact-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-surface-hover);
+  }
+
+  .contact-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+  }
+
+  .contact-value {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+  }
+</style>
