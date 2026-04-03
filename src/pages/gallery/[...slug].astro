@@ -94,7 +94,15 @@ const sim = project.data.simulation;
       case 'boids':
         Controller = (await import('../../components/simulations/boids/boids-controller')).BoidsController;
         break;
-      // Future simulations will be added here as cases
+      case 'particle-life':
+        Controller = (await import('../../components/simulations/particle-life/particle-life-controller')).ParticleLifeController;
+        break;
+      case 'nca':
+        Controller = (await import('../../components/simulations/nca/nca-controller')).NCAController;
+        break;
+      case 'cppn':
+        Controller = (await import('../../components/simulations/cppn/cppn-controller')).CPPNController;
+        break;
       default:
         if (fallback) {
           fallback.style.display = 'flex';

@@ -1,0 +1,25 @@
+<div class="sim-container">
+  <canvas id="particle-life-canvas"></canvas>
+  <div id="particle-life-fallback" class="fallback" style="display:none;">
+    <p>WebGPU is not supported in your browser.</p>
+  </div>
+</div>
+
+<style>
+  .sim-container { position: relative; width: 100%; height: 100%; }
+  canvas { width: 100%; height: 100%; display: block; }
+  .fallback {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-primary); color: var(--text-muted);
+  }
+</style>
+
+<script>
+  import { ParticleLifeController } from './particle-life-controller';
+  const canvas = document.getElementById('particle-life-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('particle-life-fallback') as HTMLElement;
+  const ctrl = new ParticleLifeController();
+  const ok = await ctrl.init(canvas);
+  if (ok) { ctrl.start(); } else { canvas.style.display = 'none'; fallback.style.display = 'flex'; }
+</script>
