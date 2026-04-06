@@ -21,6 +21,21 @@ const sim = project.data.simulation;
     <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
       <canvas id="sim-canvas"></canvas>
       <Controls simId={sim} />
+      <div id="params-panel" class="params-panel" style="display:none;"></div>
+      <div id="shader-panel" class="shader-panel" style="display:none;">
+        <div class="shader-panel-header">
+          <span>Shader Editor</span>
+          <button class="shader-panel-close" id="shader-panel-close">×</button>
+        </div>
+        <div class="shader-editor-wrap" id="shader-editor-wrap"></div>
+        <div class="shader-panel-footer">
+          <div class="shader-btn-row">
+            <button class="shader-apply-btn" id="shader-apply">Apply</button>
+            <button class="shader-reset-btn" id="shader-reset">Reset to Default</button>
+          </div>
+          <div class="shader-errors" id="shader-errors" style="display:none;"></div>
+        </div>
+      </div>
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -62,6 +77,320 @@ const sim = project.data.simulation;
     gap: 0.25rem;
   }
 
+  .params-panel {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 220px;
+    background: var(--bg-nav);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(8px);
+    padding: 0.75rem 1rem;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .params-panel :global(.panel-title) {
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0 0 0.2rem;
+  }
+
+  .params-panel :global(.param-row) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .params-panel :global(.param-label) {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-body);
+  }
+
+  .params-panel :global(.param-value) {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .params-panel :global(input[type=range]) {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .params-panel :global(.panel-header) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.2rem;
+  }
+
+  .params-panel :global(.panel-close) {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .params-panel :global(.panel-close:hover) {
+    color: var(--text-primary);
+  }
+
+  .params-panel :global(.section-divider) {
+    height: 1px;
+    background: var(--bg-surface-border);
+    margin: 0.4rem 0 0.3rem;
+  }
+
+  .params-panel :global(.section-heading) {
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0 0 0.25rem;
+  }
+
+  .params-panel :global(.shape-row) {
+    display: flex;
+    gap: 0.35rem;
+    margin-top: 0.15rem;
+  }
+
+  .params-panel :global(.shape-btn) {
+    flex: 1;
+    height: 28px;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-body);
+    cursor: pointer;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color var(--transition-speed);
+  }
+
+  .params-panel :global(.shape-btn.active) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .params-panel :global(.color-row) {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    margin-top: 0.15rem;
+    flex-wrap: wrap;
+  }
+
+  .params-panel :global(.color-swatch) {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .params-panel :global(.color-swatch.active) {
+    border-color: var(--text-primary);
+  }
+
+  .params-panel :global(.color-picker) {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    flex-shrink: 0;
+  }
+
+  .params-panel :global(.trail-row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-body);
+  }
+
+  .params-panel :global(.toggle-switch) {
+    position: relative;
+    width: 32px;
+    height: 18px;
+  }
+
+  .params-panel :global(.toggle-switch input) {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .params-panel :global(.toggle-slider) {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-surface-border);
+    border-radius: 18px;
+    cursor: pointer;
+    transition: background var(--transition-speed);
+  }
+
+  .params-panel :global(.toggle-slider::before) {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 3px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform var(--transition-speed), background var(--transition-speed);
+  }
+
+  .params-panel :global(.toggle-switch input:checked + .toggle-slider) {
+    background: var(--accent);
+  }
+
+  .params-panel :global(.toggle-switch input:checked + .toggle-slider::before) {
+    transform: translateX(14px);
+    background: var(--bg-primary);
+  }
+
+  .params-panel :global(.edit-shader-btn) {
+    width: 100%;
+    padding: 0.35rem 0;
+    background: transparent;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    color: var(--text-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color var(--transition-speed), color var(--transition-speed);
+  }
+
+  .params-panel :global(.edit-shader-btn:hover) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Shader editor panel */
+  .shader-panel {
+    position: absolute;
+    top: 1rem;
+    right: 250px;
+    width: 520px;
+    max-height: 75vh;
+    background: var(--bg-nav);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(8px);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .shader-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--bg-surface-border);
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .shader-panel-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+  }
+
+  .shader-panel-close:hover {
+    color: var(--text-primary);
+  }
+
+  .shader-editor-wrap {
+    flex: 1;
+    overflow: auto;
+    font-size: 0.72rem;
+  }
+
+  /* CodeMirror overrides */
+  .shader-editor-wrap :global(.cm-editor) {
+    height: 100%;
+    min-height: 200px;
+    max-height: 55vh;
+  }
+
+  .shader-editor-wrap :global(.cm-scroller) {
+    overflow: auto;
+    font-family: monospace;
+    font-size: 0.72rem;
+  }
+
+  .shader-panel-footer {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    padding: 0.6rem 0.75rem;
+    border-top: 1px solid var(--bg-surface-border);
+    flex-direction: column;
+  }
+
+  .shader-btn-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .shader-apply-btn,
+  .shader-reset-btn {
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--bg-surface-border);
+    background: transparent;
+    color: var(--text-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: border-color var(--transition-speed);
+  }
+
+  .shader-apply-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .shader-reset-btn:hover {
+    border-color: var(--text-muted);
+  }
+
+  .shader-errors {
+    font-family: monospace;
+    font-size: 0.68rem;
+    color: #e05060;
+    white-space: pre-wrap;
+    max-height: 80px;
+    overflow-y: auto;
+    width: 100%;
+  }
+
   h1 {
     margin-bottom: 1.5rem;
   }
@@ -85,15 +414,20 @@ const sim = project.data.simulation;
 </style>
 
 <script>
-  import { BoidsController } from '../../components/simulations/boids/boids-controller';
+  import { BoidsController, type BoidsParams } from '../../components/simulations/boids/boids-controller';
   import { ParticleLifeController } from '../../components/simulations/particle-life/particle-life-controller';
   import { NCAController } from '../../components/simulations/nca/nca-controller';
   import { CPPNController } from '../../components/simulations/cppn/cppn-controller';
+  import { EditorView, basicSetup } from 'codemirror';
+  import { StreamLanguage } from '@codemirror/language';
+  import { cpp } from '@codemirror/legacy-modes/mode/clike';
 
   const viewport = document.getElementById('sim-viewport') as HTMLElement;
   const sim = viewport.dataset.sim!;
   const canvas = document.getElementById('sim-canvas') as HTMLCanvasElement;
   const fallback = document.getElementById('sim-fallback') as HTMLElement;
+  const panel = document.getElementById('params-panel') as HTMLElement;
+  const shaderPanelEl = document.getElementById('shader-panel') as HTMLElement;
 
   const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
     boids: new BoidsController(),
@@ -105,15 +439,314 @@ const sim = project.data.simulation;
   const controller = controllers[sim];
   if (!controller) {
     fallback.style.display = 'flex';
-    fallback.querySelector('p')!.textContent = 'Simulation coming soon.';
+    (fallback.querySelector('p') as HTMLElement).textContent = 'Simulation coming soon.';
   } else {
     try {
       const ok = await controller.init(canvas);
       if (ok) {
         controller.start();
 
+        if (sim === 'boids') {
+          const boidsCtrl = controller as BoidsController;
+
+          // ── Helpers ──────────────────────────────────────────────────────
+
+          function addHeader(parent: HTMLElement): void {
+            const header = document.createElement('div');
+            header.className = 'panel-header';
+            const title = document.createElement('p');
+            title.className = 'panel-title';
+            title.textContent = 'Parameters';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'panel-close';
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', () => {
+              panel.style.display = 'none';
+              panelOpen = false;
+            });
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            parent.appendChild(header);
+          }
+
+          function addSection(parent: HTMLElement, label: string): void {
+            const divider = document.createElement('div');
+            divider.className = 'section-divider';
+            parent.appendChild(divider);
+            const heading = document.createElement('p');
+            heading.className = 'section-heading';
+            heading.textContent = label;
+            parent.appendChild(heading);
+          }
+
+          function addSlider(
+            parent: HTMLElement,
+            label: string,
+            min: number, max: number, step: number,
+            get: () => number,
+            set: (v: number) => void,
+          ): void {
+            const row = document.createElement('div');
+            row.className = 'param-row';
+            const labelEl = document.createElement('div');
+            labelEl.className = 'param-label';
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = label;
+            const valueSpan = document.createElement('span');
+            valueSpan.className = 'param-value';
+            labelEl.appendChild(nameSpan);
+            labelEl.appendChild(valueSpan);
+            const input = document.createElement('input');
+            input.type = 'range';
+            input.min = String(min);
+            input.max = String(max);
+            input.step = String(step);
+            input.value = String(get());
+            const decimals = step >= 1 ? 0 : (String(step).split('.')[1]?.length ?? 2);
+            valueSpan.textContent = get().toFixed(decimals);
+            input.addEventListener('input', () => {
+              const val = parseFloat(input.value);
+              set(val);
+              valueSpan.textContent = val.toFixed(decimals);
+            });
+            row.appendChild(labelEl);
+            row.appendChild(input);
+            parent.appendChild(row);
+          }
+
+          // ── Build panel ───────────────────────────────────────────────────
+
+          addHeader(panel);
+
+          // Simulation
+          addSection(panel, 'Simulation');
+          addSlider(panel, 'Time Step',  0.001, 0.1,  0.001, () => boidsCtrl.params.dt,           v => { boidsCtrl.params.dt = v; });
+          addSlider(panel, 'Particles',  10,    2000, 10,    () => boidsCtrl.params.numParticles,  v => { boidsCtrl.params.numParticles = v; });
+
+          // Forces
+          addSection(panel, 'Forces');
+          addSlider(panel, 'Outer Radius',  0.02, 0.6,  0.01,  () => boidsCtrl.params.outerRadius, v => { boidsCtrl.params.outerRadius = v; });
+          addSlider(panel, 'Inner Radius',  0.01, 0.3,  0.005, () => boidsCtrl.params.innerRadius, v => { boidsCtrl.params.innerRadius = v; });
+          addSlider(panel, 'Attraction',    0,    2.0,  0.01,  () => boidsCtrl.params.attraction,  v => { boidsCtrl.params.attraction = v; });
+          addSlider(panel, 'Repulsion',     0,    5.0,  0.05,  () => boidsCtrl.params.repulsion,   v => { boidsCtrl.params.repulsion = v; });
+          addSlider(panel, 'Alignment',     0,    1.0,  0.01,  () => boidsCtrl.params.alignment,   v => { boidsCtrl.params.alignment = v; });
+          addSlider(panel, 'Friction',      0,    10.0, 0.1,   () => boidsCtrl.params.friction,    v => { boidsCtrl.params.friction = v; });
+          addSlider(panel, 'Max Speed',     0.01, 1.0,  0.01,  () => boidsCtrl.params.maxSpeed,    v => { boidsCtrl.params.maxSpeed = v; });
+
+          // Perception
+          addSection(panel, 'Perception');
+          addSlider(panel, 'Vision Cone',   -1.0, 0.99, 0.05, () => boidsCtrl.params.coneAngle,   v => { boidsCtrl.params.coneAngle = v; });
+          addSlider(panel, 'Mouse Radius',  0.05, 0.5,  0.01, () => boidsCtrl.params.mouseRadius, v => { boidsCtrl.params.mouseRadius = v; });
+
+          // Appearance
+          addSection(panel, 'Appearance');
+          addSlider(panel, 'Size', 0.005, 0.08, 0.001, () => boidsCtrl.params.size, v => { boidsCtrl.params.size = v; });
+
+          // Shape selector
+          {
+            const labelEl = document.createElement('div');
+            labelEl.className = 'param-label';
+            labelEl.innerHTML = '<span>Shape</span>';
+            panel.appendChild(labelEl);
+
+            const shapeRow = document.createElement('div');
+            shapeRow.className = 'shape-row';
+            const shapes = [
+              { id: 0, glyph: '▲' },
+              { id: 1, glyph: '●' },
+              { id: 2, glyph: '◆' },
+              { id: 3, glyph: '✦' },
+            ];
+            const shapeBtns: HTMLButtonElement[] = [];
+            for (const s of shapes) {
+              const btn = document.createElement('button');
+              btn.className = 'shape-btn' + (boidsCtrl.params.shapeId === s.id ? ' active' : '');
+              btn.textContent = s.glyph;
+              btn.title = ['Triangle', 'Circle', 'Diamond', 'Blob'][s.id];
+              btn.addEventListener('click', () => {
+                boidsCtrl.params.shapeId = s.id;
+                shapeBtns.forEach((b, i) => b.classList.toggle('active', i === s.id));
+              });
+              shapeBtns.push(btn);
+              shapeRow.appendChild(btn);
+            }
+            panel.appendChild(shapeRow);
+          }
+
+          // Color presets + picker
+          {
+            const labelEl = document.createElement('div');
+            labelEl.className = 'param-label';
+            labelEl.innerHTML = '<span>Color</span>';
+            panel.appendChild(labelEl);
+
+            const colorRow = document.createElement('div');
+            colorRow.className = 'color-row';
+
+            const presets = [
+              { hex: '#e0a040', r: 0.88, g: 0.63, b: 0.25, label: 'Amber' },
+              { hex: '#4090e0', r: 0.25, g: 0.56, b: 0.88, label: 'Blue' },
+              { hex: '#50c878', r: 0.31, g: 0.78, b: 0.47, label: 'Green' },
+              { hex: '#e05080', r: 0.88, g: 0.31, b: 0.50, label: 'Rose' },
+              { hex: '#ffffff', r: 1.00, g: 1.00, b: 1.00, label: 'White' },
+            ];
+
+            const swatches: HTMLButtonElement[] = [];
+
+            function applyColor(r: number, g: number, b: number): void {
+              boidsCtrl.params.colorR = r;
+              boidsCtrl.params.colorG = g;
+              boidsCtrl.params.colorB = b;
+            }
+
+            function hexToRgb(hex: string): [number, number, number] {
+              const n = parseInt(hex.slice(1), 16);
+              return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+            }
+
+            for (let i = 0; i < presets.length; i++) {
+              const p = presets[i];
+              const btn = document.createElement('button');
+              btn.className = 'color-swatch' + (i === 0 ? ' active' : '');
+              btn.style.background = p.hex;
+              btn.title = p.label;
+              btn.addEventListener('click', () => {
+                applyColor(p.r, p.g, p.b);
+                swatches.forEach((s, j) => s.classList.toggle('active', j === i));
+                colorPicker.value = p.hex;
+              });
+              swatches.push(btn);
+              colorRow.appendChild(btn);
+            }
+
+            const colorPicker = document.createElement('input');
+            colorPicker.type = 'color';
+            colorPicker.className = 'color-picker';
+            colorPicker.value = presets[0].hex;
+            colorPicker.title = 'Custom color';
+            colorPicker.addEventListener('input', () => {
+              const [r, g, b] = hexToRgb(colorPicker.value);
+              applyColor(r, g, b);
+              swatches.forEach(s => s.classList.remove('active'));
+            });
+            colorRow.appendChild(colorPicker);
+            panel.appendChild(colorRow);
+          }
+
+          // Trails toggle
+          {
+            const trailRow = document.createElement('div');
+            trailRow.className = 'trail-row';
+            const trailLabel = document.createElement('span');
+            trailLabel.textContent = 'Trails';
+
+            const toggleWrap = document.createElement('label');
+            toggleWrap.className = 'toggle-switch';
+            const toggleInput = document.createElement('input');
+            toggleInput.type = 'checkbox';
+            toggleInput.checked = boidsCtrl.trailsEnabled;
+            const toggleSlider = document.createElement('span');
+            toggleSlider.className = 'toggle-slider';
+            toggleWrap.appendChild(toggleInput);
+            toggleWrap.appendChild(toggleSlider);
+
+            trailRow.appendChild(trailLabel);
+            trailRow.appendChild(toggleWrap);
+            panel.appendChild(trailRow);
+
+            // Trail decay slider (hidden when trails off)
+            const decayWrapper = document.createElement('div');
+            decayWrapper.style.display = boidsCtrl.trailsEnabled ? 'block' : 'none';
+            addSlider(decayWrapper, 'Trail Decay', 0.80, 0.99, 0.01,
+              () => boidsCtrl.trailDecay,
+              v => { boidsCtrl.trailDecay = v; },
+            );
+            panel.appendChild(decayWrapper);
+
+            toggleInput.addEventListener('change', () => {
+              boidsCtrl.trailsEnabled = toggleInput.checked;
+              decayWrapper.style.display = toggleInput.checked ? 'block' : 'none';
+            });
+          }
+
+          // Shader section
+          addSection(panel, 'Shader');
+          {
+            const editBtn = document.createElement('button');
+            editBtn.className = 'edit-shader-btn';
+            editBtn.textContent = 'Edit Shader';
+            editBtn.addEventListener('click', () => {
+              shaderEditorOpen = !shaderEditorOpen;
+              shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
+              editBtn.textContent = shaderEditorOpen ? 'Close Shader' : 'Edit Shader';
+            });
+            panel.appendChild(editBtn);
+          }
+
+          // ── Shader editor (CodeMirror) ─────────────────────────────────
+
+          const editorWrap = document.getElementById('shader-editor-wrap') as HTMLElement;
+          const shaderErrors = document.getElementById('shader-errors') as HTMLElement;
+
+          const editorView = new EditorView({
+            doc: boidsCtrl.shaderSource,
+            extensions: [
+              basicSetup,
+              StreamLanguage.define(cpp),
+              EditorView.theme({
+                '&': { background: 'var(--bg-primary)' },
+                '.cm-content': { color: 'var(--text-body)', caretColor: 'var(--accent)' },
+                '.cm-gutters': {
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-muted)',
+                  borderRight: '1px solid var(--bg-surface-border)',
+                },
+                '.cm-activeLineGutter': { background: 'var(--bg-surface)' },
+                '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
+                '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
+              }),
+            ],
+            parent: editorWrap,
+          });
+
+          document.getElementById('shader-apply')!.addEventListener('click', async () => {
+            const code = editorView.state.doc.toString();
+            const result = await boidsCtrl.reloadShader(code);
+            if (result.success) {
+              shaderErrors.style.display = 'none';
+              shaderErrors.textContent = '';
+            } else {
+              const msg = result.errors
+                .map(e => `[${e.lineNum}:${e.linePos}] ${e.message}`)
+                .join('\n');
+              shaderErrors.textContent = msg;
+              shaderErrors.style.display = 'block';
+            }
+          });
+
+          document.getElementById('shader-reset')!.addEventListener('click', async () => {
+            editorView.dispatch({
+              changes: { from: 0, to: editorView.state.doc.length, insert: boidsCtrl.shaderSource },
+            });
+            await boidsCtrl.reloadShader(boidsCtrl.shaderSource);
+            shaderErrors.style.display = 'none';
+          });
+
+          document.getElementById('shader-panel-close')!.addEventListener('click', () => {
+            shaderPanelEl.style.display = 'none';
+            shaderEditorOpen = false;
+            const editBtn = panel.querySelector('.edit-shader-btn') as HTMLButtonElement;
+            if (editBtn) editBtn.textContent = 'Edit Shader';
+          });
+        }
+
+        // ── Controls bar ───────────────────────────────────────────────────
+
         const controls = document.getElementById(`controls-${sim}`);
         let playing = true;
+        let panelOpen = false;
+        let shaderEditorOpen = false;
+
         controls?.addEventListener('click', (e) => {
           const btn = (e.target as HTMLElement).closest('[data-action]');
           if (!btn) return;
@@ -126,6 +759,9 @@ const sim = project.data.simulation;
             controller.reset();
           } else if (action === 'fullscreen') {
             document.getElementById('sim-viewport')?.requestFullscreen();
+          } else if (action === 'settings' && sim === 'boids') {
+            panelOpen = !panelOpen;
+            panel.style.display = panelOpen ? 'flex' : 'none';
           }
         });
       } else {
