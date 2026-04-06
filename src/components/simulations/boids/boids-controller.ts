@@ -1,6 +1,7 @@
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
 import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
 import shaderCode from './boids.wgsl?raw';
+import { TrailRenderer } from './trail-renderer';
 
 const MAX_PARTICLES = 2000;
 
@@ -68,6 +69,9 @@ export class BoidsController {
   private mouseY = 0;
   private mouseActive = false;
   private renderParamsBindGroup!: GPUBindGroup;
+  private trailRenderer = new TrailRenderer();
+  private prevCanvasWidth = 0;
+  private prevCanvasHeight = 0;
 
   params: BoidsParams = { ...DEFAULT_PARAMS };
   trailsEnabled = false;
@@ -128,6 +132,9 @@ export class BoidsController {
 
       const shaderModule = device.createShaderModule({ code: shaderCode });
       this._createPipelines(shaderModule);
+      this.trailRenderer.init(device, this.gpu!.format, canvas.width || 1, canvas.height || 1);
+      this.prevCanvasWidth = canvas.width;
+      this.prevCanvasHeight = canvas.height;
 
       canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
@@ -236,7 +243,12 @@ export class BoidsController {
     if (!this.running || !this.gpu) return;
     const { device, context, canvas } = this.gpu;
 
-    resizeCanvasToDisplaySize(canvas);
+    const resized = resizeCanvasToDisplaySize(canvas);
+    if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
+      this.trailRenderer.resize(device, canvas.width, canvas.height);
+      this.prevCanvasWidth = canvas.width;
+      this.prevCanvasHeight = canvas.height;
+    }
 
     const aspect = canvas.width > 0 && canvas.height > 0
       ? canvas.width / canvas.height : 1.0;
@@ -265,31 +277,39 @@ export class BoidsController {
     v.setFloat32(76, this.params.colorB,               true);
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
-    const encoder = device.createCommandEncoder();
-
-    const computePass = encoder.beginComputePass();
+    // Compute pass
+    const computeEncoder = device.createCommandEncoder();
+    const computePass = computeEncoder.beginComputePass();
     computePass.setPipeline(this.computePipeline);
     computePass.setBindGroup(0, this.bindGroups[this.frame % 2]);
     computePass.dispatchWorkgroups(Math.ceil(this.params.numParticles / 64));
     computePass.end();
+    device.queue.submit([computeEncoder.finish()]);
 
-    const textureView = context.getCurrentTexture().createView();
-    const renderPass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: textureView,
-        clearValue: { r: 0.039, g: 0.031, b: 0.016, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    });
-    renderPass.setPipeline(this.renderPipeline);
-    renderPass.setBindGroup(0, this.renderParamsBindGroup);
-    renderPass.setVertexBuffer(0, this.particleBuffers[(this.frame + 1) % 2]);
-    renderPass.setVertexBuffer(1, this.vertexBuffer);
-    renderPass.draw(6, this.params.numParticles);
-    renderPass.end();
+    // Render pass (delegated to TrailRenderer for compositing)
+    this.trailRenderer.render(
+      device,
+      context,
+      this.trailDecay,
+      this.trailsEnabled,
+      (encoder, targetView, loadOp) => {
+        const renderPass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: targetView,
+            clearValue: { r: 0.039, g: 0.031, b: 0.016, a: 1 },
+            loadOp,
+            storeOp: 'store',
+          }],
+        });
+        renderPass.setPipeline(this.renderPipeline);
+        renderPass.setBindGroup(0, this.renderParamsBindGroup);
+        renderPass.setVertexBuffer(0, this.particleBuffers[(this.frame + 1) % 2]);
+        renderPass.setVertexBuffer(1, this.vertexBuffer);
+        renderPass.draw(6, this.params.numParticles);
+        renderPass.end();
+      },
+    );
 
-    device.queue.submit([encoder.finish()]);
     this.frame++;
     this.animId = requestAnimationFrame(this.tick);
   };
