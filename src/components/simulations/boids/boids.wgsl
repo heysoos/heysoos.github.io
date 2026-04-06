@@ -4,9 +4,9 @@ struct Particle {
 }
 
 struct Params {
-  deltaTime:    f32,  // 0
-  outerRadius:  f32,  // 4  — attraction + alignment range
-  innerRadius:  f32,  // 8  — repulsion range
+  deltaTime:        f32,  // 0
+  attractionRadius: f32,  // 4  — attraction + alignment range
+  repulsionRadius:  f32,  // 8  — repulsion range
   attraction:   f32,  // 12
   repulsion:    f32,  // 16
   alignment:    f32,  // 20
@@ -42,37 +42,53 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   var pos = particlesA[index].pos;
   var vel = particlesA[index].vel;
 
-  var force = vec2f(0.0);
-  let speed = length(vel);
-  let has_vel = speed > 0.0001;
+  // Screen-space velocity (aspect-corrected) used for FOV checks so the
+  // cone angle is isotropic regardless of canvas shape.
+  let velS = vec2f(vel.x * params.aspect, vel.y);
+  let speedS = length(velS);
+
+  // Spatial forces (attraction/repulsion) are accumulated in screen space,
+  // then converted back to clip space when applied to velocity.
+  // Alignment is accumulated in clip space (velocity-matching, not positional).
+  var spatial_force = vec2f(0.0);  // screen space
+  var align_force   = vec2f(0.0);  // clip space
 
   for (var i = 0u; i < params.numParticles; i++) {
     if (i == index) { continue; }
     let other = particlesA[i];
-    let diff = other.pos - pos;
-    let r = length(diff);
+    var diff = other.pos - pos;
+    // Minimum image convention: use shortest path across periodic boundaries
+    if (diff.x >  1.0) { diff.x -= 2.0; }
+    if (diff.x < -1.0) { diff.x += 2.0; }
+    if (diff.y >  1.0) { diff.y -= 2.0; }
+    if (diff.y < -1.0) { diff.y += 2.0; }
+    // Aspect-correct for isotropic screen-space distances
+    let diffS = vec2f(diff.x * params.aspect, diff.y);
+    let r = length(diffS);
     if (r < 0.0001) { continue; }
 
-    let diff_dir = diff / r;
+    let dir = diffS / r;  // unit direction in screen space
 
-    // Field-of-view: dot product of velocity direction with direction to neighbor.
-    // pointing > -1.0 means the neighbor is not directly behind (almost omnidirectional).
+    // Field-of-view check using screen-space velocity direction
     var pointing = 0.0;
-    if (has_vel) {
-      pointing = dot(vel / speed, diff_dir);
+    if (speedS > 0.0001) {
+      pointing = dot(velS / speedS, dir);
     }
 
-    // Outer radius: attraction + velocity alignment (respects field of view)
-    if (r < params.outerRadius && pointing > params.coneAngle) {
-      force += params.attraction * diff_dir / (r * r + 0.001);
-      force += params.alignment * (other.vel - vel);
+    // Attraction radius: cohesion + velocity alignment (respects field of view)
+    if (r < params.attractionRadius && pointing > params.coneAngle) {
+      spatial_force += params.attraction * dir / (r * r + 0.001);
+      align_force   += params.alignment * (other.vel - vel);
     }
 
-    // Inner radius: short-range repulsion (omnidirectional)
-    if (r < params.innerRadius) {
-      force -= params.repulsion * diff_dir / (r * r + 0.0001);
+    // Repulsion radius: short-range repulsion (omnidirectional)
+    if (r < params.repulsionRadius) {
+      spatial_force -= params.repulsion * dir / (r * r + 0.0001);
     }
   }
+
+  // Convert spatial force from screen space back to clip space, then combine
+  let force = vec2f(spatial_force.x / params.aspect, spatial_force.y) + align_force;
 
   // Quadratic friction (from reference: -F * sign(vel) * vel^2)
   let friction = -params.friction * sign(vel) * vel * vel;
@@ -85,11 +101,13 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     vel = vel * (params.maxSpeed / sp);
   }
 
-  // Mouse attraction
+  // Mouse attraction (use screen-space distance for isotropic mouseRadius)
   if (params.mouseActive > 0.5) {
     let toMouse = vec2f(params.mouseX, params.mouseY) - pos;
-    let mouseDist = length(toMouse);
+    let toMouseS = vec2f(toMouse.x * params.aspect, toMouse.y);
+    let mouseDist = length(toMouseS);
     if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
+      // Screen-space direction converted back to clip space: aspect cancels
       vel += normalize(toMouse) * 0.005;
     }
   }

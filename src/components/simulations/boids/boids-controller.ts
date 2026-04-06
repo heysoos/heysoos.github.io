@@ -18,8 +18,8 @@ const QUAD_VERTS = new Float32Array([
 export interface BoidsParams {
   dt: number;
   numParticles: number;
-  outerRadius: number;
-  innerRadius: number;
+  attractionRadius: number;
+  repulsionRadius: number;
   attraction: number;
   repulsion: number;
   alignment: number;
@@ -37,8 +37,8 @@ export interface BoidsParams {
 const DEFAULT_PARAMS: BoidsParams = {
   dt: 0.016,
   numParticles: 200,
-  outerRadius: 0.2,
-  innerRadius: 0.05,
+  attractionRadius: 0.2,
+  repulsionRadius: 0.05,
   attraction: 0.3,
   repulsion: 1.5,
   alignment: 0.1,
@@ -202,15 +202,27 @@ export class BoidsController {
     });
   }
 
-  async reloadShader(code: string): Promise<{ success: boolean; errors: GPUCompilationMessage[] }> {
-    if (!this.gpu) return { success: false, errors: [] };
-    const { device } = this.gpu;
-    const module = device.createShaderModule({ code });
-    const info = await module.compilationInfo();
-    const errors = Array.from(info.messages).filter(m => m.type === 'error');
-    if (errors.length > 0) return { success: false, errors };
-    this._createPipelines(module);
-    return { success: true, errors: [] };
+  async reloadShader(code: string): Promise<{ success: boolean; error: string }> {
+    if (!this.gpu) return { success: false, error: 'GPU not initialized' };
+    try {
+      const { device } = this.gpu;
+      const prevCompute = this.computePipeline;
+      const prevRender = this.renderPipeline;
+      const prevBindGroup = this.renderParamsBindGroup;
+      device.pushErrorScope('validation');
+      const module = device.createShaderModule({ code });
+      this._createPipelines(module);
+      const gpuError = await device.popErrorScope();
+      if (gpuError) {
+        this.computePipeline = prevCompute;
+        this.renderPipeline = prevRender;
+        this.renderParamsBindGroup = prevBindGroup;
+        return { success: false, error: gpuError.message };
+      }
+      return { success: true, error: '' };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
   }
 
   start() {
@@ -256,8 +268,8 @@ export class BoidsController {
     const uniformArray = new ArrayBuffer(96);
     const v = new DataView(uniformArray);
     v.setFloat32( 0, this.params.dt,                   true);
-    v.setFloat32( 4, this.params.outerRadius,          true);
-    v.setFloat32( 8, this.params.innerRadius,          true);
+    v.setFloat32( 4, this.params.attractionRadius,      true);
+    v.setFloat32( 8, this.params.repulsionRadius,       true);
     v.setFloat32(12, this.params.attraction,           true);
     v.setFloat32(16, this.params.repulsion,            true);
     v.setFloat32(20, this.params.alignment,            true);
