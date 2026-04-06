@@ -11,8 +11,10 @@ export class TrailRenderer {
   private blitBindGroups: GPUBindGroup[] = [];
   private readIdx = 0;
   private writeIdx = 1;
+  private format: GPUTextureFormat = 'bgra8unorm';
 
   init(device: GPUDevice, format: GPUTextureFormat, width: number, height: number): void {
+    this.format = format;
     const module = device.createShaderModule({ code: trailShader });
 
     this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
@@ -28,7 +30,7 @@ export class TrailRenderer {
       fragment: {
         module,
         entryPoint: 'fadeFrag',
-        targets: [{ format: 'rgba16float' }],
+        targets: [{ format: this.format }],
       },
       primitive: { topology: 'triangle-list' },
     });
@@ -52,7 +54,7 @@ export class TrailRenderer {
 
     const desc: GPUTextureDescriptor = {
       size: [width, height],
-      format: 'rgba16float',
+      format: this.format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     };
     this.trailTextures = [device.createTexture(desc), device.createTexture(desc)];

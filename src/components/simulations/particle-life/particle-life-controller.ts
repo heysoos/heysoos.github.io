@@ -158,8 +158,14 @@ export class ParticleLifeController {
 
     resizeCanvasToDisplaySize(canvas);
 
-    const uniformData = new Float32Array([1.0, NUM_PARTICLES, NUM_SPECIES, 0.98]);
-    device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
+    // Use DataView to write numParticles and numSpecies as u32 (matching WGSL struct).
+    const uniformArray = new ArrayBuffer(16);
+    const uniformView = new DataView(uniformArray);
+    uniformView.setFloat32(0, 1.0, true);
+    uniformView.setUint32(4, NUM_PARTICLES, true);
+    uniformView.setUint32(8, NUM_SPECIES, true);
+    uniformView.setFloat32(12, 0.98, true);
+    device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const encoder = device.createCommandEncoder();
 

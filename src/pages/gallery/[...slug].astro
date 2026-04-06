@@ -82,6 +82,8 @@ const sim = project.data.simulation;
     top: 1rem;
     right: 1rem;
     width: 220px;
+    max-height: calc(70vh - 2rem);
+    overflow-y: auto;
     background: var(--bg-nav);
     border: 1px solid var(--bg-surface-border);
     border-radius: var(--border-radius);
@@ -709,12 +711,21 @@ const sim = project.data.simulation;
             parent: editorWrap,
           });
 
-          document.getElementById('shader-apply')!.addEventListener('click', async () => {
+          const applyBtn = document.getElementById('shader-apply') as HTMLButtonElement;
+          applyBtn.addEventListener('click', async () => {
             const code = editorView.state.doc.toString();
             const result = await boidsCtrl.reloadShader(code);
             if (result.success) {
               shaderErrors.style.display = 'none';
               shaderErrors.textContent = '';
+              applyBtn.textContent = 'Applied ✓';
+              applyBtn.style.borderColor = 'var(--accent)';
+              applyBtn.style.color = 'var(--accent)';
+              setTimeout(() => {
+                applyBtn.textContent = 'Apply';
+                applyBtn.style.borderColor = '';
+                applyBtn.style.color = '';
+              }, 1500);
             } else {
               const msg = result.errors
                 .map(e => `[${e.lineNum}:${e.linePos}] ${e.message}`)
