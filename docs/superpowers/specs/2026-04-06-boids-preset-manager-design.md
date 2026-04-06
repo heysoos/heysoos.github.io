@@ -106,11 +106,9 @@ Dev-only admin page. Excluded from `astro build` via `astro.config.mjs`.
 
 ### `astro.config.mjs`
 
-Two additions:
+One addition:
 
 1. **Vite `configureServer` middleware** — handles `POST /api/admin/save-presets`. Receives `BoidsPreset[]` as JSON, generates and writes `src/data/boids-presets.ts`. Runs only during dev by nature of `configureServer`.
-
-2. **Build exclusion** — exclude `src/pages/admin/**` from the static build so the admin page is never deployed.
 
 ---
 
@@ -120,7 +118,7 @@ Located at the top of the params panel, above all sections. Rendered by `buildBo
 
 **Appearance:** Horizontally wrapping pill buttons. Active preset uses accent background (`--accent` + dark text). Inactive presets use a subtle border.
 
-**Behaviour:** Clicking a pill immediately applies all preset fields to the controller. If the preset has a custom `shader`, calls `controller.reloadShader(preset.shader)`. If `shader` is undefined, reloads the default `boids.wgsl` source.
+**Behaviour:** Clicking a pill immediately applies all preset fields to the controller. If the preset has a custom `shader`, calls `controller.reloadShader(preset.shader)`. If `shader` is undefined, calls `controller.reloadShader(controller.shaderSource)` to restore the original bundled WGSL.
 
 ---
 
