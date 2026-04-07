@@ -55,8 +55,9 @@ Updates are throttled to one per `requestAnimationFrame` — triggered by `scrol
 
 | File | Change |
 |------|--------|
+| `src/config.ts` | Add `enableBackgroundSim: boolean` flag — master kill switch for all pages |
 | `src/layouts/BaseLayout.astro` | Add `backgroundSim?: 'boids'` prop; render `<BackgroundSim>` when set |
-| `src/pages/index.astro` | Remove `.hero-sim` div and its canvas/script; pass `backgroundSim="boids"` to BaseLayout |
+| `src/pages/index.astro` | Conditionally pass `backgroundSim` prop and render hero canvas based on `siteConfig.enableBackgroundSim` |
 | `src/components/simulations/boids/boids-controller.ts` | Add `setObstacles(rects, count)`, write obstacle uniform buffer |
 | `src/components/simulations/boids/boids.wgsl` | Add `Obstacles` uniform binding; apply smooth repulsion in compute shader |
 
@@ -193,6 +194,51 @@ When `particle-life` or `nca` are added as background options:
 - NCAs zero out (set cell state to 0) for cells within obstacle rects using the same `smoothstep` falloff — cell value multiplied by `1.0 - t²` where `t = smoothstep(falloffRadius, 0.0, dist)`
 - The `BackgroundSim.astro` switch statement dispatches to the correct controller by the `sim` prop value
 - No changes needed to `ObstacleTracker` or `BaseLayout`
+
+## Reversibility
+
+The feature has two levels of reversibility:
+
+**Per-page opt-in:** Pages that do not pass `backgroundSim` to BaseLayout have zero overhead — no canvas, no WebGPU init, no ObstacleTracker, no listeners. Regular pages are completely unaffected.
+
+**Master kill switch:** `siteConfig.enableBackgroundSim` in `src/config.ts` disables the feature across all pages at once:
+
+```ts
+// src/config.ts
+export const siteConfig = {
+  // ...existing fields...
+  enableBackgroundSim: true,  // set false to disable sitewide
+};
+```
+
+Pages that opt in read this flag:
+
+```astro
+---
+import { siteConfig } from '../config';
+---
+<BaseLayout backgroundSim={siteConfig.enableBackgroundSim ? 'boids' : undefined}>
+  <section class="hero">
+    {!siteConfig.enableBackgroundSim && (
+      <div class="hero-sim">
+        <canvas id="boids-canvas"></canvas>
+        <div id="boids-fallback" class="fallback" style="display:none;"></div>
+      </div>
+    )}
+    <div class="hero-content">...</div>
+  </section>
+</BaseLayout>
+
+{!siteConfig.enableBackgroundSim && <script>/* original hero BoidsController */</script>}
+```
+
+The hero canvas markup is **preserved, not deleted**. When `enableBackgroundSim = false`:
+- `backgroundSim` prop is `undefined` → `BackgroundSim` not rendered → no fixed canvas
+- Hero canvas and its script activate → original behaviour exactly
+
+When `enableBackgroundSim = true`:
+- `BackgroundSim` renders the fixed canvas
+- Hero canvas suppressed (prevents a redundant GPU context)
 
 ## Legibility
 
