@@ -1,7 +1,6 @@
 ---
-if (import.meta.env.PROD) {
-  return new Response(null, { status: 404 });
-}
+// Dev-only admin page. Write-to-disk API only exists during `npm run dev`,
+// so this page is non-functional in production even without an explicit guard.
 import BaseLayout from '../../layouts/BaseLayout.astro';
 ---
 
@@ -12,6 +11,21 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       <div id="admin-fallback" class="admin-fallback" style="display:none;">
         <p>WebGPU not available.</p>
       </div>
+      <!-- Floating shader panel (mirrors gallery style) -->
+      <div id="admin-shader-panel" class="admin-shader-panel" style="display:none;">
+        <div class="shader-panel-header">
+          <span>Shader Editor</span>
+          <button id="admin-shader-close" class="shader-panel-close">×</button>
+        </div>
+        <div id="admin-shader-wrap" class="shader-editor-wrap"></div>
+        <div class="shader-panel-footer">
+          <div class="shader-btn-row">
+            <button id="admin-shader-apply" class="shader-apply-btn">Apply</button>
+            <button id="admin-shader-reset" class="shader-reset-btn">Reset to Default</button>
+          </div>
+          <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
+        </div>
+      </div>
       <div class="sim-controls">
         <button id="btn-play-pause" class="sim-btn">⏸</button>
         <button id="btn-reset" class="sim-btn">↺</button>
@@ -21,31 +35,17 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="params">Params</button>
         <button class="tab-btn" data-tab="presets">Presets</button>
-        <button class="tab-btn" data-tab="shader">Shader</button>
       </div>
-      <div id="tab-params" class="tab-pane"></div>
+      <div id="tab-params" class="tab-pane params-panel"></div>
       <div id="tab-presets" class="tab-pane" style="display:none;"></div>
-      <div id="tab-shader" class="tab-pane" style="display:none;">
-        <div id="admin-shader-wrap" class="shader-wrap"></div>
-        <div class="shader-footer">
-          <div class="shader-btn-row">
-            <button id="admin-shader-apply" class="shader-btn">Apply</button>
-            <button id="admin-shader-reset" class="shader-btn">Reset to Default</button>
-          </div>
-          <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
-        </div>
-      </div>
     </div>
   </div>
 </BaseLayout>
 
 <style>
-  /* Override BaseLayout body padding for full-height workspace */
-  :global(main), :global(.page-content) { padding: 0 !important; }
-
   .admin-wrap {
     display: flex;
-    height: calc(100vh - 3rem); /* subtract nav height */
+    height: calc(100vh - 60px); /* 60px = nav height from BaseLayout */
     overflow: hidden;
   }
 
@@ -70,6 +70,94 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     color: var(--text-muted);
   }
 
+  /* Floating shader panel — mirrors gallery .shader-panel */
+  .admin-shader-panel {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    width: min(520px, calc(100% - 2rem));
+    max-height: calc(100% - 4rem);
+    background: var(--bg-nav);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(8px);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    resize: both;
+    overflow: hidden;
+    min-width: 280px;
+    min-height: 200px;
+  }
+
+  .shader-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--bg-surface-border);
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .shader-panel-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+  }
+  .shader-panel-close:hover { color: var(--text-primary); }
+
+  .shader-editor-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    font-size: 0.72rem;
+  }
+
+  .shader-editor-wrap :global(.cm-editor) { height: 100%; min-height: 200px; }
+  .shader-editor-wrap :global(.cm-scroller) { overflow: auto; font-family: monospace; font-size: 0.72rem; }
+
+  .shader-panel-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 0.75rem;
+    border-top: 1px solid var(--bg-surface-border);
+    flex-shrink: 0;
+  }
+
+  .shader-btn-row { display: flex; gap: 0.4rem; }
+
+  .shader-apply-btn,
+  .shader-reset-btn {
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--bg-surface-border);
+    background: transparent;
+    color: var(--text-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .shader-apply-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .shader-reset-btn:hover { border-color: var(--text-muted); }
+
+  .shader-errors {
+    font-family: monospace;
+    font-size: 0.68rem;
+    color: #e05060;
+    white-space: pre-wrap;
+    max-height: 80px;
+    overflow-y: auto;
+    width: 100%;
+  }
+
   .sim-controls {
     position: absolute;
     bottom: 1rem;
@@ -89,7 +177,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     font-size: 0.9rem;
     transition: border-color 0.15s, color 0.15s;
   }
-
   .sim-btn:hover { border-color: var(--accent); color: var(--accent); }
 
   .admin-sidebar {
@@ -121,7 +208,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     text-transform: uppercase;
     transition: color 0.15s;
   }
-
   .tab-btn.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
@@ -136,42 +222,147 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     gap: 0.5rem;
   }
 
-  .shader-wrap { flex: 1; overflow: auto; font-size: 0.72rem; }
-
-  .shader-wrap :global(.cm-editor) { height: 100%; min-height: 200px; }
-  .shader-wrap :global(.cm-scroller) { overflow: auto; font-family: monospace; font-size: 0.72rem; }
-
-  .shader-footer {
+  /* ── Params panel styles (mirror of gallery page .params-panel) ── */
+  .params-panel :global(.panel-title) {
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0 0 0.2rem;
+  }
+  .params-panel :global(.panel-header) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.2rem;
+  }
+  .params-panel :global(.panel-close) {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .params-panel :global(.panel-close:hover) { color: var(--text-primary); }
+  .params-panel :global(.param-row) {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.6rem 0.75rem;
-    border-top: 1px solid var(--bg-surface-border);
-    flex-shrink: 0;
+    gap: 0.15rem;
   }
-
-  .shader-btn-row { display: flex; gap: 0.4rem; }
-
-  .shader-btn {
-    padding: 0.3rem 0.75rem;
-    border-radius: 4px;
+  .params-panel :global(.param-label) {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-body);
+  }
+  .params-panel :global(.param-value) {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .params-panel :global(input[type=range]) {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .params-panel :global(.section-divider) {
+    height: 1px;
+    background: var(--bg-surface-border);
+    margin: 0.4rem 0 0.3rem;
+  }
+  .params-panel :global(.section-heading) {
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0 0 0.25rem;
+  }
+  .params-panel :global(.shape-row) {
+    display: flex;
+    gap: 0.35rem;
+    margin-top: 0.15rem;
+  }
+  .params-panel :global(.shape-btn) {
+    flex: 1;
+    height: 28px;
     border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
     background: transparent;
     color: var(--text-body);
-    font-size: 0.72rem;
     cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color var(--transition-speed);
   }
-
-  .shader-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  .shader-errors {
-    font-family: monospace;
-    font-size: 0.68rem;
-    color: #e05060;
-    white-space: pre-wrap;
-    max-height: 80px;
-    overflow-y: auto;
+  .params-panel :global(.shape-btn.active) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .params-panel :global(.color-row) {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    margin-top: 0.15rem;
+    flex-wrap: wrap;
+  }
+  .params-panel :global(.color-swatch) {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .params-panel :global(.color-swatch.active) { border-color: var(--text-primary); }
+  .params-panel :global(.color-picker) {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    flex-shrink: 0;
+  }
+  .params-panel :global(.trail-row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-body);
+  }
+  .params-panel :global(.toggle-switch) {
+    position: relative;
+    width: 32px;
+    height: 18px;
+  }
+  .params-panel :global(.toggle-switch input) { opacity: 0; width: 0; height: 0; }
+  .params-panel :global(.toggle-slider) {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-surface-border);
+    border-radius: 18px;
+    cursor: pointer;
+    transition: background var(--transition-speed);
+  }
+  .params-panel :global(.toggle-slider::before) {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 3px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform var(--transition-speed), background var(--transition-speed);
+  }
+  .params-panel :global(.toggle-switch input:checked + .toggle-slider) { background: var(--accent); }
+  .params-panel :global(.toggle-switch input:checked + .toggle-slider::before) {
+    transform: translateX(14px);
+    background: var(--bg-primary);
   }
 </style>
 
@@ -194,6 +385,13 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     canvas.style.display = 'none';
     fallback.style.display = 'flex';
   } else {
+    const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
+    if (defaultPreset) {
+      Object.assign(ctrl.params, defaultPreset.params);
+      ctrl.trailsEnabled = defaultPreset.trailsEnabled;
+      ctrl.trailDecay = defaultPreset.trailDecay;
+      if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
+    }
     ctrl.start();
   }
 
@@ -218,13 +416,10 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
   tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab!)));
 
-  // ── Params tab ────────────────────────────────────────────────────
-  const paramsContainer = document.getElementById('tab-params') as HTMLElement;
-  buildBoidsPanel(paramsContainer, ctrl);
-
-  // ── Shader tab ────────────────────────────────────────────────────
-  const shaderWrap = document.getElementById('admin-shader-wrap') as HTMLElement;
+  // ── Floating shader panel ─────────────────────────────────────────
+  const adminShaderPanel = document.getElementById('admin-shader-panel') as HTMLElement;
   const shaderErrors = document.getElementById('admin-shader-errors') as HTMLElement;
+  let shaderEditorOpen = false;
 
   const editorView = new EditorView({
     doc: ctrl.shaderSource,
@@ -244,7 +439,36 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
       }),
     ],
-    parent: shaderWrap,
+    parent: document.getElementById('admin-shader-wrap') as HTMLElement,
+  });
+
+  document.getElementById('admin-shader-close')!.addEventListener('click', () => {
+    shaderEditorOpen = false;
+    adminShaderPanel.style.display = 'none';
+  });
+
+  // ── Drag shader panel by header ───────────────────────────────────
+  const shaderPanelHeader = adminShaderPanel.querySelector('.shader-panel-header') as HTMLElement;
+  shaderPanelHeader.style.cursor = 'grab';
+  let dragging = false, dragX = 0, dragY = 0, panelX = 0, panelY = 0;
+  shaderPanelHeader.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragging = true;
+    dragX = e.clientX; dragY = e.clientY;
+    const rect = adminShaderPanel.getBoundingClientRect();
+    const parentRect = (adminShaderPanel.parentElement as HTMLElement).getBoundingClientRect();
+    panelX = rect.left - parentRect.left;
+    panelY = rect.top - parentRect.top;
+    shaderPanelHeader.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    adminShaderPanel.style.left = `${panelX + e.clientX - dragX}px`;
+    adminShaderPanel.style.top = `${panelY + e.clientY - dragY}px`;
+  });
+  document.addEventListener('mouseup', () => {
+    if (dragging) { dragging = false; shaderPanelHeader.style.cursor = 'grab'; }
   });
 
   document.getElementById('admin-shader-apply')!.addEventListener('click', async () => {
@@ -275,11 +499,38 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     shaderErrors.style.display = 'none';
   });
 
-  // ── Presets tab ───────────────────────────────────────────────────
-  // Deep-copy so we never mutate the imported constant
+  // ── Preset state ──────────────────────────────────────────────────
   let adminPresets: BoidsPreset[] = JSON.parse(JSON.stringify(BOIDS_PRESETS));
   let activePresetId: string | undefined = adminPresets.find(p => p.isDefault)?.id;
 
+  // ── Params tab (rebuilt on preset load to sync sliders + pills) ───
+  const paramsContainer = document.getElementById('tab-params') as HTMLElement;
+
+  function buildAdminPanel(activeId?: string): void {
+    paramsContainer.innerHTML = '';
+    buildBoidsPanel(paramsContainer, ctrl, {
+      presets: adminPresets,
+      activePresetId: activeId,
+      onShaderEdit: () => {
+        shaderEditorOpen = !shaderEditorOpen;
+        adminShaderPanel.style.display = shaderEditorOpen ? 'flex' : 'none';
+      },
+      onPresetLoad: async (preset) => {
+        activePresetId = preset.id;
+        Object.assign(ctrl.params, preset.params);
+        ctrl.trailsEnabled = preset.trailsEnabled;
+        ctrl.trailDecay = preset.trailDecay;
+        await ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
+        editorView.dispatch({
+          changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.shaderSource },
+        });
+        buildAdminPanel(preset.id);
+        renderPresetList();
+      },
+    });
+  }
+
+  // ── Presets tab ───────────────────────────────────────────────────
   const presetsContainer = document.getElementById('tab-presets') as HTMLElement;
 
   async function writeToDisk(): Promise<void> {
@@ -294,9 +545,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       if (writeBtn) {
         writeBtn.textContent = '✓ Written';
         writeBtn.style.borderColor = 'var(--accent)';
-        setTimeout(() => {
-          writeBtn.textContent = '↓ Write to disk';
-        }, 2000);
+        setTimeout(() => { writeBtn.textContent = '↓ Write to disk'; }, 2000);
       }
     } catch (err) {
       if (writeBtn) {
@@ -316,7 +565,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   function renderPresetList(): void {
     presetsContainer.innerHTML = '';
 
-    // Preset rows
     const list = document.createElement('div');
     list.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
 
@@ -328,6 +576,35 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       const name = document.createElement('span');
       name.style.cssText = `flex:1;font-size:0.75rem;color:${isActive ? 'var(--accent)' : 'var(--text-body)'};`;
       name.textContent = preset.name + (preset.isDefault ? ' ★' : '');
+      name.title = 'Double-click to rename';
+
+      // Double-click to rename inline.
+      // A click timer delays the single-click action so dblclick can cancel it
+      // before renderPresetList() destroys the DOM.
+      let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
+      name.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        if (clickTimer !== null) { clearTimeout(clickTimer); clickTimer = null; }
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = preset.name;
+        input.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;color:var(--text-body);font-size:0.75rem;min-width:0;';
+        input.addEventListener('click', (ev) => ev.stopPropagation());
+        row.replaceChild(input, name);
+        input.focus();
+        input.select();
+        function commit() {
+          const newName = input.value.trim();
+          if (newName) preset.name = newName;
+          renderPresetList();
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') input.blur();
+          if (ev.key === 'Escape') renderPresetList();
+        });
+      });
 
       const starBtn = document.createElement('button');
       starBtn.textContent = '★';
@@ -337,6 +614,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         e.stopPropagation();
         adminPresets.forEach(p => { p.isDefault = p.id === preset.id; });
         renderPresetList();
+        buildAdminPanel(activePresetId);
       });
 
       const deleteBtn = document.createElement('button');
@@ -348,27 +626,24 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         adminPresets = adminPresets.filter(p => p.id !== preset.id);
         if (activePresetId === preset.id) activePresetId = undefined;
         renderPresetList();
+        buildAdminPanel(activePresetId);
       });
 
-      // Click row = load preset
       row.addEventListener('click', () => {
-        activePresetId = preset.id;
-        Object.assign(ctrl.params, preset.params);
-        ctrl.trailsEnabled = preset.trailsEnabled;
-        ctrl.trailDecay = preset.trailDecay;
-        ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
-        // Sync shader editor
-        editorView.dispatch({
-          changes: {
-            from: 0,
-            to: editorView.state.doc.length,
-            insert: preset.shader ?? ctrl.shaderSource,
-          },
-        });
-        // Rebuild params panel to sync slider values
-        paramsContainer.innerHTML = '';
-        buildBoidsPanel(paramsContainer, ctrl);
-        renderPresetList();
+        if (clickTimer !== null) return; // dblclick in progress — let it handle this
+        clickTimer = setTimeout(() => {
+          clickTimer = null;
+          activePresetId = preset.id;
+          Object.assign(ctrl.params, preset.params);
+          ctrl.trailsEnabled = preset.trailsEnabled;
+          ctrl.trailDecay = preset.trailDecay;
+          ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
+          editorView.dispatch({
+            changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.shaderSource },
+          });
+          buildAdminPanel(preset.id);
+          renderPresetList();
+        }, 220);
       });
 
       row.appendChild(name);
@@ -379,12 +654,10 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
     presetsContainer.appendChild(list);
 
-    // Divider
     const divider = document.createElement('div');
     divider.style.cssText = 'height:1px;background:var(--bg-surface-border);margin:0.5rem 0;flex-shrink:0;';
     presetsContainer.appendChild(divider);
 
-    // Save row: name input + Save button
     const saveRow = document.createElement('div');
     saveRow.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
     const nameInput = document.createElement('input');
@@ -412,12 +685,12 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       activePresetId = newPreset.id;
       nameInput.value = '';
       renderPresetList();
+      buildAdminPanel(newPreset.id);
     });
     saveRow.appendChild(nameInput);
     saveRow.appendChild(saveBtn);
     presetsContainer.appendChild(saveRow);
 
-    // Write to disk button
     const writeBtn = document.createElement('button');
     writeBtn.textContent = '↓ Write to disk';
     writeBtn.id = 'write-to-disk';
@@ -426,5 +699,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     presetsContainer.appendChild(writeBtn);
   }
 
+  // ── Init ──────────────────────────────────────────────────────────
+  buildAdminPanel(activePresetId);
   renderPresetList();
 </script>

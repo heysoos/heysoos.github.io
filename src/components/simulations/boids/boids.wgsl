@@ -108,7 +108,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     let mouseDist = length(toMouseS);
     if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
       // Screen-space direction converted back to clip space: aspect cancels
-      vel += normalize(toMouse) * 0.005;
+      vel += 0.005 * normalize(toMouse) / mouseDist ;
     }
   }
 
