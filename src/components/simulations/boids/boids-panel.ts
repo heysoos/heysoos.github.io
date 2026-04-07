@@ -83,6 +83,7 @@ export function buildBoidsPanel(
     min: number, max: number, step: number,
     get: () => number,
     set: (v: number) => void,
+    scale: 'linear' | 'log' = 'linear',
   ): void {
     const row = document.createElement('div');
     row.className = 'param-row';
@@ -92,21 +93,67 @@ export function buildBoidsPanel(
     nameSpan.textContent = label;
     const valueSpan = document.createElement('span');
     valueSpan.className = 'param-value';
+    valueSpan.style.cursor = 'text';
+    valueSpan.title = 'Click to edit';
     labelEl.appendChild(nameSpan);
     labelEl.appendChild(valueSpan);
     const input = document.createElement('input');
     input.type = 'range';
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.value = String(get());
-    const decimals = step >= 1 ? 0 : (String(step).split('.')[1]?.length ?? 2);
+
+    const isLog = scale === 'log';
+    const sliderMin = isLog ? Math.log(min) : min;
+    const sliderMax = isLog ? Math.log(max) : max;
+    const sliderStep = isLog ? (sliderMax - sliderMin) / 1000 : step;
+    const decimals = (isLog || step >= 1) ? 0 : (String(step).split('.')[1]?.length ?? 2);
+
+    function sliderToValue(s: number): number {
+      return isLog ? Math.round(Math.exp(s)) : s;
+    }
+    function valueToSlider(v: number): number {
+      return isLog ? Math.log(Math.max(v, min)) : v;
+    }
+
+    input.min = String(sliderMin);
+    input.max = String(sliderMax);
+    input.step = String(sliderStep);
+    input.value = String(valueToSlider(get()));
     valueSpan.textContent = get().toFixed(decimals);
+
     input.addEventListener('input', () => {
-      const val = parseFloat(input.value);
+      const val = sliderToValue(parseFloat(input.value));
       set(val);
       valueSpan.textContent = val.toFixed(decimals);
     });
+
+    valueSpan.addEventListener('click', () => {
+      const lastVal = get();
+      const editInput = document.createElement('input');
+      editInput.type = 'text';
+      editInput.value = lastVal.toFixed(decimals);
+      editInput.className = 'param-value-edit';
+      valueSpan.replaceWith(editInput);
+      editInput.select();
+
+      function commit(): void {
+        const raw = decimals === 0 ? parseInt(editInput.value, 10) : parseFloat(editInput.value);
+        const isValid = !isNaN(raw) && raw >= min && raw <= max;
+        const finalVal = isValid ? raw : lastVal;
+        if (isValid) {
+          set(finalVal);
+          input.value = String(valueToSlider(finalVal));
+        }
+        valueSpan.textContent = finalVal.toFixed(decimals);
+        editInput.replaceWith(valueSpan);
+      }
+
+      editInput.addEventListener('blur', commit);
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { editInput.blur(); }
+        if (e.key === 'Escape') { editInput.value = lastVal.toFixed(decimals); editInput.blur(); }
+      });
+      editInput.focus();
+    });
+
     row.appendChild(labelEl);
     row.appendChild(input);
     parent.appendChild(row);
@@ -233,7 +280,7 @@ export function buildBoidsPanel(
   // ── Simulation ────────────────────────────────────────────────────
   addSection(container, 'Simulation');
   addSlider(container, 'Time Step', 0.001, 0.1,  0.001, () => controller.params.dt,           v => { controller.params.dt = v; });
-  addSlider(container, 'Particles', 10,    2000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; });
+  addSlider(container, 'Particles', 10,    5000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
 
   // ── Forces ────────────────────────────────────────────────────────
   addSection(container, 'Forces');

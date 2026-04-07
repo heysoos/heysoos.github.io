@@ -61,5 +61,29 @@ export const BOIDS_PRESETS: BoidsPreset[] = [
     "trailsEnabled": true,
     "trailDecay": 0.92,
     "isDefault": true
+  },
+  {
+    "id": "porosity",
+    "name": "Porosity",
+    "params": {
+      "dt": 0.016,
+      "numParticles": 2000,
+      "attractionRadius": 0.08,
+      "repulsionRadius": 0.03,
+      "attraction": 0.68,
+      "repulsion": 5,
+      "alignment": 0.15,
+      "friction": 2,
+      "maxSpeed": 0.15,
+      "mouseRadius": 0.5,
+      "coneAngle": -0.2,
+      "size": 0.005,
+      "shapeId": 0,
+      "colorR": 0.88,
+      "colorG": 0.63,
+      "colorB": 0.25
+    },
+    "trailsEnabled": true,
+    "trailDecay": 0.92
   }
 ];

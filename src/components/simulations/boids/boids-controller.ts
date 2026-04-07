@@ -3,7 +3,7 @@ import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '..
 import shaderCode from './boids.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
 
-const MAX_PARTICLES = 2000;
+const MAX_PARTICLES = 5000;
 
 // Quad billboard (-1..1), 6 vertices = 2 triangles. Scaled by params.size in vertex shader.
 const QUAD_VERTS = new Float32Array([

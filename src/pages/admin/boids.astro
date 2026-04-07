@@ -261,6 +261,18 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }
+  .params-panel :global(.param-value-edit) {
+    width: 3.5rem;
+    background: var(--bg-surface);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 0 2px;
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    outline: none;
+  }
   .params-panel :global(input[type=range]) {
     width: 100%;
     accent-color: var(--accent);
