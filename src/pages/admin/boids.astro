@@ -217,4 +217,60 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   }
 
   tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab!)));
+
+  // ── Params tab ────────────────────────────────────────────────────
+  const paramsContainer = document.getElementById('tab-params') as HTMLElement;
+  buildBoidsPanel(paramsContainer, ctrl);
+
+  // ── Shader tab ────────────────────────────────────────────────────
+  const shaderWrap = document.getElementById('admin-shader-wrap') as HTMLElement;
+  const shaderErrors = document.getElementById('admin-shader-errors') as HTMLElement;
+
+  const editorView = new EditorView({
+    doc: ctrl.shaderSource,
+    extensions: [
+      basicSetup,
+      StreamLanguage.define(cpp),
+      EditorView.theme({
+        '&': { background: 'var(--bg-primary)' },
+        '.cm-content': { color: 'var(--text-body)', caretColor: 'var(--accent)' },
+        '.cm-gutters': {
+          background: 'var(--bg-surface)',
+          color: 'var(--text-muted)',
+          borderRight: '1px solid var(--bg-surface-border)',
+        },
+        '.cm-activeLineGutter': { background: 'var(--bg-surface)' },
+        '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
+        '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
+      }),
+    ],
+    parent: shaderWrap,
+  });
+
+  document.getElementById('admin-shader-apply')!.addEventListener('click', async () => {
+    const applyBtn = document.getElementById('admin-shader-apply') as HTMLButtonElement;
+    const result = await ctrl.reloadShader(editorView.state.doc.toString());
+    if (result.success) {
+      shaderErrors.style.display = 'none';
+      applyBtn.textContent = 'Applied ✓';
+      applyBtn.style.borderColor = 'var(--accent)';
+      applyBtn.style.color = 'var(--accent)';
+      setTimeout(() => {
+        applyBtn.textContent = 'Apply';
+        applyBtn.style.borderColor = '';
+        applyBtn.style.color = '';
+      }, 1500);
+    } else {
+      shaderErrors.textContent = result.error || 'Unknown error';
+      shaderErrors.style.display = 'block';
+    }
+  });
+
+  document.getElementById('admin-shader-reset')!.addEventListener('click', async () => {
+    editorView.dispatch({
+      changes: { from: 0, to: editorView.state.doc.length, insert: ctrl.shaderSource },
+    });
+    await ctrl.reloadShader(ctrl.shaderSource);
+    shaderErrors.style.display = 'none';
+  });
 </script>
