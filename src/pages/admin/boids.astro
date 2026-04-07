@@ -281,6 +281,37 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
   const presetsContainer = document.getElementById('tab-presets') as HTMLElement;
 
+  async function writeToDisk(): Promise<void> {
+    const writeBtn = document.getElementById('write-to-disk');
+    try {
+      const res = await fetch('/api/admin/save-presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adminPresets),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (writeBtn) {
+        writeBtn.textContent = '✓ Written';
+        writeBtn.style.borderColor = 'var(--accent)';
+        setTimeout(() => {
+          writeBtn.textContent = '↓ Write to disk';
+        }, 2000);
+      }
+    } catch (err) {
+      if (writeBtn) {
+        writeBtn.textContent = '✗ Error';
+        writeBtn.style.borderColor = '#e05060';
+        writeBtn.style.color = '#e05060';
+        setTimeout(() => {
+          writeBtn.textContent = '↓ Write to disk';
+          writeBtn.style.borderColor = 'var(--accent)';
+          writeBtn.style.color = 'var(--accent)';
+        }, 2000);
+      }
+      console.error('Write to disk failed:', err);
+    }
+  }
+
   function renderPresetList(): void {
     presetsContainer.innerHTML = '';
 
