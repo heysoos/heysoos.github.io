@@ -1,0 +1,220 @@
+---
+if (import.meta.env.PROD) {
+  return new Response(null, { status: 404 });
+}
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Boids Admin">
+  <div class="admin-wrap">
+    <div class="admin-canvas-area">
+      <canvas id="admin-canvas"></canvas>
+      <div id="admin-fallback" class="admin-fallback" style="display:none;">
+        <p>WebGPU not available.</p>
+      </div>
+      <div class="sim-controls">
+        <button id="btn-play-pause" class="sim-btn">⏸</button>
+        <button id="btn-reset" class="sim-btn">↺</button>
+      </div>
+    </div>
+    <div class="admin-sidebar">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="params">Params</button>
+        <button class="tab-btn" data-tab="presets">Presets</button>
+        <button class="tab-btn" data-tab="shader">Shader</button>
+      </div>
+      <div id="tab-params" class="tab-pane"></div>
+      <div id="tab-presets" class="tab-pane" style="display:none;"></div>
+      <div id="tab-shader" class="tab-pane" style="display:none;">
+        <div id="admin-shader-wrap" class="shader-wrap"></div>
+        <div class="shader-footer">
+          <div class="shader-btn-row">
+            <button id="admin-shader-apply" class="shader-btn">Apply</button>
+            <button id="admin-shader-reset" class="shader-btn">Reset to Default</button>
+          </div>
+          <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  /* Override BaseLayout body padding for full-height workspace */
+  :global(main), :global(.page-content) { padding: 0 !important; }
+
+  .admin-wrap {
+    display: flex;
+    height: calc(100vh - 3rem); /* subtract nav height */
+    overflow: hidden;
+  }
+
+  .admin-canvas-area {
+    flex: 1;
+    position: relative;
+    background: var(--bg-primary);
+  }
+
+  #admin-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .admin-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+  }
+
+  .sim-controls {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .sim-btn {
+    padding: 0.3rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .sim-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .admin-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--bg-nav);
+    border-left: 1px solid var(--bg-surface-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--bg-surface-border);
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 0.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: color 0.15s;
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-pane {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .shader-wrap { flex: 1; overflow: auto; font-size: 0.72rem; }
+
+  .shader-wrap :global(.cm-editor) { height: 100%; min-height: 200px; }
+  .shader-wrap :global(.cm-scroller) { overflow: auto; font-family: monospace; font-size: 0.72rem; }
+
+  .shader-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 0.75rem;
+    border-top: 1px solid var(--bg-surface-border);
+    flex-shrink: 0;
+  }
+
+  .shader-btn-row { display: flex; gap: 0.4rem; }
+
+  .shader-btn {
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--bg-surface-border);
+    background: transparent;
+    color: var(--text-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .shader-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .shader-errors {
+    font-family: monospace;
+    font-size: 0.68rem;
+    color: #e05060;
+    white-space: pre-wrap;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+</style>
+
+<script>
+  import { BoidsController } from '../../components/simulations/boids/boids-controller';
+  import { buildBoidsPanel } from '../../components/simulations/boids/boids-panel';
+  import { BOIDS_PRESETS } from '../../data/boids-presets';
+  import type { BoidsPreset } from '../../data/boids-presets';
+  import { EditorView, basicSetup } from 'codemirror';
+  import { StreamLanguage } from '@codemirror/language';
+  import { cpp } from '@codemirror/legacy-modes/mode/clike';
+
+  // ── Sim init ───────────────────────────────────────────────────────
+  const canvas = document.getElementById('admin-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('admin-fallback') as HTMLElement;
+  const ctrl = new BoidsController();
+  const ok = await ctrl.init(canvas);
+
+  if (!ok) {
+    canvas.style.display = 'none';
+    fallback.style.display = 'flex';
+  } else {
+    ctrl.start();
+  }
+
+  // ── Play/pause + reset ─────────────────────────────────────────────
+  let playing = true;
+  document.getElementById('btn-play-pause')!.addEventListener('click', (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    if (playing) { ctrl.stop(); btn.textContent = '▶'; }
+    else { ctrl.start(); btn.textContent = '⏸'; }
+    playing = !playing;
+  });
+  document.getElementById('btn-reset')!.addEventListener('click', () => ctrl.reset());
+
+  // ── Tab switching ─────────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const tabPanes = document.querySelectorAll<HTMLElement>('.tab-pane');
+
+  function switchTab(name: string): void {
+    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    tabPanes.forEach(p => { p.style.display = p.id === `tab-${name}` ? 'flex' : 'none'; });
+  }
+
+  tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab!)));
+</script>
