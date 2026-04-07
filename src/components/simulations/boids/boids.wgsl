@@ -37,7 +37,6 @@ struct Params {
 struct Obstacles {
   rects: array<vec4f, 16>,  // x=cx, y=cy, z=hw, w=hh in NDC
   count: u32,
-  _pad: vec3u,
 }
 
 @group(0) @binding(3) var<uniform> obstacles: Obstacles;
