@@ -73,6 +73,8 @@ export class ObstacleTracker {
     this.intersectionObserver = null;
     window.removeEventListener('scroll', this.boundScroll);
     window.removeEventListener('resize', this.boundResize);
+    this.elements = [];
+    this.visibleSet.clear();
   }
 
   private _loop = (): void => {
@@ -87,6 +89,7 @@ export class ObstacleTracker {
   private _flush(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    if (w <= 0 || h <= 0) return;  // viewport not ready
     const rects = new Float32Array(MAX_OBSTACLES * 4);
     let count = 0;
 
