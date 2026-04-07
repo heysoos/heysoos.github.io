@@ -273,4 +273,123 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     await ctrl.reloadShader(ctrl.shaderSource);
     shaderErrors.style.display = 'none';
   });
+
+  // ── Presets tab ───────────────────────────────────────────────────
+  // Deep-copy so we never mutate the imported constant
+  let adminPresets: BoidsPreset[] = JSON.parse(JSON.stringify(BOIDS_PRESETS));
+  let activePresetId: string | undefined = adminPresets.find(p => p.isDefault)?.id;
+
+  const presetsContainer = document.getElementById('tab-presets') as HTMLElement;
+
+  function renderPresetList(): void {
+    presetsContainer.innerHTML = '';
+
+    // Preset rows
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+
+    for (const preset of adminPresets) {
+      const isActive = preset.id === activePresetId;
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:4px;cursor:pointer;border:1px solid ${isActive ? 'var(--accent)' : 'var(--bg-surface-border)'};`;
+
+      const name = document.createElement('span');
+      name.style.cssText = `flex:1;font-size:0.75rem;color:${isActive ? 'var(--accent)' : 'var(--text-body)'};`;
+      name.textContent = preset.name + (preset.isDefault ? ' ★' : '');
+
+      const starBtn = document.createElement('button');
+      starBtn.textContent = '★';
+      starBtn.title = 'Set as default';
+      starBtn.style.cssText = `background:none;border:none;cursor:pointer;font-size:0.7rem;color:${preset.isDefault ? 'var(--accent)' : 'var(--text-muted)'};padding:0;`;
+      starBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminPresets.forEach(p => { p.isDefault = p.id === preset.id; });
+        renderPresetList();
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '✕';
+      deleteBtn.title = 'Delete';
+      deleteBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--text-muted);padding:0;';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminPresets = adminPresets.filter(p => p.id !== preset.id);
+        if (activePresetId === preset.id) activePresetId = undefined;
+        renderPresetList();
+      });
+
+      // Click row = load preset
+      row.addEventListener('click', () => {
+        activePresetId = preset.id;
+        Object.assign(ctrl.params, preset.params);
+        ctrl.trailsEnabled = preset.trailsEnabled;
+        ctrl.trailDecay = preset.trailDecay;
+        ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
+        // Sync shader editor
+        editorView.dispatch({
+          changes: {
+            from: 0,
+            to: editorView.state.doc.length,
+            insert: preset.shader ?? ctrl.shaderSource,
+          },
+        });
+        renderPresetList();
+      });
+
+      row.appendChild(name);
+      row.appendChild(starBtn);
+      row.appendChild(deleteBtn);
+      list.appendChild(row);
+    }
+
+    presetsContainer.appendChild(list);
+
+    // Divider
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height:1px;background:var(--bg-surface-border);margin:0.5rem 0;flex-shrink:0;';
+    presetsContainer.appendChild(divider);
+
+    // Save row: name input + Save button
+    const saveRow = document.createElement('div');
+    saveRow.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'preset name...';
+    nameInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.72rem;';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = 'padding:0.25rem 0.6rem;border:1px solid var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-body);font-size:0.72rem;cursor:pointer;white-space:nowrap;';
+    saveBtn.addEventListener('click', () => {
+      const rawName = nameInput.value.trim();
+      if (!rawName) return;
+      const id = rawName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const newPreset: BoidsPreset = {
+        id: adminPresets.some(p => p.id === id) ? `${id}-${Date.now()}` : id,
+        name: rawName,
+        params: { ...ctrl.params },
+        trailsEnabled: ctrl.trailsEnabled,
+        trailDecay: ctrl.trailDecay,
+        shader: editorView.state.doc.toString() !== ctrl.shaderSource
+          ? editorView.state.doc.toString()
+          : undefined,
+      };
+      adminPresets.push(newPreset);
+      activePresetId = newPreset.id;
+      nameInput.value = '';
+      renderPresetList();
+    });
+    saveRow.appendChild(nameInput);
+    saveRow.appendChild(saveBtn);
+    presetsContainer.appendChild(saveRow);
+
+    // Write to disk button
+    const writeBtn = document.createElement('button');
+    writeBtn.textContent = '↓ Write to disk';
+    writeBtn.id = 'write-to-disk';
+    writeBtn.style.cssText = 'margin-top:0.25rem;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;flex-shrink:0;';
+    writeBtn.addEventListener('click', writeToDisk);
+    presetsContainer.appendChild(writeBtn);
+  }
+
+  renderPresetList();
 </script>
