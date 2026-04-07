@@ -43,7 +43,7 @@ struct Obstacles {
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
-  let falloffRadius = 0.18;  // NDC units — tunable
+  let falloffRadius = 0.35;  // NDC units — tunable
 
   for (var i = 0u; i < obstacles.count; i++) {
     let r = obstacles.rects[i];
@@ -64,7 +64,7 @@ fn obstacleForce(pos: vec2f) -> vec2f {
       let away     = pos - nearest;
       let awayLen  = length(away);
       let awayDir  = select(vec2f(0.0, 1.0), away / awayLen, awayLen > 0.0001);
-      force += awayDir * strength * 2.0;
+      force += awayDir * strength * 1500.0;
     }
   }
   return force;
@@ -129,7 +129,9 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   // Quadratic friction (from reference: -F * sign(vel) * vel^2)
   let friction = -params.friction * sign(vel) * vel * vel;
 
-  vel = vel + params.deltaTime * (force + friction);
+  // Obstacle repulsion applied before the main integrate+clamp so it
+  // participates in the speed limit and steers rather than just boosting speed.
+  vel = vel + params.deltaTime * (force + friction + obstacleForce(pos));
 
   // Clamp to maxSpeed
   let sp = length(vel);
@@ -147,9 +149,6 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       vel += 0.005 * normalize(toMouse) / mouseDist ;
     }
   }
-
-  // Obstacle repulsion (smooth density void)
-  vel += params.deltaTime * obstacleForce(pos);
 
   // Integrate position
   pos = pos + vel * params.deltaTime;
