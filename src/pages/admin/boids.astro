@@ -252,6 +252,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     const result = await ctrl.reloadShader(editorView.state.doc.toString());
     if (result.success) {
       shaderErrors.style.display = 'none';
+      shaderErrors.textContent = '';
       applyBtn.textContent = 'Applied ✓';
       applyBtn.style.borderColor = 'var(--accent)';
       applyBtn.style.color = 'var(--accent)';
@@ -364,6 +365,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
             insert: preset.shader ?? ctrl.shaderSource,
           },
         });
+        // Rebuild params panel to sync slider values
+        paramsContainer.innerHTML = '';
+        buildBoidsPanel(paramsContainer, ctrl);
         renderPresetList();
       });
 
