@@ -1,0 +1,51 @@
+---
+// src/components/BackgroundSim.astro
+// Fixed-viewport background simulation component.
+// Renders a position:fixed canvas behind all page content.
+// Initialises the sim controller and wires ObstacleTracker for density voids.
+
+interface Props {
+  sim: 'boids';
+}
+
+const { sim } = Astro.props;
+---
+
+<canvas id="bg-sim-canvas"></canvas>
+
+<style>
+  #bg-sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+</style>
+
+<script>
+  import { BoidsController } from './simulations/boids/boids-controller';
+  import { ObstacleTracker } from '../lib/webgpu/obstacle-tracker';
+
+  const canvas = document.getElementById('bg-sim-canvas') as HTMLCanvasElement;
+
+  const controller = new BoidsController();
+  const ok = await controller.init(canvas);
+
+  if (ok) {
+    // Ambient background defaults — lighter than the hero
+    controller.params.numParticles = 120;
+    controller.params.size         = 0.016;
+    controller.params.maxSpeed     = 0.18;
+    controller.trailsEnabled       = false;
+
+    const tracker = new ObstacleTracker(
+      ['nav', 'footer', '.section', '.content-width'],
+      (rects, count) => controller.setObstacles(rects, count),
+    );
+    tracker.start();
+
+    controller.start();
+  }
+</script>
