@@ -14,6 +14,18 @@ const { sim } = Astro.props;
 <canvas id="bg-sim-canvas"></canvas>
 <canvas id="bg-sim-debug" aria-hidden="true"></canvas>
 
+<div id="preset-picker">
+  <button id="preset-trigger" title="Switch preset" aria-label="Switch boids preset">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="22,12 8,4 8,20"/>
+      <line x1="1" y1="9"  x2="6" y2="9"  stroke-opacity="0.45"/>
+      <line x1="1" y1="12" x2="6" y2="12" stroke-opacity="0.75"/>
+      <line x1="1" y1="15" x2="6" y2="15" stroke-opacity="0.45"/>
+    </svg>
+  </button>
+  <div id="preset-menu" role="menu" aria-hidden="true"></div>
+</div>
+
 <style>
   #bg-sim-canvas {
     position: fixed;
@@ -31,6 +43,51 @@ const { sim } = Astro.props;
     z-index: 2;
     pointer-events: none;
     display: none;
+  }
+  #preset-picker {
+    position: fixed;
+    top: calc(60px + 0.75rem);
+    right: 1rem;
+    z-index: 101;
+  }
+  #preset-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  #preset-trigger:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+  #preset-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 10px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 140px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.12s, transform 0.12s;
+  }
+  #preset-menu.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
   }
 </style>
 
@@ -104,15 +161,68 @@ const { sim } = Astro.props;
   if (ok) {
     // Apply the default preset (isDefault: true), falling back to first preset
     const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
-    Object.assign(controller.params, defaultPreset.params);
-    controller.trailsEnabled = defaultPreset.trailsEnabled;
-    controller.trailDecay    = defaultPreset.trailDecay;
-    if (defaultPreset.shader) {
-      await controller.reloadShader(defaultPreset.shader);
+    let activePresetId = defaultPreset.id;
+
+    // ── Preset picker UI ─────────────────────────────────────────────
+    const trigger = document.getElementById('preset-trigger')!;
+    const menu    = document.getElementById('preset-menu')!;
+
+    function updatePills(): void {
+      for (const btn of menu.querySelectorAll<HTMLButtonElement>('button')) {
+        const isActive = btn.dataset.id === activePresetId;
+        btn.style.cssText = [
+          'padding:2px 8px',
+          'border-radius:12px',
+          'font-size:0.68rem',
+          'cursor:pointer',
+          'transition:background 0.15s,color 0.15s',
+          'text-align:left',
+          'width:100%',
+          isActive
+            ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
+            : 'background:transparent;color:var(--text-muted);border:1px solid transparent;',
+        ].join(';');
+      }
     }
 
+    async function applyPreset(preset: typeof BOIDS_PRESETS[0]): Promise<void> {
+      Object.assign(controller.params, preset.params);
+      controller.trailsEnabled = preset.trailsEnabled;
+      controller.trailDecay    = preset.trailDecay;
+      if (preset.shader) await controller.reloadShader(preset.shader);
+      activePresetId = preset.id;
+      updatePills();
+    }
+
+    for (const preset of BOIDS_PRESETS) {
+      const pill = document.createElement('button');
+      pill.dataset.id  = preset.id;
+      pill.textContent = preset.name;
+      pill.setAttribute('role', 'menuitem');
+      pill.addEventListener('click', async () => {
+        await applyPreset(preset);
+        closeMenu();
+      });
+      menu.appendChild(pill);
+    }
+
+    await applyPreset(defaultPreset);
+
+    let menuOpen = false;
+    function openMenu():  void { menuOpen = true;  menu.classList.add('open');    menu.setAttribute('aria-hidden', 'false'); }
+    function closeMenu(): void { menuOpen = false; menu.classList.remove('open'); menu.setAttribute('aria-hidden', 'true');  }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuOpen ? closeMenu() : openMenu();
+    });
+
+    document.addEventListener('click', () => { if (menuOpen) closeMenu(); });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+
+    // ── ObstacleTracker ──────────────────────────────────────────────
     const tracker = new ObstacleTracker(
-      ['.content-width', '.hero-text'], // ['nav', 'footer', '.section', '.content-width']
+      ['.content-width', '.hero-text'],
       (rects, count) => {
         lastRects = rects;
         lastCount = count;

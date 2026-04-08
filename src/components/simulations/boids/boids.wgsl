@@ -77,7 +77,7 @@ fn obstacleForce(pos: vec2f) -> vec2f {
           awayDir = vec2f(0.0, select(-1.0, 1.0, pos.y > center.y));
         }
       }
-      force += awayDir * strength * 15000.0;
+      force += awayDir * strength * 10000;
     }
   }
   return force;
@@ -144,7 +144,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
 
   // Obstacle repulsion applied before the main integrate+clamp so it
   // participates in the speed limit and steers rather than just boosting speed.
-  vel = vel + params.deltaTime * (force + friction + obstacleForce(pos));
+  vel = vel + params.deltaTime * (force + friction);
 
   // Clamp to maxSpeed
   let sp = length(vel);
@@ -162,6 +162,8 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       vel += 0.005 * normalize(toMouse) / mouseDist ;
     }
   }
+
+  vel = vel + obstacleForce(pos);
 
   // Integrate position
   pos = pos + vel * params.deltaTime;
