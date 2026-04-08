@@ -24,8 +24,10 @@ const projects = (await getCollection('projects'))
       </div>
     )}
     <div class="hero-content">
-      <h1>{siteConfig.name}</h1>
-      <p class="tagline">{siteConfig.tagline}</p>
+      <div class="hero-text">
+        <h1>{siteConfig.name}</h1>
+        <p class="tagline">{siteConfig.tagline}</p>
+      </div>
     </div>
   </section>
 
@@ -107,6 +109,10 @@ const projects = (await getCollection('projects'))
     max-width: 1200px;
     margin: 0 auto;
     width: 100%;
+  }
+
+  .hero-text {
+    display: inline-block;
   }
 
   .hero h1 {

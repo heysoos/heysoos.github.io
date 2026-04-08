@@ -60,7 +60,7 @@ export const BOIDS_PRESETS: BoidsPreset[] = [
     },
     "trailsEnabled": true,
     "trailDecay": 0.92,
-    "isDefault": false
+    "isDefault": true
   },
   {
     "id": "metropolitan",
@@ -110,7 +110,7 @@ export const BOIDS_PRESETS: BoidsPreset[] = [
     },
     "trailsEnabled": true,
     "trailDecay": 0.92,
-    "isDefault": true
+    "isDefault": false
   },
   {
     "id": "oscillator",

@@ -43,7 +43,7 @@ struct Obstacles {
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
-  let falloffRadius = 0.35;  // NDC units — tunable
+  let falloffRadius = 0.12;  // NDC units — tunable
 
   for (var i = 0u; i < obstacles.count; i++) {
     let r = obstacles.rects[i];
@@ -59,12 +59,25 @@ fn obstacleForce(pos: vec2f) -> vec2f {
       let t      = smoothstep(falloffRadius, 0.0, dist);
       let strength = t * t;  // squared for softer onset, steeper near edge
 
-      // Direction: away from nearest point on rect surface
-      let nearest  = clamp(pos, center - half, center + half);
-      let away     = pos - nearest;
-      let awayLen  = length(away);
-      let awayDir  = select(vec2f(0.0, 1.0), away / awayLen, awayLen > 0.0001);
-      force += awayDir * strength * 1500.0;
+      // Direction: away from nearest point on rect surface.
+      // For exterior points, this is simply (pos - nearest) / dist.
+      // For interior points (nearest == pos), push toward the nearest edge.
+      let nearest = clamp(pos, center - half, center + half);
+      let away    = pos - nearest;
+      let awayLen = length(away);
+      var awayDir: vec2f;
+      if (awayLen > 0.0001) {
+        awayDir = away / awayLen;
+      } else {
+        // Inside rect: signed clearance to each wall (negative = inside, closest to 0 = nearest wall)
+        let toEdge = abs(pos - center) - half;
+        if (toEdge.x > toEdge.y) {
+          awayDir = vec2f(select(-1.0, 1.0, pos.x > center.x), 0.0);
+        } else {
+          awayDir = vec2f(0.0, select(-1.0, 1.0, pos.y > center.y));
+        }
+      }
+      force += awayDir * strength * 15000.0;
     }
   }
   return force;
