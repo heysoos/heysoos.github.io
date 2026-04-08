@@ -15,4 +15,5 @@ export const siteConfig = {
     { label: "Blog", href: "/blog" },
     { label: "Contact", href: "/contact" },
   ],
+  enableBackgroundSim: true,  // set false to disable sitewide and restore original hero
 };

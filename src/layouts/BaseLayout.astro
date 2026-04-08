@@ -1,17 +1,20 @@
 ---
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import BackgroundSim from '../components/BackgroundSim.astro';
 import { siteConfig } from '../config';
 import '../styles/global.css';
 
 interface Props {
   title?: string;
   description?: string;
+  backgroundSim?: 'boids';
 }
 
 const {
   title = siteConfig.name,
   description = siteConfig.description,
+  backgroundSim,
 } = Astro.props;
 
 const pageTitle = title === siteConfig.name
@@ -29,6 +32,7 @@ const pageTitle = title === siteConfig.name
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
+    {backgroundSim && <BackgroundSim sim={backgroundSim} />}
     <Nav />
     <main>
       <slot />
@@ -41,6 +45,8 @@ const pageTitle = title === siteConfig.name
   main {
     min-height: 100vh;
     padding-top: 60px; /* nav height */
+    position: relative;
+    z-index: 1;
   }
 </style>
 

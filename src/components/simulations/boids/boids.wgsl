@@ -34,6 +34,55 @@ struct Params {
 @group(0) @binding(1) var<storage, read> particlesA: array<Particle>;
 @group(0) @binding(2) var<storage, read_write> particlesB: array<Particle>;
 
+struct Obstacles {
+  rects: array<vec4f, 16>,  // x=cx, y=cy, z=hw, w=hh in NDC
+  count: u32,
+}
+
+@group(0) @binding(3) var<uniform> obstacles: Obstacles;
+
+fn obstacleForce(pos: vec2f) -> vec2f {
+  var force = vec2f(0.0);
+  let falloffRadius = 0.12;  // NDC units — tunable
+
+  for (var i = 0u; i < obstacles.count; i++) {
+    let r = obstacles.rects[i];
+    let center = r.xy;
+    let half   = r.zw;
+
+    // Signed distance to nearest rect edge (negative = inside rect)
+    let d    = abs(pos - center) - half;
+    let dist = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);
+
+    if (dist < falloffRadius) {
+      // smoothstep: 1.0 at rect edge, 0.0 at falloffRadius — C¹ continuous
+      let t      = smoothstep(falloffRadius, 0.0, dist);
+      let strength = t * t;  // squared for softer onset, steeper near edge
+
+      // Direction: away from nearest point on rect surface.
+      // For exterior points, this is simply (pos - nearest) / dist.
+      // For interior points (nearest == pos), push toward the nearest edge.
+      let nearest = clamp(pos, center - half, center + half);
+      let away    = pos - nearest;
+      let awayLen = length(away);
+      var awayDir: vec2f;
+      if (awayLen > 0.0001) {
+        awayDir = away / awayLen;
+      } else {
+        // Inside rect: signed clearance to each wall (negative = inside, closest to 0 = nearest wall)
+        let toEdge = abs(pos - center) - half;
+        if (toEdge.x > toEdge.y) {
+          awayDir = vec2f(select(-1.0, 1.0, pos.x > center.x), 0.0);
+        } else {
+          awayDir = vec2f(0.0, select(-1.0, 1.0, pos.y > center.y));
+        }
+      }
+      force += awayDir * strength * 15000.0;
+    }
+  }
+  return force;
+}
+
 @compute @workgroup_size(64)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
@@ -93,7 +142,9 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   // Quadratic friction (from reference: -F * sign(vel) * vel^2)
   let friction = -params.friction * sign(vel) * vel * vel;
 
-  vel = vel + params.deltaTime * (force + friction);
+  // Obstacle repulsion applied before the main integrate+clamp so it
+  // participates in the speed limit and steers rather than just boosting speed.
+  vel = vel + params.deltaTime * (force + friction + obstacleForce(pos));
 
   // Clamp to maxSpeed
   let sp = length(vel);

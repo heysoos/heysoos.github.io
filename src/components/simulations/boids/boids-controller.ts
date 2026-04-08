@@ -60,6 +60,7 @@ export class BoidsController {
   private bindGroupLayout!: GPUBindGroupLayout;
   private particleBuffers!: GPUBuffer[];
   private uniformBuffer!: GPUBuffer;
+  private obstacleBuffer!: GPUBuffer;
   private vertexBuffer!: GPUBuffer;
   private bindGroups!: GPUBindGroup[];
   private frame = 0;
@@ -86,6 +87,8 @@ export class BoidsController {
       const { device } = this.gpu;
 
       this.uniformBuffer = createUniformBuffer(device, 96);
+      // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
+      this.obstacleBuffer = createUniformBuffer(device, 272);
 
       const initialData = new Float32Array(MAX_PARTICLES * 4);
       for (let i = 0; i < MAX_PARTICLES; i++) {
@@ -108,6 +111,7 @@ export class BoidsController {
           { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         ],
       });
 
@@ -118,6 +122,7 @@ export class BoidsController {
             { binding: 0, resource: { buffer: this.uniformBuffer } },
             { binding: 1, resource: { buffer: this.particleBuffers[0] } },
             { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+            { binding: 3, resource: { buffer: this.obstacleBuffer } },
           ],
         }),
         device.createBindGroup({
@@ -126,6 +131,7 @@ export class BoidsController {
             { binding: 0, resource: { buffer: this.uniformBuffer } },
             { binding: 1, resource: { buffer: this.particleBuffers[1] } },
             { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+            { binding: 3, resource: { buffer: this.obstacleBuffer } },
           ],
         }),
       ];
@@ -249,6 +255,17 @@ export class BoidsController {
     device.queue.writeBuffer(this.particleBuffers[0], 0, data);
     device.queue.writeBuffer(this.particleBuffers[1], 0, data);
     this.frame = 0;
+  }
+
+  setObstacles(rects: Float32Array, count: number): void {
+    if (!this.gpu) return;
+    // Buffer layout: 16 × vec4f (256 bytes) + u32 count (4) + vec3u pad (12) = 272 bytes
+    const buf = new ArrayBuffer(272);
+    const floats = new Float32Array(buf);
+    const uints  = new Uint32Array(buf);
+    floats.set(rects.subarray(0, count * 4), 0);  // rects at offset 0
+    uints[64] = count;                             // count at byte offset 256
+    this.gpu.device.queue.writeBuffer(this.obstacleBuffer, 0, buf);
   }
 
   private tick = () => {

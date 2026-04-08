@@ -14,16 +14,20 @@ const projects = (await getCollection('projects'))
   .sort((a, b) => a.data.order - b.data.order);
 ---
 
-<BaseLayout>
+<BaseLayout backgroundSim={siteConfig.enableBackgroundSim ? 'boids' : undefined}>
   {/* Hero */}
   <section class="hero">
-    <div class="hero-sim">
-      <canvas id="boids-canvas"></canvas>
-      <div id="boids-fallback" class="fallback" style="display:none;"></div>
-    </div>
+    {!siteConfig.enableBackgroundSim && (
+      <div class="hero-sim">
+        <canvas id="boids-canvas"></canvas>
+        <div id="boids-fallback" class="fallback" style="display:none;"></div>
+      </div>
+    )}
     <div class="hero-content">
-      <h1>{siteConfig.name}</h1>
-      <p class="tagline">{siteConfig.tagline}</p>
+      <div class="hero-text">
+        <h1>{siteConfig.name}</h1>
+        <p class="tagline">{siteConfig.tagline}</p>
+      </div>
     </div>
   </section>
 
@@ -107,6 +111,10 @@ const projects = (await getCollection('projects'))
     width: 100%;
   }
 
+  .hero-text {
+    display: inline-block;
+  }
+
   .hero h1 {
     font-size: 3rem;
     font-weight: 300;
@@ -155,33 +163,35 @@ const projects = (await getCollection('projects'))
   }
 </style>
 
-<script>
-  import { BoidsController } from '../components/simulations/boids/boids-controller';
-  import { BOIDS_PRESETS } from '../data/boids-presets';
+{!siteConfig.enableBackgroundSim && (
+  <script>
+    import { BoidsController } from '../components/simulations/boids/boids-controller';
+    import { BOIDS_PRESETS } from '../data/boids-presets';
 
-  const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
-  const fallback = document.getElementById('boids-fallback') as HTMLElement;
+    const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
+    const fallback = document.getElementById('boids-fallback') as HTMLElement;
 
-  try {
-    const controller = new BoidsController();
-    const ok = await controller.init(canvas);
+    try {
+      const controller = new BoidsController();
+      const ok = await controller.init(canvas);
 
-    if (ok) {
-      const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
-      if (defaultPreset) {
-        Object.assign(controller.params, defaultPreset.params);
-        controller.trailsEnabled = defaultPreset.trailsEnabled;
-        controller.trailDecay = defaultPreset.trailDecay;
-        if (defaultPreset.shader !== undefined) await controller.reloadShader(defaultPreset.shader);
+      if (ok) {
+        const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
+        if (defaultPreset) {
+          Object.assign(controller.params, defaultPreset.params);
+          controller.trailsEnabled = defaultPreset.trailsEnabled;
+          controller.trailDecay = defaultPreset.trailDecay;
+          if (defaultPreset.shader !== undefined) await controller.reloadShader(defaultPreset.shader);
+        }
+        controller.start();
+      } else {
+        canvas.style.display = 'none';
+        fallback.style.display = 'flex';
       }
-      controller.start();
-    } else {
+    } catch (e) {
+      console.error('Boids failed to start:', e);
       canvas.style.display = 'none';
       fallback.style.display = 'flex';
     }
-  } catch (e) {
-    console.error('Boids failed to start:', e);
-    canvas.style.display = 'none';
-    fallback.style.display = 'flex';
-  }
-</script>
+  </script>
+)}
