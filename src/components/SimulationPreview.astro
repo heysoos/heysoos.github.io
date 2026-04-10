@@ -21,6 +21,7 @@ const { simulation } = Astro.props
   .preview-placeholder {
     position: absolute;
     inset: 0;
+    z-index: 0;
     background: radial-gradient(
       ellipse at 50% 50%,
       var(--hero-gradient-start),
@@ -32,6 +33,7 @@ const { simulation } = Astro.props
   .preview-canvas {
     position: absolute;
     inset: 0;
+    z-index: 1;
     width: 100%;
     height: 100%;
     opacity: 0;
@@ -72,13 +74,16 @@ const { simulation } = Astro.props
         canvas.style.opacity = '1'
         placeholder.style.opacity = '0'
         ready = true
+        if (card && card.matches(':hover')) {
+          controller.resume()
+        }
       },
       { threshold: 0.1 },
     )
 
-    observer.observe(wrap)
-
     if (!card) continue
+
+    observer.observe(wrap)
 
     card.addEventListener('mouseenter', () => {
       if (!ready || !controller) return
