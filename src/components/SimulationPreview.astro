@@ -1,0 +1,93 @@
+---
+// src/components/SimulationPreview.astro
+interface Props {
+  simulation: string
+}
+const { simulation } = Astro.props
+---
+
+<div class="preview-wrap" data-preview-sim={simulation}>
+  <div class="preview-placeholder"></div>
+  <canvas class="preview-canvas"></canvas>
+</div>
+
+<style>
+  .preview-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .preview-placeholder {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse at 50% 50%,
+      var(--hero-gradient-start),
+      var(--hero-gradient-end)
+    );
+    transition: opacity 0.3s ease;
+  }
+
+  .preview-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+</style>
+
+<script>
+  import {
+    createPreviewController,
+    type PreviewController,
+  } from '../lib/webgpu/preview-registry'
+
+  const wraps = document.querySelectorAll<HTMLElement>('[data-preview-sim]')
+
+  for (const wrap of wraps) {
+    const sim = wrap.dataset.previewSim!
+    const canvas = wrap.querySelector<HTMLCanvasElement>('.preview-canvas')!
+    const placeholder = wrap.querySelector<HTMLElement>('.preview-placeholder')!
+    const card = wrap.closest<HTMLElement>('.sim-card')
+
+    let controller: PreviewController | null = null
+    let ready = false
+
+    const observer = new IntersectionObserver(
+      async (entries) => {
+        if (!entries[0].isIntersecting) return
+        observer.disconnect()
+
+        controller = await createPreviewController(sim, canvas)
+        if (!controller) return
+
+        controller.resume()
+        await new Promise<void>((r) => setTimeout(r, 800))
+        controller.pause()
+
+        canvas.style.opacity = '1'
+        placeholder.style.opacity = '0'
+        ready = true
+      },
+      { threshold: 0.1 },
+    )
+
+    observer.observe(wrap)
+
+    if (!card) continue
+
+    card.addEventListener('mouseenter', () => {
+      if (!ready || !controller) return
+      controller.resume()
+    })
+
+    card.addEventListener('mouseleave', () => {
+      if (!ready || !controller) return
+      controller.pause()
+    })
+  }
+</script>
