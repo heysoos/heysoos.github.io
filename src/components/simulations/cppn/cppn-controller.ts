@@ -100,11 +100,10 @@ function defaultConfig(): CPPNConfig {
 
 // ── Controller ────────────────────────────────────────────────────
 export class CPPNController {
-  private gpu:            WebGPUContext | null = null;
-  private pipeline:       GPURenderPipeline | null = null;
-  private paramsBuffer!:  GPUBuffer;
-  private weightsBuffer!: GPUBuffer;
-  private bindGroup!:     GPUBindGroup;
+  private gpu:           WebGPUContext | null = null;
+  private pipeline:      GPURenderPipeline | null = null;
+  private paramsBuffer!: GPUBuffer;
+  private bindGroup!:    GPUBindGroup;
   private layout!:        WeightLayout;
   private running   = false;
   private animId    = 0;
@@ -127,8 +126,9 @@ export class CPPNController {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
       this.randomizeDimOffsets();
+      this.layout = computeWeightLayout(this.config);
+      this.currentWeights = generateWeights(this.layout, this.config, this.seed);
       await this._compile();
-      this.randomizeWeights(this.seed);
       return true;
     } catch (e) {
       console.error('CPPNController init error:', e);
@@ -136,19 +136,12 @@ export class CPPNController {
     }
   }
 
-  // ── Compile (called on architecture change) ───────────────────
+  // ── Compile — bakes currentWeights as literals into the shader ──
   private async _compile(): Promise<void> {
     if (!this.gpu) return;
     const { device, format } = this.gpu;
 
-    this.layout = computeWeightLayout(this.config);
-    const code  = generateShader(this.config, this.layout);
-
-    if (this.weightsBuffer) this.weightsBuffer.destroy();
-    this.weightsBuffer = device.createBuffer({
-      size: Math.max(this.layout.totalCount * 4, 4),
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
+    const code = generateShader(this.config, this.layout, this.currentWeights);
 
     const module = device.createShaderModule({ code });
     const info   = await module.getCompilationInfo();
@@ -165,29 +158,27 @@ export class CPPNController {
 
     this.bindGroup = device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.paramsBuffer  } },
-        { binding: 1, resource: { buffer: this.weightsBuffer } },
-      ],
+      entries: [{ binding: 0, resource: { buffer: this.paramsBuffer } }],
     });
   }
 
-  // ── Architecture (triggers recompile + rerandomize) ───────────
+  // ── Architecture — recompute layout, rerandomize, recompile ──
   async setLayers(layers: LayerConfig[]): Promise<void> {
     this.config = { ...this.config, layers };
+    this.layout = computeWeightLayout(this.config);
+    this.currentWeights = generateWeights(this.layout, this.config, this.seed);
     await this._compile();
-    this.randomizeWeights(this.seed);
   }
 
-  // ── Weights (buffer write only) ───────────────────────────────
+  // ── Weights — generate then recompile to bake in new values ──
   setDistribution(dist: WeightDistribution): void {
     this.config = { ...this.config, distribution: dist };
   }
 
-  randomizeWeights(seed?: number): void {
+  async randomizeWeights(seed?: number): Promise<void> {
     if (seed !== undefined) this.seed = seed >>> 0;
     this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-    this.gpu?.device.queue.writeBuffer(this.weightsBuffer, 0, this.currentWeights);
+    await this._compile();
   }
 
   setSeed(seed: number): void { this.randomizeWeights(seed); }
@@ -224,9 +215,9 @@ export class CPPNController {
   async loadPreset(preset: CPPNPreset): Promise<void> {
     this.config = JSON.parse(JSON.stringify(preset.config));
     this.seed   = preset.seed;
-    await this._compile();
+    this.layout = computeWeightLayout(this.config);
     this.currentWeights = new Float32Array(preset.weights);
-    this.gpu?.device.queue.writeBuffer(this.weightsBuffer, 0, this.currentWeights);
+    await this._compile();
   }
 
   capturePreset(name: string): CPPNPreset {
@@ -252,7 +243,7 @@ export class CPPNController {
 
   reset(): void {
     this.randomizeDimOffsets();
-    this.randomizeWeights(Date.now() & 0xffffffff);
+    void this.randomizeWeights(Date.now() & 0xffffffff);
   }
 
   // ── Render loop ───────────────────────────────────────────────

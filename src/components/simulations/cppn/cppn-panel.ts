@@ -154,6 +154,11 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
   divider(container);
   heading(container, 'Coordinate scale');
   slider(container, 'Scale', 0.1, 5.0, 0.05, ctrl.config.scale, (v) => ctrl.setScale(v));
+
+  divider(container);
+  heading(container, 'Render quality');
+  slider(container, 'Max resolution', 256, 1920, 64, ctrl.maxResolution,
+    (v) => { ctrl.maxResolution = v; });
 }
 
 // ── Weights tab ───────────────────────────────────────────────────
