@@ -328,7 +328,7 @@ export function buildBoidsPanel(
   // ── Simulation ────────────────────────────────────────────────────
   addSection(container, 'Simulation');
   addSlider(container, 'Time Step', 0.001, 0.1,  0.001, () => controller.params.dt,           v => { controller.params.dt = v; });
-  addSlider(container, 'Particles', 10,    500000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
+  addSlider(container, 'Particles', 10,    10000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
 
   // ── Forces ────────────────────────────────────────────────────────
   addSection(container, 'Forces');
