@@ -536,6 +536,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         editorView.dispatch({
           changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.shaderSource },
         });
+        // Pre-fill shaderFile input with the loaded preset's file stem
+        const sfInput = presetsContainer.querySelector<HTMLInputElement>('input[placeholder*="filename"]');
+        if (sfInput) sfInput.value = preset.shaderFile ?? '';
         buildAdminPanel(preset.id);
         renderPresetList();
       },
@@ -679,23 +682,40 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'Save';
     saveBtn.style.cssText = 'padding:0.25rem 0.6rem;border:1px solid var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-body);font-size:0.72rem;cursor:pointer;white-space:nowrap;';
+    // Shader file row
+    const shaderFileRow = document.createElement('div');
+    shaderFileRow.style.cssText = 'display:flex;gap:4px;align-items:center;';
+    const shaderFileLabel = document.createElement('span');
+    shaderFileLabel.textContent = 'Shader file:';
+    shaderFileLabel.style.cssText = 'font-size:0.65rem;color:var(--text-muted);white-space:nowrap;';
+    const shaderFileInput = document.createElement('input');
+    shaderFileInput.type = 'text';
+    shaderFileInput.placeholder = 'filename (no ext) or blank to inline';
+    shaderFileInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.65rem;';
+    shaderFileInput.title = 'Name of .wgsl file in boids-shaders/. Share a name to reuse an existing shader. Leave blank to inline.';
+    shaderFileRow.appendChild(shaderFileLabel);
+    shaderFileRow.appendChild(shaderFileInput);
+    presetsContainer.insertBefore(shaderFileRow, saveRow);
+
     saveBtn.addEventListener('click', () => {
       const rawName = nameInput.value.trim();
       if (!rawName) return;
       const id = rawName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const currentShader = editorView.state.doc.toString();
+      const isCustomShader = currentShader !== ctrl.shaderSource;
+      const shaderFileStem = shaderFileInput.value.trim().replace(/\.wgsl$/, '').replace(/[^a-z0-9-]/gi, '-') || undefined;
       const newPreset: BoidsPreset = {
         id: adminPresets.some(p => p.id === id) ? `${id}-${Date.now()}` : id,
         name: rawName,
         params: { ...ctrl.params },
         trailsEnabled: ctrl.trailsEnabled,
         trailDecay: ctrl.trailDecay,
-        shader: editorView.state.doc.toString() !== ctrl.shaderSource
-          ? editorView.state.doc.toString()
-          : undefined,
+        ...(isCustomShader ? { shader: currentShader, ...(shaderFileStem ? { shaderFile: shaderFileStem } : {}) } : {}),
       };
       adminPresets.push(newPreset);
       activePresetId = newPreset.id;
       nameInput.value = '';
+      shaderFileInput.value = '';
       renderPresetList();
       buildAdminPanel(newPreset.id);
     });

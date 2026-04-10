@@ -189,7 +189,7 @@ const { sim } = Astro.props;
       Object.assign(controller.params, preset.params);
       controller.trailsEnabled = preset.trailsEnabled;
       controller.trailDecay    = preset.trailDecay;
-      if (preset.shader) await controller.reloadShader(preset.shader);
+      await controller.reloadShader(preset.shader ?? controller.shaderSource);
       activePresetId = preset.id;
       updatePills();
     }
