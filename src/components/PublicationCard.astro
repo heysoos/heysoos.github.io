@@ -3,12 +3,13 @@ interface Props {
   title: string;
   authors: string[];
   journal: string;
+  year: number;
   doi?: string;
   url?: string;
   tags?: string[];
 }
 
-const { title, authors, journal, doi, url, tags = [] } = Astro.props;
+const { title, authors, journal, year, doi, url, tags = [] } = Astro.props;
 const link = doi ? `https://doi.org/${doi}` : url;
 const isMe = (a: string) => a.includes('Khajehabdollahi');
 const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
@@ -28,7 +29,7 @@ const dataTagsValue = tags.map(slugify).join(' ');
     ))}
   </p>
   <p class="pub-meta">
-    <span class="pub-journal">{journal}</span>
+    <span class="pub-journal">{journal}</span> &middot; {year}
   </p>
   {tags.length > 0 && (
     <div class="pub-tags">
