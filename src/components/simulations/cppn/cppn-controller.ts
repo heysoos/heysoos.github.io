@@ -115,6 +115,7 @@ export class CPPNController {
 
   config: CPPNConfig = defaultConfig();
   seed: number = Date.now() & 0xffffffff;
+  maxResolution = 960; // cap longest canvas dimension; 0 = unlimited
 
   // ── Init ──────────────────────────────────────────────────────
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -274,6 +275,14 @@ export class CPPNController {
     if (!this.running || !this.gpu || !this.pipeline) return;
     const { device, context, canvas } = this.gpu;
     resizeCanvasToDisplaySize(canvas);
+    if (this.maxResolution > 0) {
+      const longest = Math.max(canvas.width, canvas.height);
+      if (longest > this.maxResolution) {
+        const scale = this.maxResolution / longest;
+        canvas.width  = Math.floor(canvas.width  * scale);
+        canvas.height = Math.floor(canvas.height * scale);
+      }
+    }
 
     const t = this.animate ? (performance.now() - this.startTime) / 1000 : 0;
     const z = this.computeZ(t);
