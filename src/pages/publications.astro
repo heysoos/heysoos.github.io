@@ -5,31 +5,217 @@ import { getCollection } from 'astro:content';
 
 const publications = await getCollection('publications');
 const sorted = publications.sort((a, b) => b.data.year - a.data.year);
+
+// Group by year, descending
+const byYear = {} as Record<number, typeof sorted>;
+for (const pub of sorted) {
+  if (!byYear[pub.data.year]) byYear[pub.data.year] = [];
+  byYear[pub.data.year].push(pub);
+}
+const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+
+// Unique tags sorted alphabetically (for sidebar)
+const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
+const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
 ---
 
 <BaseLayout title="Publications">
-  <div class="content-width section">
-    <p class="section-label">Publications</p>
-    <h1>Research Papers</h1>
+  <div class="pub-page section">
 
-    <div class="pub-list">
-      {sorted.map((pub) => (
-        <PublicationCard
-          title={pub.data.title}
-          authors={pub.data.authors}
-          journal={pub.data.journal}
-          year={pub.data.year}
-          doi={pub.data.doi}
-          url={pub.data.url}
-          tags={pub.data.tags}
-        />
+    <aside class="pub-sidebar">
+      <div class="sidebar-label">Filter by topic</div>
+      <nav class="tag-list" aria-label="Filter publications by tag">
+        <button class="tag-btn active" data-tag="all" aria-pressed="true">all papers</button>
+        {allTags.map(tag => (
+          <button class="tag-btn" data-tag={slugify(tag)} aria-pressed="false">{tag}</button>
+        ))}
+      </nav>
+    </aside>
+
+    <div class="pub-content">
+      <p class="section-label">Publications</p>
+      <h1>Research Papers</h1>
+
+      {years.map(year => (
+        <section class="year-section" aria-label={String(year)}>
+          <div class="year-label">{year}</div>
+          {byYear[year].map(pub => (
+            <PublicationCard
+              title={pub.data.title}
+              authors={pub.data.authors}
+              journal={pub.data.journal}
+              year={pub.data.year}
+              doi={pub.data.doi}
+              url={pub.data.url}
+              tags={pub.data.tags}
+            />
+          ))}
+        </section>
       ))}
     </div>
+
   </div>
 </BaseLayout>
 
 <style>
-  h1 {
+  /* Page container — replaces content-width for this page */
+  .pub-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    display: flex;
+    gap: 2.5rem;
+    align-items: flex-start;
+  }
+
+  /* ── Sidebar ── */
+  .pub-sidebar {
+    width: 160px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 4.5rem; /* below fixed nav (60px) */
+    border-right: 1px solid var(--bg-surface-border);
+    padding-right: 1.5rem;
+    padding-top: 4.25rem; /* visually align tag list with paper list start */
+  }
+
+  .sidebar-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .tag-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .tag-btn {
+    background: none;
+    border: none;
+    padding: 0.3rem 0.5rem;
+    text-align: left;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: color var(--transition-speed);
+    font-family: inherit;
+    line-height: 1.5;
+  }
+
+  .tag-btn:hover {
+    color: var(--text-body);
+  }
+
+  .tag-btn.active {
+    color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  /* ── Content ── */
+  .pub-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pub-content h1 {
     margin-bottom: 2rem;
   }
+
+  /* ── Year sections ── */
+  .year-section {
+    margin-bottom: 2.5rem;
+  }
+
+  .year-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 640px) {
+    .pub-page {
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .pub-sidebar {
+      width: 100%;
+      position: static;
+      border-right: none;
+      border-bottom: 1px solid var(--bg-surface-border);
+      padding-right: 0;
+      padding-top: 0;
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tag-list {
+      flex-direction: row;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 0.4rem;
+      padding-bottom: 0.25rem;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tag-btn {
+      white-space: nowrap;
+      border: 1px solid var(--bg-surface-border);
+    }
+  }
 </style>
+
+<script>
+  const buttons = document.querySelectorAll<HTMLButtonElement>('.tag-btn');
+  const articles = document.querySelectorAll<HTMLElement>('.pub-entry');
+  const sections = document.querySelectorAll<HTMLElement>('.year-section');
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag!;
+      const isActive = btn.getAttribute('aria-pressed') === 'true';
+
+      // Deactivate all buttons
+      buttons.forEach(b => {
+        b.setAttribute('aria-pressed', 'false');
+        b.classList.remove('active');
+      });
+
+      if (tag === 'all' || isActive) {
+        // Reset: show everything
+        const allBtn = document.querySelector<HTMLButtonElement>('[data-tag="all"]')!;
+        allBtn.setAttribute('aria-pressed', 'true');
+        allBtn.classList.add('active');
+        articles.forEach(a => (a.style.display = ''));
+        sections.forEach(s => (s.style.display = ''));
+        return;
+      }
+
+      // Activate clicked button
+      btn.setAttribute('aria-pressed', 'true');
+      btn.classList.add('active');
+
+      // Filter articles
+      articles.forEach(article => {
+        const tags = article.dataset.tags ? article.dataset.tags.split(' ') : [];
+        article.style.display = tags.includes(tag) ? '' : 'none';
+      });
+
+      // Collapse empty year sections
+      sections.forEach(section => {
+        const hasVisible = [...section.querySelectorAll<HTMLElement>('.pub-entry')]
+          .some(a => a.style.display !== 'none');
+        section.style.display = hasVisible ? '' : 'none';
+      });
+    });
+  });
+</script>
