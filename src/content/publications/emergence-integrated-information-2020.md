@@ -4,6 +4,6 @@ authors: ["S. Khajehabdollahi", "N. JM Popiel", "P. Abeyasinghe", "F. Riganello"
 journal: "Entropy"
 year: 2020
 url: "https://biorxiv.org/content/10.1101/521567v1"
-tags: ["integrated information", "criticality", "consciousness"]
+tags: ["criticality"]
 featured: true
 ---

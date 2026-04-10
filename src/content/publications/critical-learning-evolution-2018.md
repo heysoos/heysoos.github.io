@@ -4,6 +4,6 @@ authors: ["S. Khajehabdollahi", "O. Witkowski"]
 journal: "Artificial Life Conference"
 year: 2018
 url: "https://direct.mit.edu/isal/proceedings/alife2018/30/47/99645"
-tags: ["criticality", "evolution", "Ising model"]
+tags: ["criticality", "evolution", "artificial life"]
 featured: false
 ---

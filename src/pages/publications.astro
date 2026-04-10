@@ -23,11 +23,18 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
   <div class="pub-page section">
 
     <aside class="pub-sidebar">
-      <div class="sidebar-label">Filter by topic</div>
-      <nav class="tag-list" aria-label="Filter publications by tag">
+      <div class="sidebar-label">topic</div>
+      <nav class="tag-list" aria-label="Filter publications by topic">
         <button class="tag-btn active" data-tag="all" aria-pressed="true">all papers</button>
         {allTags.map(tag => (
           <button class="tag-btn" data-tag={slugify(tag)} aria-pressed="false">{tag}</button>
+        ))}
+      </nav>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-label">year</div>
+      <nav class="tag-list" aria-label="Filter publications by year">
+        {years.map(y => (
+          <button class="tag-btn" data-year={String(y)} aria-pressed="false">{y}</button>
         ))}
       </nav>
     </aside>
@@ -86,6 +93,12 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
     letter-spacing: 3px;
     color: var(--text-muted);
     margin-bottom: 1rem;
+  }
+
+  .sidebar-divider {
+    height: 1px;
+    background: var(--bg-surface-border);
+    margin: 1.25rem 0;
   }
 
   .tag-list {
@@ -179,9 +192,26 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
   const articles = document.querySelectorAll<HTMLElement>('.pub-entry');
   const sections = document.querySelectorAll<HTMLElement>('.year-section');
 
+  function reset() {
+    const allBtn = document.querySelector<HTMLButtonElement>('[data-tag="all"]')!;
+    allBtn.setAttribute('aria-pressed', 'true');
+    allBtn.classList.add('active');
+    articles.forEach(a => (a.style.display = ''));
+    sections.forEach(s => (s.style.display = ''));
+  }
+
+  function collapseEmptySections() {
+    sections.forEach(section => {
+      const hasVisible = [...section.querySelectorAll<HTMLElement>('.pub-entry')]
+        .some(a => a.style.display !== 'none');
+      section.style.display = hasVisible ? '' : 'none';
+    });
+  }
+
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag!;
+      const tag = btn.dataset.tag;
+      const year = btn.dataset.year;
       const isActive = btn.getAttribute('aria-pressed') === 'true';
 
       // Deactivate all buttons
@@ -191,12 +221,7 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
       });
 
       if (tag === 'all' || isActive) {
-        // Reset: show everything
-        const allBtn = document.querySelector<HTMLButtonElement>('[data-tag="all"]')!;
-        allBtn.setAttribute('aria-pressed', 'true');
-        allBtn.classList.add('active');
-        articles.forEach(a => (a.style.display = ''));
-        sections.forEach(s => (s.style.display = ''));
+        reset();
         return;
       }
 
@@ -204,19 +229,21 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
       btn.setAttribute('aria-pressed', 'true');
       btn.classList.add('active');
 
-      // Filter articles
-      articles.forEach(article => {
-        // dataset.tags is '' (not absent) when a paper has no tags — empty string is falsy
-        const tags = article.dataset.tags ? article.dataset.tags.split(' ') : [];
-        article.style.display = tags.includes(tag) ? '' : 'none';
-      });
+      if (year) {
+        // Year filter: match article's data-year attribute
+        articles.forEach(article => {
+          article.style.display = article.dataset.year === year ? '' : 'none';
+        });
+      } else if (tag) {
+        // Topic filter: match article's data-tags attribute
+        articles.forEach(article => {
+          // dataset.tags is '' (not absent) when a paper has no tags — empty string is falsy
+          const tags = article.dataset.tags ? article.dataset.tags.split(' ') : [];
+          article.style.display = tags.includes(tag) ? '' : 'none';
+        });
+      }
 
-      // Collapse empty year sections
-      sections.forEach(section => {
-        const hasVisible = [...section.querySelectorAll<HTMLElement>('.pub-entry')]
-          .some(a => a.style.display !== 'none');
-        section.style.display = hasVisible ? '' : 'none';
-      });
+      collapseEmptySections();
     });
   });
 </script>

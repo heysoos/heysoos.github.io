@@ -4,6 +4,6 @@ authors: ["S. Khajehabdollahi*", "R. Zeraati*", "E. Giannakakis", "T. J. Schäfe
 journal: "ICLR"
 year: 2024
 url: "https://arxiv.org/abs/2309.12927"
-tags: ["recurrent networks", "timescales", "memory"]
+tags: ["neural networks"]
 featured: true
 ---

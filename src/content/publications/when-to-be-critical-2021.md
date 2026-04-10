@@ -4,6 +4,6 @@ authors: ["S. Khajehabdollahi*", "J. Prosi*", "E. Giannakakis", "G. Martius", "A
 journal: "ALIFE"
 year: 2021
 url: "https://arxiv.org/abs/2303.16195"
-tags: ["criticality", "evolvability", "Ising model"]
+tags: ["criticality", "evolution", "artificial life"]
 featured: true
 ---

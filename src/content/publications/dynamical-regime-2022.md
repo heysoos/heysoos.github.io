@@ -4,6 +4,6 @@ authors: ["J. Prosi*", "S. Khajehabdollahi*", "E. Giannakakis", "G. Martius", "A
 journal: "ALIFE"
 year: 2022
 url: "https://arxiv.org/abs/2103.12184"
-tags: ["dynamical systems", "evolvability", "generalization"]
+tags: ["criticality", "evolution", "artificial life"]
 featured: false
 ---

@@ -4,6 +4,6 @@ authors: ["E. Giannakakis", "S. Khajehabdollahi", "A. Levina"]
 journal: "ALIFE"
 year: 2024
 url: "https://arxiv.org/abs/2403.13649"
-tags: ["learning rules", "evolution", "foraging"]
+tags: ["neural networks", "evolution", "artificial life"]
 featured: false
 ---

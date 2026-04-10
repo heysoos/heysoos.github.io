@@ -3,6 +3,6 @@ title: "Modular Growth of Hierarchical Networks: Efficient, General, and Robust 
 authors: ["M. Hamidi", "S. Khajehabdollahi", "E. Giannakakis", "T. J. Schäfer", "A. Levina", "C. M. Wu"]
 journal: "ALIFE"
 year: 2024
-tags: ["curriculum learning", "hierarchical networks", "modularity"]
+tags: ["neural networks", "artificial life"]
 featured: false
 ---

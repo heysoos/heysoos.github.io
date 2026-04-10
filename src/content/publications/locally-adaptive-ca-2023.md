@@ -4,6 +4,6 @@ authors: ["S. Khajehabdollahi", "E. Giannakakis", "V. Buendía", "G. Martius", "
 journal: "ALIFE"
 year: 2023
 url: "https://arxiv.org/abs/2306.07067"
-tags: ["cellular automata", "self-organization", "criticality"]
+tags: ["artificial life", "criticality"]
 featured: true
 ---

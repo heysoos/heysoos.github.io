@@ -4,6 +4,6 @@ authors: ["P. Abeyasinghe", "D. Ribeiro de Paula", "S. Khajehabdollahi", "S. R. 
 journal: "Brain Connectivity"
 year: 2018
 url: "https://liebertpub.com/doi/full/10.1089/brain.2017.0516"
-tags: ["Ising model", "brain", "criticality"]
+tags: ["criticality"]
 featured: false
 ---

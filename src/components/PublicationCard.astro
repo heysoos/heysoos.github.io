@@ -16,7 +16,7 @@ const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
 const dataTagsValue = tags.map(slugify).join(' ');
 ---
 
-<article class="pub-entry" data-tags={dataTagsValue}>
+<article class="pub-entry" data-tags={dataTagsValue} data-year={String(year)}>
   <h3 class="pub-title">
     {link ? <a href={link} target="_blank" rel="noopener">{title}</a> : title}
   </h3>
