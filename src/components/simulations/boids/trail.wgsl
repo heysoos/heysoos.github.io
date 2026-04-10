@@ -30,7 +30,12 @@ fn quadVert(@builtin(vertex_index) vi: u32) -> QuadOutput {
 @fragment
 fn fadeFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
   let c = textureSample(fadeTex, fadeSampler, uv);
-  return vec4f(c.rgb * decayFactor, c.a);
+  // Subtract half a quantization step after multiplying. Without this, small values
+  // (e.g. 6/255 × 0.92 = 5.52/255) round back to themselves in bgra8unorm storage
+  // and never reach zero. The 0.5/255 bias guarantees strict monotone decrease for
+  // any decay < 1, regardless of the decay value chosen.
+  let faded = max(c.rgb * decayFactor - vec3f(0.5 / 255.0), vec3f(0.0));
+  return vec4f(faded, 1.0);
 }
 
 // Blit pass: copy trail texture to swapchain unchanged.
