@@ -695,7 +695,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     shaderFileInput.title = 'Name of .wgsl file in boids-shaders/. Share a name to reuse an existing shader. Leave blank to inline.';
     shaderFileRow.appendChild(shaderFileLabel);
     shaderFileRow.appendChild(shaderFileInput);
-    presetsContainer.insertBefore(shaderFileRow, saveRow);
+    presetsContainer.appendChild(shaderFileRow);
 
     saveBtn.addEventListener('click', () => {
       const rawName = nameInput.value.trim();
