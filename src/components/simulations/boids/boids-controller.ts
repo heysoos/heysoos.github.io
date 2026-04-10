@@ -1,9 +1,14 @@
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
 import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
 import shaderCode from './boids.wgsl?raw';
+import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
 
-const MAX_PARTICLES = 5000;
+const MAX_PARTICLES = 500000;
+
+const GRID_W = 64;
+const GRID_H = 64;
+const GRID_SIZE = GRID_W * GRID_H; // 4096
 
 // Quad billboard (-1..1), 6 vertices = 2 triangles. Scaled by params.size in vertex shader.
 const QUAD_VERTS = new Float32Array([
@@ -32,6 +37,8 @@ export interface BoidsParams {
   colorR: number;
   colorG: number;
   colorB: number;
+  opacity: number;
+  opacityMode: number;
 }
 
 const DEFAULT_PARAMS: BoidsParams = {
@@ -51,25 +58,49 @@ const DEFAULT_PARAMS: BoidsParams = {
   colorR: 0.88,
   colorG: 0.63,
   colorB: 0.25,
+  opacity: 1.0,
+  opacityMode: 0,
 };
 
 export class BoidsController {
   private gpu: WebGPUContext | null = null;
+
+  // Boids update + render pipelines (user-editable via reloadShader)
   private computePipeline!: GPUComputePipeline;
   private renderPipeline!: GPURenderPipeline;
-  private bindGroupLayout!: GPUBindGroupLayout;
+  private boidsBindGroupLayout!: GPUBindGroupLayout;
+  private boidsBindGroups!: GPUBindGroup[];
+  private renderParamsBindGroup!: GPUBindGroup;
+
+  // Grid infrastructure pipelines (non-editable, created once)
+  private clearGridPipeline!: GPUComputePipeline;
+  private gridAssignPipeline!: GPUComputePipeline;
+  private prefixSumPipeline!: GPUComputePipeline;
+  private scatterPipeline!: GPUComputePipeline;
+  private gridBindGroupLayout!: GPUBindGroupLayout;
+  private gridBindGroups!: GPUBindGroup[]; // [frame%2] — reads from A or B
+
+  // Particle double-buffers
   private particleBuffers!: GPUBuffer[];
+
+  // Grid buffers
+  private particleCellIDsBuffer!: GPUBuffer;
+  private cellCountsBuffer!: GPUBuffer;
+  private cellOffsetsBuffer!: GPUBuffer;
+  private cellScatterIdxBuffer!: GPUBuffer;
+  private sortedIndicesBuffer!: GPUBuffer;
+
+  // Shared uniform/obstacle/vertex buffers
   private uniformBuffer!: GPUBuffer;
   private obstacleBuffer!: GPUBuffer;
   private vertexBuffer!: GPUBuffer;
-  private bindGroups!: GPUBindGroup[];
+
   private frame = 0;
   private running = false;
   private animId = 0;
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
-  private renderParamsBindGroup!: GPUBindGroup;
   private trailRenderer = new TrailRenderer();
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
@@ -86,10 +117,12 @@ export class BoidsController {
 
       const { device } = this.gpu;
 
+      // ── Uniform / obstacle / vertex buffers ──────────────────────────
       this.uniformBuffer = createUniformBuffer(device, 96);
       // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
       this.obstacleBuffer = createUniformBuffer(device, 272);
 
+      // ── Particle buffers ──────────────────────────────────────────────
       const initialData = new Float32Array(MAX_PARTICLES * 4);
       for (let i = 0; i < MAX_PARTICLES; i++) {
         initialData[i * 4 + 0] = (Math.random() - 0.5) * 2;
@@ -97,47 +130,105 @@ export class BoidsController {
         initialData[i * 4 + 2] = (Math.random() - 0.5) * 0.1;
         initialData[i * 4 + 3] = (Math.random() - 0.5) * 0.1;
       }
-
-      const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX;
+      const particleUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX;
       this.particleBuffers = [
-        createBuffer(device, initialData, usage),
-        createBuffer(device, initialData, usage),
+        createBuffer(device, initialData, particleUsage),
+        createBuffer(device, initialData, particleUsage),
       ];
 
       this.vertexBuffer = createBuffer(device, QUAD_VERTS, GPUBufferUsage.VERTEX);
 
-      this.bindGroupLayout = device.createBindGroupLayout({
+      // ── Grid buffers ──────────────────────────────────────────────────
+      const gridStorageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+      this.particleCellIDsBuffer = device.createBuffer({
+        size: MAX_PARTICLES * 4,
+        usage: gridStorageUsage,
+      });
+      this.cellCountsBuffer = device.createBuffer({
+        size: GRID_SIZE * 4,
+        usage: gridStorageUsage,
+      });
+      this.cellOffsetsBuffer = device.createBuffer({
+        size: GRID_SIZE * 4,
+        usage: gridStorageUsage,
+      });
+      this.cellScatterIdxBuffer = device.createBuffer({
+        size: GRID_SIZE * 4,
+        usage: gridStorageUsage,
+      });
+      this.sortedIndicesBuffer = device.createBuffer({
+        size: MAX_PARTICLES * 4,
+        usage: gridStorageUsage,
+      });
+
+      // ── Grid pipeline setup ───────────────────────────────────────────
+      const gridModule = device.createShaderModule({ code: gridShaderCode });
+
+      this.gridBindGroupLayout = device.createBindGroupLayout({
         entries: [
           { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         ],
       });
 
-      this.bindGroups = [
+      const gridPipelineLayout = device.createPipelineLayout({
+        bindGroupLayouts: [this.gridBindGroupLayout],
+      });
+
+      this.clearGridPipeline = device.createComputePipeline({
+        layout: gridPipelineLayout,
+        compute: { module: gridModule, entryPoint: 'clearGrid' },
+      });
+      this.gridAssignPipeline = device.createComputePipeline({
+        layout: gridPipelineLayout,
+        compute: { module: gridModule, entryPoint: 'gridAssign' },
+      });
+      this.prefixSumPipeline = device.createComputePipeline({
+        layout: gridPipelineLayout,
+        compute: { module: gridModule, entryPoint: 'prefixSum' },
+      });
+      this.scatterPipeline = device.createComputePipeline({
+        layout: gridPipelineLayout,
+        compute: { module: gridModule, entryPoint: 'scatter' },
+      });
+
+      // Grid bind groups — one per ping-pong frame (reads from A or B)
+      this.gridBindGroups = [
         device.createBindGroup({
-          layout: this.bindGroupLayout,
+          layout: this.gridBindGroupLayout,
           entries: [
             { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[0] } },
-            { binding: 2, resource: { buffer: this.particleBuffers[1] } },
-            { binding: 3, resource: { buffer: this.obstacleBuffer } },
+            { binding: 1, resource: { buffer: this.particleBuffers[0] } }, // read A
+            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
           ],
         }),
         device.createBindGroup({
-          layout: this.bindGroupLayout,
+          layout: this.gridBindGroupLayout,
           entries: [
             { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[1] } },
-            { binding: 2, resource: { buffer: this.particleBuffers[0] } },
-            { binding: 3, resource: { buffer: this.obstacleBuffer } },
+            { binding: 1, resource: { buffer: this.particleBuffers[1] } }, // read B
+            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
           ],
         }),
       ];
 
-      const shaderModule = device.createShaderModule({ code: shaderCode });
-      this._createPipelines(shaderModule);
+      // ── Boids update + render pipelines ──────────────────────────────
+      const boidsModule = device.createShaderModule({ code: shaderCode });
+      this._createBoidsPipelines(boidsModule);
+
       this.trailRenderer.init(device, this.gpu!.format, canvas.width || 1, canvas.height || 1);
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
@@ -157,11 +248,54 @@ export class BoidsController {
     }
   }
 
-  private _createPipelines(module: GPUShaderModule): void {
+  private _createBoidsPipelines(module: GPUShaderModule): void {
     const { device, format } = this.gpu!;
 
+    this.boidsBindGroupLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE | GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      ],
+    });
+
+    this.boidsBindGroups = [
+      device.createBindGroup({
+        layout: this.boidsBindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+          { binding: 3, resource: { buffer: this.obstacleBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+        ],
+      }),
+      device.createBindGroup({
+        layout: this.boidsBindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+          { binding: 3, resource: { buffer: this.obstacleBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+        ],
+      }),
+    ];
+
+    const boidsPipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [this.boidsBindGroupLayout],
+    });
+
     this.computePipeline = device.createComputePipeline({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
+      layout: boidsPipelineLayout,
       compute: { module, entryPoint: 'computeMain' },
     });
 
@@ -214,14 +348,18 @@ export class BoidsController {
       const { device } = this.gpu;
       const prevCompute = this.computePipeline;
       const prevRender = this.renderPipeline;
+      const prevBoidsBindGroupLayout = this.boidsBindGroupLayout;
+      const prevBoidsBindGroups = this.boidsBindGroups;
       const prevBindGroup = this.renderParamsBindGroup;
       device.pushErrorScope('validation');
       const module = device.createShaderModule({ code });
-      this._createPipelines(module);
+      this._createBoidsPipelines(module);
       const gpuError = await device.popErrorScope();
       if (gpuError) {
         this.computePipeline = prevCompute;
         this.renderPipeline = prevRender;
+        this.boidsBindGroupLayout = prevBoidsBindGroupLayout;
+        this.boidsBindGroups = prevBoidsBindGroups;
         this.renderParamsBindGroup = prevBindGroup;
         return { success: false, error: gpuError.message };
       }
@@ -304,18 +442,47 @@ export class BoidsController {
     v.setFloat32(68, this.params.colorR,               true);
     v.setFloat32(72, this.params.colorG,               true);
     v.setFloat32(76, this.params.colorB,               true);
+    v.setFloat32(80, this.params.opacity,              true);
+    v.setUint32 (84, this.params.opacityMode,          true);
+    // bytes 88-95: _pad2, _pad3 (zero-initialized by ArrayBuffer)
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
-    // Compute pass
+    const N = this.params.numParticles;
+    const gridBG = this.gridBindGroups[this.frame % 2];
+
+    // ── 5-pass compute ────────────────────────────────────────────────
     const computeEncoder = device.createCommandEncoder();
     const computePass = computeEncoder.beginComputePass();
+
+    // Pass 1: clearGrid
+    computePass.setPipeline(this.clearGridPipeline);
+    computePass.setBindGroup(0, gridBG);
+    computePass.dispatchWorkgroups(Math.ceil(GRID_SIZE / 256));
+
+    // Pass 2: gridAssign
+    computePass.setPipeline(this.gridAssignPipeline);
+    computePass.setBindGroup(0, gridBG);
+    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+
+    // Pass 3: prefixSum
+    computePass.setPipeline(this.prefixSumPipeline);
+    computePass.setBindGroup(0, gridBG);
+    computePass.dispatchWorkgroups(1);
+
+    // Pass 4: scatter
+    computePass.setPipeline(this.scatterPipeline);
+    computePass.setBindGroup(0, gridBG);
+    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+
+    // Pass 5: boids update
     computePass.setPipeline(this.computePipeline);
-    computePass.setBindGroup(0, this.bindGroups[this.frame % 2]);
-    computePass.dispatchWorkgroups(Math.ceil(this.params.numParticles / 64));
+    computePass.setBindGroup(0, this.boidsBindGroups[this.frame % 2]);
+    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+
     computePass.end();
     device.queue.submit([computeEncoder.finish()]);
 
-    // Render pass (delegated to TrailRenderer for compositing)
+    // ── Render pass ───────────────────────────────────────────────────
     this.trailRenderer.render(
       device,
       context,

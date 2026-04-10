@@ -24,8 +24,8 @@ struct Params {
   colorR:       f32,  // 68
   colorG:       f32,  // 72
   colorB:       f32,  // 76
-  _pad0:        f32,  // 80
-  _pad1:        f32,  // 84
+  opacity:      f32,  // 80 — global opacity multiplier
+  opacityMode:  u32,  // 84 — 0=velocity-based, 1=uniform
   _pad2:        f32,  // 88
   _pad3:        f32,  // 92
 }
@@ -40,6 +40,16 @@ struct Obstacles {
 }
 
 @group(0) @binding(3) var<uniform> obstacles: Obstacles;
+
+// Grid lookup buffers (written by boids-grid.wgsl passes 1-4)
+@group(0) @binding(4) var<storage, read> cellOffsets:   array<u32>;
+@group(0) @binding(5) var<storage, read> cellCounts:    array<u32>;
+@group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
+
+const GRID_W: u32 = 64u;
+const GRID_H: u32 = 64u;
+const CELL_W: f32 = 0.03125;  // 2.0 / 64
+const CELL_H: f32 = 0.03125;
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
@@ -77,13 +87,13 @@ fn obstacleForce(pos: vec2f) -> vec2f {
           awayDir = vec2f(0.0, select(-1.0, 1.0, pos.y > center.y));
         }
       }
-      force += awayDir * strength * 10000;
+      force += awayDir * strength * 1.;
     }
   }
   return force;
 }
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }
@@ -102,37 +112,57 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   var spatial_force = vec2f(0.0);  // screen space
   var align_force   = vec2f(0.0);  // clip space
 
-  for (var i = 0u; i < params.numParticles; i++) {
-    if (i == index) { continue; }
-    let other = particlesA[i];
-    var diff = other.pos - pos;
-    // Minimum image convention: use shortest path across periodic boundaries
-    if (diff.x >  1.0) { diff.x -= 2.0; }
-    if (diff.x < -1.0) { diff.x += 2.0; }
-    if (diff.y >  1.0) { diff.y -= 2.0; }
-    if (diff.y < -1.0) { diff.y += 2.0; }
-    // Aspect-correct for isotropic screen-space distances
-    let diffS = vec2f(diff.x * params.aspect, diff.y);
-    let r = length(diffS);
-    if (r < 0.0001) { continue; }
+  // Determine this particle's grid cell
+  let myCellX = i32(clamp(u32((pos.x + 1.0) / CELL_W), 0u, GRID_W - 1u));
+  let myCellY = i32(clamp(u32((pos.y + 1.0) / CELL_H), 0u, GRID_H - 1u));
 
-    let dir = diffS / r;  // unit direction in screen space
+  // Search radius in cells (based on attraction radius — the larger of the two)
+  let searchR = i32(ceil(params.attractionRadius / CELL_W)) + 1;
 
-    // Field-of-view check using screen-space velocity direction
-    var pointing = 0.0;
-    if (speedS > 0.0001) {
-      pointing = dot(velS / speedS, dir);
-    }
+  for (var dy = -searchR; dy <= searchR; dy++) {
+    for (var dx = -searchR; dx <= searchR; dx++) {
+      // Torus wrapping for cell indices
+      let nx = u32((myCellX + dx + i32(GRID_W)) % i32(GRID_W));
+      let ny = u32((myCellY + dy + i32(GRID_H)) % i32(GRID_H));
+      let cellID = ny * GRID_W + nx;
 
-    // Attraction radius: cohesion + velocity alignment (respects field of view)
-    if (r < params.attractionRadius && pointing > params.coneAngle) {
-      spatial_force += params.attraction * dir / (r * r + 0.001);
-      align_force   += params.alignment * (other.vel - vel);
-    }
+      let start = cellOffsets[cellID];
+      let end   = start + cellCounts[cellID];
 
-    // Repulsion radius: short-range repulsion (omnidirectional)
-    if (r < params.repulsionRadius) {
-      spatial_force -= params.repulsion * dir / (r * r + 0.0001);
+      for (var k = start; k < end; k++) {
+        let i = sortedIndices[k];
+        if (i == index) { continue; }
+        let other = particlesA[i];
+        var diff = other.pos - pos;
+        // Minimum image convention: use shortest path across periodic boundaries
+        if (diff.x >  1.0) { diff.x -= 2.0; }
+        if (diff.x < -1.0) { diff.x += 2.0; }
+        if (diff.y >  1.0) { diff.y -= 2.0; }
+        if (diff.y < -1.0) { diff.y += 2.0; }
+        // Aspect-correct for isotropic screen-space distances
+        let diffS = vec2f(diff.x * params.aspect, diff.y);
+        let r = length(diffS);
+        if (r < 0.0001) { continue; }
+
+        let dir = diffS / r;  // unit direction in screen space
+
+        // Field-of-view check using screen-space velocity direction
+        var pointing = 0.0;
+        if (speedS > 0.0001) {
+          pointing = dot(velS / speedS, dir);
+        }
+
+        // Attraction radius: cohesion + velocity alignment (respects field of view)
+        if (r < params.attractionRadius && pointing > params.coneAngle) {
+          spatial_force += params.attraction * dir / (r * r + 0.001);
+          align_force   += params.alignment * (other.vel - vel);
+        }
+
+        // Repulsion radius: short-range repulsion (omnidirectional)
+        if (r < params.repulsionRadius) {
+          spatial_force -= params.repulsion * dir / (r * r + 0.0001);
+        }
+      }
     }
   }
 
@@ -151,6 +181,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (sp > params.maxSpeed && sp > 0.0001) {
     vel = vel * (params.maxSpeed / sp);
   }
+  vel = vel + obstacleForce(pos);
 
   // Mouse attraction (use screen-space distance for isotropic mouseRadius)
   if (params.mouseActive > 0.5) {
@@ -162,8 +193,6 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       vel += 0.005 * normalize(toMouse) / mouseDist ;
     }
   }
-
-  vel = vel + obstacleForce(pos);
 
   // Integrate position
   pos = pos + vel * params.deltaTime;
@@ -181,7 +210,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
-  @location(0) alpha: f32,
+  @location(0) speed: f32,
   @location(1) uv: vec2f,
 }
 
@@ -202,7 +231,7 @@ fn vertexMain(
   );
   var out: VertexOutput;
   out.position = vec4f(particlePos + vec2f(rotated.x / params.aspect, rotated.y), 0.0, 1.0);
-  out.alpha = clamp(length(particleVel) * 5.0, 0.3, 1.0);
+  out.speed = length(particleVel);
   out.uv = vertexPos; // pre-rotation UV for SDF (-1..1)
   return out;
 }
@@ -219,7 +248,7 @@ fn sdTriangle(p: vec2f) -> f32 {
 }
 
 @fragment
-fn fragmentMain(@location(0) alpha: f32, @location(1) uv: vec2f) -> @location(0) vec4f {
+fn fragmentMain(@location(0) speed: f32, @location(1) uv: vec2f) -> @location(0) vec4f {
   var mask: f32 = 1.0;
 
   switch params.shapeId {
@@ -240,5 +269,14 @@ fn fragmentMain(@location(0) alpha: f32, @location(1) uv: vec2f) -> @location(0)
     default: {}
   }
 
-  return vec4f(params.colorR, params.colorG, params.colorB, alpha * mask);
+  var finalAlpha: f32;
+  if (params.opacityMode == 1u) {
+    // Uniform: flat opacity
+    finalAlpha = params.opacity;
+  } else {
+    // Velocity-based (default): brighter = faster
+    finalAlpha = clamp(speed * 5.0, 0.3, 1.0) * params.opacity;
+  }
+
+  return vec4f(params.colorR, params.colorG, params.colorB, finalAlpha * mask);
 }

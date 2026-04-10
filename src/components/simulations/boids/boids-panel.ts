@@ -161,7 +161,55 @@ export function buildBoidsPanel(
 
   // ── Appearance ────────────────────────────────────────────────────
   addSection(container, 'Appearance');
-  addSlider(container, 'Size', 0.005, 0.08, 0.001, () => controller.params.size, v => { controller.params.size = v; });
+  addSlider(container, 'Size', 0.001, 0.08, 0.001, () => controller.params.size, v => { controller.params.size = v; }, 'log');
+  addSlider(container, 'Opacity', 0.01, 1.0, 0.01, () => controller.params.opacity, v => { controller.params.opacity = v; });
+
+  // Opacity mode toggle
+  {
+    const modeRow = document.createElement('div');
+    modeRow.className = 'param-row';
+    const modeLabel = document.createElement('div');
+    modeLabel.className = 'param-label';
+    modeLabel.innerHTML = '<span>Opacity Mode</span>';
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:4px;';
+    const modes = ['velocity', 'uniform'];
+    const modeBtns: HTMLButtonElement[] = [];
+    for (let mi = 0; mi < modes.length; mi++) {
+      const btn = document.createElement('button');
+      btn.style.cssText = [
+        'padding:2px 8px',
+        'border-radius:12px',
+        'font-size:0.68rem',
+        'cursor:pointer',
+        'transition:background 0.15s,color 0.15s',
+        controller.params.opacityMode === mi
+          ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
+          : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);',
+      ].join(';');
+      btn.textContent = modes[mi];
+      btn.addEventListener('click', () => {
+        controller.params.opacityMode = mi;
+        modeBtns.forEach((b, j) => {
+          b.style.cssText = [
+            'padding:2px 8px',
+            'border-radius:12px',
+            'font-size:0.68rem',
+            'cursor:pointer',
+            'transition:background 0.15s,color 0.15s',
+            j === mi
+              ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
+              : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);',
+          ].join(';');
+        });
+      });
+      modeBtns.push(btn);
+      btnRow.appendChild(btn);
+    }
+    modeRow.appendChild(modeLabel);
+    modeRow.appendChild(btnRow);
+    container.appendChild(modeRow);
+  }
 
   // Shape selector
   {
@@ -280,7 +328,7 @@ export function buildBoidsPanel(
   // ── Simulation ────────────────────────────────────────────────────
   addSection(container, 'Simulation');
   addSlider(container, 'Time Step', 0.001, 0.1,  0.001, () => controller.params.dt,           v => { controller.params.dt = v; });
-  addSlider(container, 'Particles', 10,    5000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
+  addSlider(container, 'Particles', 10,    500000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
 
   // ── Forces ────────────────────────────────────────────────────────
   addSection(container, 'Forces');
