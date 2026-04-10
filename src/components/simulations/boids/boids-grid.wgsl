@@ -76,61 +76,22 @@ fn gridAssign(@builtin(global_invocation_id) id: vec3u) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 3: prefixSum — exclusive scan of cellCounts → cellOffsets + cellScatterIdx
 //
-// Uses a two-phase (upsweep + downsweep) work-efficient parallel prefix sum
-// over all 4096 cells in a single workgroup of 256 threads.
-// Each thread handles 2 elements (stride-based Blelloch scan).
+// Sequential single-thread scan over all 4096 cells.
+// A parallel Blelloch scan with 256 threads on 4096 elements only covers the
+// first 512 elements in the upsweep (base = (t+1)*2-1 max = 511), leaving
+// cells 512-4095 with offset=0 and causing scatter collisions.
+// At 4096 iterations this is negligible GPU work compared to the boids update.
 //
-// Dispatch: 1 workgroup (handles entire 4096-element array via 16 iterations)
+// Dispatch: 1 workgroup of 1 thread
 // ─────────────────────────────────────────────────────────────────────────────
-var<workgroup> scratch: array<u32, 4096>;
-
-@compute @workgroup_size(256)
-fn prefixSum(@builtin(local_invocation_id) lid: vec3u) {
-  let t = lid.x;
-
-  // Load cellCounts into shared memory (each thread loads 16 values)
-  for (var i = 0u; i < 16u; i++) {
-    let idx = t * 16u + i;
-    scratch[idx] = atomicLoad(&cellCounts[idx]);
-  }
-  workgroupBarrier();
-
-  // Upsweep (reduce) phase
-  var stride = 1u;
-  loop {
-    if (stride >= GRID_SIZE) { break; }
-    workgroupBarrier();
-    let base = (t + 1u) * stride * 2u - 1u;
-    if (base < GRID_SIZE) {
-      scratch[base] += scratch[base - stride];
-    }
-    stride *= 2u;
-  }
-
-  // Clear last element (makes it exclusive)
-  if (t == 0u) { scratch[GRID_SIZE - 1u] = 0u; }
-  workgroupBarrier();
-
-  // Downsweep phase
-  stride = GRID_SIZE / 2u;
-  loop {
-    if (stride == 0u) { break; }
-    workgroupBarrier();
-    let base = (t + 1u) * stride * 2u - 1u;
-    if (base < GRID_SIZE) {
-      let tmp = scratch[base - stride];
-      scratch[base - stride] = scratch[base];
-      scratch[base] += tmp;
-    }
-    stride /= 2u;
-  }
-  workgroupBarrier();
-
-  // Write results to both cellOffsets (immutable for lookup) and cellScatterIdx (mutable for scatter)
-  for (var i = 0u; i < 16u; i++) {
-    let idx = t * 16u + i;
-    cellOffsets[idx] = scratch[idx];
-    atomicStore(&cellScatterIdx[idx], scratch[idx]);
+@compute @workgroup_size(1)
+fn prefixSum(@builtin(global_invocation_id) id: vec3u) {
+  var sum = 0u;
+  for (var i = 0u; i < GRID_SIZE; i++) {
+    let count = atomicLoad(&cellCounts[i]);
+    cellOffsets[i] = sum;
+    atomicStore(&cellScatterIdx[i], sum);
+    sum += count;
   }
 }
 
