@@ -55,6 +55,7 @@ const projects = (await getCollection('projects'))
             journal={pub.data.journal}
             year={pub.data.year}
             doi={pub.data.doi}
+            url={pub.data.url}
             tags={pub.data.tags}
           />
         ))}

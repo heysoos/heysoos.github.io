@@ -1,7 +1,7 @@
 export const siteConfig = {
   name: "Sina Khajehabdollahi",
-  tagline: "Computational Neuroscience · Artificial Life · Emergence",
-  description: "Personal portfolio and research website of Sina Khajehabdollahi — computational neuroscientist, artificial life researcher, and computational artist.",
+  tagline: "Physics · Computer Science · Artificial Life · Emergence · Art",
+  description: "Personal portfolio and research website of Sina Khajehabdollahi — physicist, computer scientist, artificial life researcher, and computational artist.",
   email: "",
   socialLinks: {
     github: "",

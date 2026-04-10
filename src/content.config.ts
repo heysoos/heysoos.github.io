@@ -10,6 +10,7 @@ const publications = defineCollection({
     journal: z.string(),
     year: z.number(),
     doi: z.string().optional(),
+    url: z.string().optional(),
     abstract: z.string().optional(),
     tags: z.array(z.string()).default([]),
     featured: z.boolean().default(false),

@@ -5,17 +5,27 @@ interface Props {
   journal: string;
   year: number;
   doi?: string;
+  url?: string;
   tags?: string[];
 }
 
-const { title, authors, journal, year, doi, tags = [] } = Astro.props;
+const { title, authors, journal, year, doi, url, tags = [] } = Astro.props;
+const link = doi ? `https://doi.org/${doi}` : url;
+const isMe = (a: string) => a.includes('Khajehabdollahi');
 ---
 
 <article class="pub-card">
   <h3 class="pub-title">
-    {doi ? <a href={`https://doi.org/${doi}`} target="_blank" rel="noopener">{title}</a> : title}
+    {link ? <a href={link} target="_blank" rel="noopener">{title}</a> : title}
   </h3>
-  <p class="pub-authors">{authors.join(', ')}</p>
+  <p class="pub-authors">
+    {authors.map((a, i) => (
+      <>
+        {isMe(a) ? <strong>{a}</strong> : a}
+        {i < authors.length - 1 ? ', ' : ''}
+      </>
+    ))}
+  </p>
   <p class="pub-meta">
     <span class="pub-journal">{journal}</span> &middot; {year}
   </p>
