@@ -60,10 +60,31 @@ function flit(v: number): string {
   return v.toFixed(8) + 'f';
 }
 
+// Build a dot4-based inner product expression.
+// Groups `count` (name[0]..name[count-1]) × (wBase..wBase+count-1) into vec4 dot calls.
+// Remainder terms (when count % 4 != 0) are emitted as scalar MADs.
+function dot4Sum(
+  count: number,
+  getVal: (i: number) => string,   // variable name for the i-th input
+  getW:   (i: number) => string,   // literal for the i-th weight
+  init = '0.0f',
+): string {
+  let expr = init;
+  let i = 0;
+  for (; i + 3 < count; i += 4) {
+    expr += ` + dot(vec4f(${getVal(i)},${getVal(i+1)},${getVal(i+2)},${getVal(i+3)}),`
+          +        `vec4f(${getW(i)},${getW(i+1)},${getW(i+2)},${getW(i+3)}))`;
+  }
+  for (; i < count; i++) {
+    expr += ` + ${getW(i)} * ${getVal(i)}`;
+  }
+  return expr;
+}
+
 /**
  * Generate a WGSL shader with weights baked in as literals.
  * No storage buffer — only a params uniform (resolution, time, scale, z[]).
- * Every neuron is fully unrolled so the GPU compiler sees all weights as constants.
+ * Every neuron is fully unrolled; inner products use dot(vec4f,vec4f) for throughput.
  */
 export function generateShader(config: CPPNConfig, layout: WeightLayout, weights: Float32Array): string {
   const { layers } = config;
@@ -100,20 +121,25 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
 
 `;
 
-  // Input layer — fully unrolled, no bias
+  // Input layer — scalar spatial terms + dot4 z-bands, no bias
   const w0 = layers[0].width;
   for (let i = 0; i < w0; i++) {
+    // spatial terms are only 3 — emit as scalars
     let expr = `${w(layout.wxOffset + i)} * cx`
              + ` + ${w(layout.wyOffset + i)} * cy`
              + ` + ${w(layout.wrOffset + i)} * cr`;
-    for (let j = 0; j < Z_DIM; j++) {
-      expr += ` + ${w(layout.wzOffset + j * w0 + i)} * params.z[${j}]`;
-    }
+    // z terms: dot4 over Z_DIM (16) inputs
+    expr = dot4Sum(
+      Z_DIM,
+      (j) => `params.z[${j}]`,
+      (j) => w(layout.wzOffset + j * w0 + i),
+      expr,
+    );
     src += `  let h0_${i} = ${actExpr(layers[0].activation, expr)};\n`;
   }
   src += '\n';
 
-  // Hidden transitions — fully unrolled, with bias
+  // Hidden transitions — bias scalar + dot4 over previous layer, with bias
   for (let li = 0; li < layers.length - 1; li++) {
     const inW  = layers[li].width;
     const outW = layers[li + 1].width;
@@ -121,23 +147,26 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     const bOff = layout.hiddenBiasOffsets[li];
     const act  = layers[li + 1].activation;
     for (let i = 0; i < outW; i++) {
-      let expr = w(bOff + i);
-      for (let j = 0; j < inW; j++) {
-        expr += ` + ${w(wOff + j * outW + i)} * h${li}_${j}`;
-      }
+      const expr = dot4Sum(
+        inW,
+        (j) => `h${li}_${j}`,
+        (j) => w(wOff + j * outW + i),
+        w(bOff + i),
+      );
       src += `  let h${li + 1}_${i} = ${actExpr(act, expr)};\n`;
     }
     src += '\n';
   }
 
-  // Output — no bias, sigmoid
+  // Output — dot4 over last layer, no bias, sigmoid
   const lastIdx = layers.length - 1;
   const lastW   = layers[lastIdx].width;
   for (let i = 0; i < 3; i++) {
-    let expr = '0.0f';
-    for (let j = 0; j < lastW; j++) {
-      expr += ` + ${w(layout.outWeightOffset + j * 3 + i)} * h${lastIdx}_${j}`;
-    }
+    const expr = dot4Sum(
+      lastW,
+      (j) => `h${lastIdx}_${j}`,
+      (j) => w(layout.outWeightOffset + j * 3 + i),
+    );
     src += `  let rgb_${i} = sigmoid_f(${expr});\n`;
   }
 
