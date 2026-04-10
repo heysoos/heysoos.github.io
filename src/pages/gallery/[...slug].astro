@@ -438,6 +438,8 @@ const sim = project.data.simulation;
   import { cpp } from '@codemirror/legacy-modes/mode/clike';
   import { buildBoidsPanel } from '../../components/simulations/boids/boids-panel';
   import { BOIDS_PRESETS } from '../../data/boids-presets';
+  import { buildCPPNPanel } from '../../components/simulations/cppn/cppn-panel';
+  import { CPPN_PRESETS } from '../../data/cppn-presets';
 
   const viewport = document.getElementById('sim-viewport') as HTMLElement;
   const sim = viewport.dataset.sim!;
@@ -560,6 +562,30 @@ const sim = project.data.simulation;
           });
         }
 
+        if (sim === 'cppn') {
+          const cppnCtrl = controller as CPPNController;
+
+          const defaultPreset = CPPN_PRESETS.find(p => p.isDefault) ?? CPPN_PRESETS[0];
+          if (defaultPreset) await cppnCtrl.loadPreset(defaultPreset);
+
+          let activeCPPNId = defaultPreset?.id;
+
+          function buildPanel(activeId?: string): void {
+            panel.innerHTML = '';
+            buildCPPNPanel(panel, cppnCtrl, {
+              presets: CPPN_PRESETS,
+              activePresetId: activeId,
+              onClose: () => { panel.style.display = 'none'; panelOpen = false; },
+              onPresetLoad: async (preset) => {
+                await cppnCtrl.loadPreset(preset);
+                activeCPPNId = preset.id;
+                buildPanel(preset.id);
+              },
+            });
+          }
+          buildPanel(activeCPPNId);
+        }
+
         // ── Controls bar ───────────────────────────────────────────────────
 
         const controls = document.getElementById(`controls-${sim}`);
@@ -579,7 +605,7 @@ const sim = project.data.simulation;
             controller.reset();
           } else if (action === 'fullscreen') {
             document.getElementById('sim-viewport')?.requestFullscreen();
-          } else if (action === 'settings' && sim === 'boids') {
+          } else if (action === 'settings' && (sim === 'boids' || sim === 'cppn')) {
             panelOpen = !panelOpen;
             panel.style.display = panelOpen ? 'flex' : 'none';
           }
