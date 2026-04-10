@@ -54,7 +54,9 @@ export function generateWeights(
   }
 
   const w0 = layers[0].width;
-  for (let i = 0; i < 3 * w0; i++) weights[i] = sample(1, w0);
+  for (let i = 0; i < w0; i++) weights[layout.wxOffset + i] = sample(1, w0);
+  for (let i = 0; i < w0; i++) weights[layout.wyOffset + i] = sample(1, w0);
+  for (let i = 0; i < w0; i++) weights[layout.wrOffset + i] = sample(1, w0);
   for (let i = 0; i < Z_DIM * w0; i++) weights[layout.wzOffset + i] = sample(Z_DIM, w0);
 
   for (let li = 0; li < layers.length - 1; li++) {
