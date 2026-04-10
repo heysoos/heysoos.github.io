@@ -6,9 +6,8 @@ import { TrailRenderer } from './trail-renderer';
 
 const MAX_PARTICLES = 500000;
 
-const GRID_W = 64;
-const GRID_H = 64;
-const GRID_SIZE = GRID_W * GRID_H; // 4096
+const MAX_GRID_DIM = 64;
+const MAX_GRID_SIZE = MAX_GRID_DIM * MAX_GRID_DIM; // 4096 — buffer allocation size only
 
 // Quad billboard (-1..1), 6 vertices = 2 triangles. Scaled by params.size in vertex shader.
 const QUAD_VERTS = new Float32Array([
@@ -145,15 +144,15 @@ export class BoidsController {
         usage: gridStorageUsage,
       });
       this.cellCountsBuffer = device.createBuffer({
-        size: GRID_SIZE * 4,
+        size: MAX_GRID_SIZE * 4,
         usage: gridStorageUsage,
       });
       this.cellOffsetsBuffer = device.createBuffer({
-        size: GRID_SIZE * 4,
+        size: MAX_GRID_SIZE * 4,
         usage: gridStorageUsage,
       });
       this.cellScatterIdxBuffer = device.createBuffer({
-        size: GRID_SIZE * 4,
+        size: MAX_GRID_SIZE * 4,
         usage: gridStorageUsage,
       });
       this.sortedIndicesBuffer = device.createBuffer({
@@ -444,20 +443,24 @@ export class BoidsController {
     v.setFloat32(76, this.params.colorB,               true);
     v.setFloat32(80, this.params.opacity,              true);
     v.setUint32 (84, this.params.opacityMode,          true);
-    // bytes 88-95: _pad2, _pad3 (zero-initialized by ArrayBuffer)
+    // byte 88: gridDim — adaptive grid dimension based on attractionRadius
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    v.setUint32 (88, gridDim,                          true);
+    // byte 92: _pad3 (zero-initialized by ArrayBuffer)
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const N = this.params.numParticles;
+    const gridSize = gridDim * gridDim;
     const gridBG = this.gridBindGroups[this.frame % 2];
 
     // ── 5-pass compute ────────────────────────────────────────────────
     const computeEncoder = device.createCommandEncoder();
     const computePass = computeEncoder.beginComputePass();
 
-    // Pass 1: clearGrid
+    // Pass 1: clearGrid — only clear active cells (gridDim×gridDim)
     computePass.setPipeline(this.clearGridPipeline);
     computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(GRID_SIZE / 256));
+    computePass.dispatchWorkgroups(Math.ceil(gridSize / 256));
 
     // Pass 2: gridAssign
     computePass.setPipeline(this.gridAssignPipeline);

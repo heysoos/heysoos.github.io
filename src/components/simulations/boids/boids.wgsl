@@ -26,7 +26,7 @@ struct Params {
   colorB:       f32,  // 76
   opacity:      f32,  // 80 — global opacity multiplier
   opacityMode:  u32,  // 84 — 0=velocity-based, 1=uniform
-  _pad2:        f32,  // 88
+  gridDim:      u32,  // 88 — active grid dimension (4–64)
   _pad3:        f32,  // 92
 }
 
@@ -45,11 +45,6 @@ struct Obstacles {
 @group(0) @binding(4) var<storage, read> cellOffsets:   array<u32>;
 @group(0) @binding(5) var<storage, read> cellCounts:    array<u32>;
 @group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
-
-const GRID_W: u32 = 64u;
-const GRID_H: u32 = 64u;
-const CELL_W: f32 = 0.03125;  // 2.0 / 64
-const CELL_H: f32 = 0.03125;
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
@@ -112,19 +107,23 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   var spatial_force = vec2f(0.0);  // screen space
   var align_force   = vec2f(0.0);  // clip space
 
-  // Determine this particle's grid cell
-  let myCellX = i32(clamp(u32((pos.x + 1.0) / CELL_W), 0u, GRID_W - 1u));
-  let myCellY = i32(clamp(u32((pos.y + 1.0) / CELL_H), 0u, GRID_H - 1u));
+  // Adaptive grid: cell size = 2.0 / gridDim (set each frame so cell ≈ attractionRadius)
+  let gDim = i32(params.gridDim);
+  let cellW = 2.0 / f32(gDim);
 
-  // Search radius in cells (based on attraction radius — the larger of the two)
-  let searchR = i32(ceil(params.attractionRadius / CELL_W)) + 1;
+  // Determine this particle's grid cell
+  let myCellX = i32(clamp(u32((pos.x + 1.0) / cellW), 0u, params.gridDim - 1u));
+  let myCellY = i32(clamp(u32((pos.y + 1.0) / cellW), 0u, params.gridDim - 1u));
+
+  // Search radius in cells — with adaptive grid, attractionRadius ≈ cellW, so searchR ≈ 1
+  let searchR = max(1i, i32(ceil(params.attractionRadius / cellW)));
 
   for (var dy = -searchR; dy <= searchR; dy++) {
     for (var dx = -searchR; dx <= searchR; dx++) {
       // Torus wrapping for cell indices
-      let nx = u32((myCellX + dx + i32(GRID_W)) % i32(GRID_W));
-      let ny = u32((myCellY + dy + i32(GRID_H)) % i32(GRID_H));
-      let cellID = ny * GRID_W + nx;
+      let nx = u32((myCellX + dx + gDim) % gDim);
+      let ny = u32((myCellY + dy + gDim) % gDim);
+      let cellID = u32(ny) * params.gridDim + u32(nx);
 
       let start = cellOffsets[cellID];
       let end   = start + cellCounts[cellID];

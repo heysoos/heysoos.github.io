@@ -104,10 +104,12 @@ export function buildBoidsPanel(
     const sliderMin = isLog ? Math.log(min) : min;
     const sliderMax = isLog ? Math.log(max) : max;
     const sliderStep = isLog ? (sliderMax - sliderMin) / 1000 : step;
-    const decimals = (isLog || step >= 1) ? 0 : (String(step).split('.')[1]?.length ?? 2);
+    const decimals = step >= 1 ? 0 : (String(step).split('.')[1]?.length ?? 2);
 
     function sliderToValue(s: number): number {
-      return isLog ? Math.round(Math.exp(s)) : s;
+      if (!isLog) return s;
+      const v = Math.exp(s);
+      return decimals === 0 ? Math.round(v) : parseFloat(v.toFixed(decimals));
     }
     function valueToSlider(v: number): number {
       return isLog ? Math.log(Math.max(v, min)) : v;
