@@ -1,20 +1,19 @@
 ---
+import SimulationPreview from './SimulationPreview.astro'
+
 interface Props {
-  title: string;
-  description: string;
-  slug: string;
-  thumbnail?: string;
+  title: string
+  description: string
+  slug: string
+  thumbnail?: string  // kept for call-site compatibility, unused
 }
 
-const { title, description, slug, thumbnail } = Astro.props;
+const { title, description, slug } = Astro.props
 ---
 
 <a href={`/gallery/${slug}`} class="sim-card">
   <div class="sim-card-preview">
-    {thumbnail
-      ? <img src={thumbnail} alt={title} />
-      : <div class="sim-card-placeholder"></div>
-    }
+    <SimulationPreview simulation={slug} />
   </div>
   <div class="sim-card-body">
     <h3>{title}</h3>
@@ -42,18 +41,6 @@ const { title, description, slug, thumbnail } = Astro.props;
     aspect-ratio: 16 / 10;
     overflow: hidden;
     background: var(--bg-primary);
-  }
-
-  .sim-card-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .sim-card-placeholder {
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(ellipse at 50% 50%, var(--hero-gradient-start), var(--hero-gradient-end));
   }
 
   .sim-card-body {
