@@ -22,5 +22,20 @@ export async function createPreviewController(
       resume: () => ctrl.start(),
     }
   }
+  if (sim === 'cppn') {
+    const [{ CPPNController }, { CPPN_PRESETS }] = await Promise.all([
+      import('../../components/simulations/cppn/cppn-controller'),
+      import('../../data/cppn-presets'),
+    ])
+    const ctrl = new CPPNController()
+    const ok = await ctrl.init(canvas)
+    if (!ok) return null
+    if (CPPN_PRESETS.length > 0) await ctrl.loadPreset(CPPN_PRESETS[0])
+    ctrl.maxResolution = 320
+    return {
+      pause: () => ctrl.stop(),
+      resume: () => ctrl.start(),
+    }
+  }
   return null
 }
