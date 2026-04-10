@@ -155,3 +155,173 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
   heading(container, 'Coordinate scale');
   slider(container, 'Scale', 0.1, 5.0, 0.05, ctrl.config.scale, (v) => ctrl.setScale(v));
 }
+
+// ── Weights tab ───────────────────────────────────────────────────
+
+function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
+  container.innerHTML = '';
+  heading(container, 'Distribution');
+
+  const paramBox = el('div', 'display:flex;flex-direction:column;gap:0;margin-top:0.2rem;');
+
+  function renderParams(): void {
+    paramBox.innerHTML = '';
+    const dist = ctrl.config.distribution;
+    switch (dist.type) {
+      case 'normal':
+        slider(paramBox, 'σ (std dev)', 0.1, 5.0, 0.05, dist.sigma ?? 1.0,
+          (v) => ctrl.setDistribution({ ...dist, sigma: v }));
+        break;
+      case 'uniform':
+        slider(paramBox, 'a (range ±a)', 0.1, 5.0, 0.05, dist.a ?? 1.0,
+          (v) => ctrl.setDistribution({ ...dist, a: v }));
+        break;
+      case 'glorot':
+        slider(paramBox, 'Scale', 0.1, 5.0, 0.05, dist.scale ?? 1.0,
+          (v) => ctrl.setDistribution({ ...dist, scale: v }));
+        break;
+      case 'sparse':
+        slider(paramBox, 'Sparsity', 0.0, 0.99, 0.01, dist.sparsity ?? 0.8,
+          (v) => ctrl.setDistribution({ ...dist, sparsity: v }));
+        slider(paramBox, 'Magnitude', 0.1, 10.0, 0.1, dist.magnitude ?? 2.0,
+          (v) => ctrl.setDistribution({ ...dist, magnitude: v }));
+        break;
+    }
+  }
+
+  selectEl(container, ['normal', 'uniform', 'glorot', 'sparse'], ctrl.config.distribution.type,
+    (v) => { ctrl.setDistribution({ type: v as any }); renderParams(); });
+
+  container.appendChild(paramBox);
+  renderParams();
+
+  divider(container);
+  heading(container, 'Seed');
+
+  const seedRow = row(container);
+  const seedInp = el('input',
+    'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 5px;color:var(--text-body);font-size:0.72rem;') as HTMLInputElement;
+  seedInp.type = 'number';
+  seedInp.value = String(ctrl.seed);
+  seedInp.addEventListener('change', () => {
+    ctrl.setSeed(parseInt(seedInp.value) || 0);
+    seedInp.value = String(ctrl.seed);
+  });
+  seedRow.appendChild(seedInp);
+
+  const randBtn = el('button',
+    'margin-top:0.3rem;width:100%;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;',
+    '⟳ Randomize') as HTMLButtonElement;
+  randBtn.addEventListener('click', () => {
+    ctrl.randomizeWeights(Date.now() & 0xffffffff);
+    seedInp.value = String(ctrl.seed);
+  });
+  container.appendChild(randBtn);
+}
+
+// ── Z tab ─────────────────────────────────────────────────────────
+
+function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
+  container.innerHTML = '';
+
+  const animRow = row(container);
+  animRow.appendChild(el('span', 'flex:1;font-size:0.72rem;color:var(--text-body);', 'Animate'));
+  const animCheck = el('input', '') as HTMLInputElement;
+  animCheck.type = 'checkbox';
+  animCheck.checked = true;
+  animCheck.addEventListener('change', () => ctrl.setAnimate(animCheck.checked));
+  animRow.appendChild(animCheck);
+
+  divider(container);
+  heading(container, 'Bands');
+  const bandRow = row(container);
+  bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Num bands'));
+  selectEl(bandRow, ['2', '3', '4'], String(ctrl.config.numBands), (v) => {
+    ctrl.setNumBands(parseInt(v));
+    buildZTab(container, ctrl);
+  });
+
+  for (let bi = 0; bi < ctrl.config.numBands; bi++) {
+    const band = ctrl.config.zBands[bi];
+    if (!band) continue;
+    divider(container);
+    heading(container, `Band ${bi}`);
+    slider(container, 'Freq',  0.05, 4.0,  0.05, band.freq,      (v) => ctrl.setZBand(bi, { freq: v }));
+    slider(container, 'Amp',   0.0,  2.0,  0.05, band.amplitude, (v) => ctrl.setZBand(bi, { amplitude: v }));
+    slider(container, 'Phase', 0.0,  6.28, 0.05, band.phase,     (v) => ctrl.setZBand(bi, { phase: v }));
+  }
+
+  divider(container);
+  smallBtn(container, 'Randomize dim offsets', () => ctrl.randomizeDimOffsets());
+}
+
+// ── Main export ───────────────────────────────────────────────────
+
+export function buildCPPNPanel(
+  container: HTMLElement,
+  ctrl: CPPNController,
+  opts: CPPNPanelOpts = {},
+): void {
+  container.innerHTML = '';
+
+  // Header
+  const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
+  header.appendChild(el('p',
+    'font-size:0.65rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;',
+    'CPPN'));
+  if (opts.onClose) {
+    const closeBtn = el('button',
+      'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;line-height:1;padding:0;', '×');
+    closeBtn.addEventListener('click', opts.onClose);
+    header.appendChild(closeBtn);
+  }
+  container.appendChild(header);
+
+  // Preset pills
+  if (opts.presets && opts.presets.length > 0) {
+    const pillRow = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin:0 0 0.4rem;');
+    for (const preset of opts.presets) {
+      const isActive = preset.id === opts.activePresetId;
+      const pill = el('button',
+        `padding:2px 8px;border-radius:12px;font-size:0.68rem;cursor:pointer;${isActive
+          ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
+          : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);'}`,
+        preset.name);
+      pill.addEventListener('click', () => opts.onPresetLoad?.(preset));
+      pillRow.appendChild(pill);
+    }
+    container.appendChild(pillRow);
+  }
+
+  // Tab bar + content
+  const tabBar     = el('div', 'display:flex;border-bottom:1px solid var(--bg-surface-border);margin-bottom:0.4rem;');
+  const tabContent = el('div', 'display:flex;flex-direction:column;');
+  container.appendChild(tabBar);
+  container.appendChild(tabContent);
+
+  type Tab = 'Arch' | 'Weights' | 'Z';
+  const TABS: Tab[] = ['Arch', 'Weights', 'Z'];
+  const tabBtns: Partial<Record<Tab, HTMLButtonElement>> = {};
+
+  function switchTab(tab: Tab): void {
+    for (const t of TABS) {
+      const active = t === tab;
+      tabBtns[t]!.style.cssText =
+        'flex:1;padding:0.3rem;background:transparent;border:none;border-bottom:2px solid ' +
+        (active ? 'var(--accent);color:var(--accent);' : 'transparent;color:var(--text-muted);') +
+        'cursor:pointer;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;';
+    }
+    if (tab === 'Arch')    buildArchTab(tabContent, ctrl);
+    if (tab === 'Weights') buildWeightsTab(tabContent, ctrl);
+    if (tab === 'Z')       buildZTab(tabContent, ctrl);
+  }
+
+  for (const tab of TABS) {
+    const btn = el('button', '', tab) as HTMLButtonElement;
+    tabBtns[tab] = btn;
+    btn.addEventListener('click', () => switchTab(tab));
+    tabBar.appendChild(btn);
+  }
+
+  switchTab('Arch');
+}
