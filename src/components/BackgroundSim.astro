@@ -222,7 +222,7 @@ const { sim } = Astro.props;
 
     // ── ObstacleTracker ──────────────────────────────────────────────
     const tracker = new ObstacleTracker(
-      ['.content-width', '.hero-text', '.footer-inner p'],
+      ['.content-width', '.hero-text', '.footer-inner p', '.social-pills'],
       (rects, count) => {
         lastRects = rects;
         lastCount = count;
