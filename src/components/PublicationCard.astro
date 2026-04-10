@@ -9,7 +9,7 @@ interface Props {
   tags?: string[];
 }
 
-const { title, authors, journal, year, doi, url, tags = [] } = Astro.props;
+const { title, authors, journal, doi, url, tags = [] } = Astro.props;
 const link = doi ? `https://doi.org/${doi}` : url;
 const isMe = (a: string) => a.includes('Khajehabdollahi');
 const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
