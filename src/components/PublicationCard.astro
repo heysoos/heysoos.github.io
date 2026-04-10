@@ -12,9 +12,11 @@ interface Props {
 const { title, authors, journal, year, doi, url, tags = [] } = Astro.props;
 const link = doi ? `https://doi.org/${doi}` : url;
 const isMe = (a: string) => a.includes('Khajehabdollahi');
+const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
+const dataTagsValue = tags.map(slugify).join(' ');
 ---
 
-<article class="pub-card">
+<article class="pub-entry" data-tags={dataTagsValue}>
   <h3 class="pub-title">
     {link ? <a href={link} target="_blank" rel="noopener">{title}</a> : title}
   </h3>
@@ -27,7 +29,7 @@ const isMe = (a: string) => a.includes('Khajehabdollahi');
     ))}
   </p>
   <p class="pub-meta">
-    <span class="pub-journal">{journal}</span> &middot; {year}
+    <span class="pub-journal">{journal}</span>
   </p>
   {tags.length > 0 && (
     <div class="pub-tags">
@@ -37,19 +39,22 @@ const isMe = (a: string) => a.includes('Khajehabdollahi');
 </article>
 
 <style>
-  .pub-card {
-    padding: 1.5rem 0;
-    border-bottom: 1px solid var(--bg-surface-border);
+  .pub-entry {
+    border-left: 2px solid var(--accent);
+    padding: 0 0 0 1rem;
+    margin-bottom: 1.25rem;
   }
 
   .pub-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 400;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
+    line-height: 1.4;
   }
 
   .pub-title a {
     color: var(--text-primary);
+    text-decoration: none;
   }
 
   .pub-title a:hover {
@@ -57,14 +62,15 @@ const isMe = (a: string) => a.includes('Khajehabdollahi');
   }
 
   .pub-authors {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--text-body);
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.2rem;
   }
 
   .pub-meta {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
+    margin-bottom: 0.35rem;
   }
 
   .pub-journal {
@@ -73,18 +79,17 @@ const isMe = (a: string) => a.includes('Khajehabdollahi');
 
   .pub-tags {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    gap: 0.4rem;
     flex-wrap: wrap;
   }
 
   .pub-tag {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--accent);
     background: var(--accent-subtle);
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
   }
 </style>
