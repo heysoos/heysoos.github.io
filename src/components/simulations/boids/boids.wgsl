@@ -28,6 +28,10 @@ struct Params {
   opacityMode:  u32,  // 84 — 0=velocity-based, 1=uniform
   gridDim:      u32,  // 88 — active grid dimension (4–64)
   _pad3:        f32,  // 92
+  imageStrength:  f32,  // 96 — 0.0 = feature disabled
+  imageForceMode: u32,  // 100
+  imageInvert:    u32,  // 104
+  _pad4:          f32,  // 108 — total 112 bytes
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -45,6 +49,8 @@ struct Obstacles {
 @group(0) @binding(4) var<storage, read> cellOffsets:   array<u32>;
 @group(0) @binding(5) var<storage, read> cellCounts:    array<u32>;
 @group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(7) var imageTexture: texture_2d<f32>;
+@group(0) @binding(8) var imageSampler: sampler;
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
@@ -86,6 +92,14 @@ fn obstacleForce(pos: vec2f) -> vec2f {
     }
   }
   return force;
+}
+
+fn decodeForce(s: vec4f) -> vec2f {
+  // a < 0.01 means outside image bounds — no force
+  if (s.a < 0.01) { return vec2f(0.0); }
+  // rg encodes direction: (dir * 0.5 + 0.5) → decode to [-1, 1]
+  let dir = (s.rg * 2.0 - vec2f(1.0)) * s.b;
+  return dir;
 }
 
 @compute @workgroup_size(256)
@@ -191,6 +205,17 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       // Screen-space direction converted back to clip space: aspect cancels
       vel += 0.005 * normalize(toMouse) / mouseDist ;
     }
+  }
+
+  // Image force field
+  if (params.imageStrength > 0.0) {
+    // Map boid NDC position [-1,1] → UV [0,1], flipping Y (NDC y-up, texture y-down)
+    let uv      = pos * vec2f(0.5, -0.5) + vec2f(0.5);
+    let sample  = textureSampleLevel(imageTexture, imageSampler, uv, 0.0);
+    var imgForce = decodeForce(sample);
+    if (params.imageInvert == 1u) { imgForce = -imgForce; }
+    // Convert canvas-space force (y-down) back to clip-space (y-up)
+    vel += vec2f(imgForce.x, -imgForce.y) * params.imageStrength;
   }
 
   // Integrate position
