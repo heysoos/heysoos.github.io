@@ -32,7 +32,8 @@ export class NCAController {
   private pingPong = 0; // 0 or 1
   private running = false;
   private animId = 0;
-  maxFps = Infinity;
+  private usingRaf = true;
+  maxFps = Infinity;   // Infinity = rAF (display rate); number = setTimeout cap
   tickCount = 0;
   brushOpts: BrushOptions = { mode: 'damage', shape: 'circle', size: 20, strength: 1.0 };
   private brushActive = false;
@@ -196,11 +197,16 @@ export class NCAController {
   // ── Public API ────────────────────────────────────────────────────
 
   start(): void { if (this.running) return; this.running = true; this.tick(); }
-  stop():  void { this.running = false; clearTimeout(this.animId); }
+  stop():  void {
+    this.running = false;
+    if (this.usingRaf) cancelAnimationFrame(this.animId);
+    else clearTimeout(this.animId);
+  }
   reset(): void { this.frameIndex = 0; this.pingPong = 0; this.seedGrid(); }
 
   private tick = (): void => {
     if (!this.running || !this.gpu) return;
+    const frameStart = performance.now();
     const { device, context } = this.gpu;
     const { gridWidth: W, gridHeight: H } = this.config;
 
@@ -241,8 +247,20 @@ export class NCAController {
     renderPass.end();
 
     device.queue.submit([encoder.finish()]);
-    this.tickCount++;
-    this.animId = window.setTimeout(this.tick, Number.isFinite(this.maxFps) ? 1000 / this.maxFps : 0) as unknown as number;
+
+    // Gate next tick on GPU completion — prevents queue overflow at high fps settings
+    void device.queue.onSubmittedWorkDone().then(() => {
+      if (!this.running) return;
+      this.tickCount++;
+      if (Number.isFinite(this.maxFps)) {
+        this.usingRaf = false;
+        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
+        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
+      } else {
+        this.usingRaf = true;
+        this.animId = requestAnimationFrame(this.tick);
+      }
+    });
   };
 
   async recompile(config: NCAConfig): Promise<void> {

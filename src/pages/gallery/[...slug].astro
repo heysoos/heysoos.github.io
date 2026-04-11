@@ -41,11 +41,12 @@ const sim = project.data.simulation;
         <div class="fps-popup" id="fps-popup">
           <label class="fps-row">
             <input type="checkbox" id="fps-unlimited" checked>
-            <span>Unlimited</span>
+            <span>Display rate</span>
           </label>
           <div class="fps-slider-row" id="fps-slider-row">
             <span id="fps-slider-label">60</span>
-            <input type="range" id="fps-slider" min="15" max="360" step="5" value="60">
+            <input type="range" id="fps-slider" min="10" max="360" step="5" value="60">
+            <span style="color:var(--text-muted);font-size:0.6rem">fps cap</span>
           </div>
         </div>
       </div>
@@ -423,18 +424,33 @@ const sim = project.data.simulation;
     position: absolute;
     bottom: 0.6rem;
     left: 0.75rem;
+    /* Extra padding enlarges the hover target on all sides */
+    padding: 4px 8px;
     font-family: monospace;
     font-size: 0.68rem;
-    color: var(--text-muted);
+    color: var(--text-primary);
     letter-spacing: 0.03em;
     z-index: 10;
-    opacity: 0.5;
+    opacity: 0.55;
     cursor: default;
     transition: opacity 0.15s;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
   }
 
   .fps-display:hover {
     opacity: 1;
+  }
+
+  /* Invisible bridge fills the gap so the popup doesn't vanish mid-move */
+  .fps-display::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 12px;
   }
 
   .fps-popup {
@@ -442,7 +458,7 @@ const sim = project.data.simulation;
     flex-direction: column;
     gap: 0.4rem;
     position: absolute;
-    bottom: calc(100% + 6px);
+    bottom: calc(100% + 8px);
     left: 0;
     background: var(--bg-nav);
     border: 1px solid var(--bg-surface-border);
