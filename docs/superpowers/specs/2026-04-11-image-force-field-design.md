@@ -58,12 +58,27 @@ class BoidsImageForce {
   setStrength(v: number): void
   setForceMode(m: ImageForceMode): void          // Attract | Repel | GradientFlow | GradientAttract | Threshold | SDF
   setInvert(v: boolean): void
-  isActive(): boolean
+  setEnabled(v: boolean): void                   // toggle — does not unload the image
+  isActive(): boolean                            // true only if image loaded AND enabled
   destroy(): void
 }
 ```
 
-`BoidsController` calls `buildBindGroupEntries()` when constructing `boidsBindGroups` and includes the extra params in the uniform buffer. When no image is loaded, `isActive()` returns false and the shader early-exits the image force block — zero GPU cost.
+`BoidsController` calls `buildBindGroupEntries()` when constructing `boidsBindGroups` and includes the extra params in the uniform buffer.
+
+**Toggle behavior and GPU cost:**
+
+| State | `imageStrength` in uniform | Shader behavior | GPU cost |
+|-------|---------------------------|-----------------|----------|
+| No image loaded | 0.0 | Early-exit at `if (imageStrength > 0.0)` | Zero — uniform branch, entire workgroup skips |
+| Image loaded, enabled=false | 0.0 | Same early-exit | Zero — same uniform branch |
+| Image loaded, enabled=true | user value > 0 | Full force sampling | Normal |
+
+Because `imageStrength` is a uniform (not per-thread), the `if` branch is a **uniform branch** — the GPU executes it as a predicate across the whole workgroup, not divergent per-lane. Toggling off costs nothing beyond writing one float to the uniform buffer.
+
+When `enabled=false`, the image stays in VRAM and bindings 7 & 8 remain pointing to `processedTexture`. Re-enabling is instant — no re-upload, no bind group rebuild. Only loading or swapping an image triggers a bind group rebuild.
+
+When no image has ever been loaded, bindings 7 & 8 point to a 1×1 zero texture to satisfy the bind group layout with no null-binding errors.
 
 ---
 
@@ -194,11 +209,12 @@ Bind groups are rebuilt (cheaply) when an image is first loaded or swapped. When
 
 **Panel section** (always visible when image is loaded):
 - Thumbnail: live `processedTexture` rendered into a `<canvas>` element, updates each animation frame
+- **Enable toggle** (on/off) — zero GPU cost when off; image stays loaded
 - Force mode pills: Attract | Repel | Grad Flow | Grad Edge | Threshold | SDF
 - Strength slider (0–2, default 0.5)
 - Invert toggle
 - "Open Editor" button → mounts overlay
-- "Clear Image" button
+- "Clear Image" button (unloads image, frees VRAM, resets to dummy texture)
 
 **Editor overlay** (mounted on demand, boids continue):
 - Left sidebar: brush tool (Erase / Blur), size + softness sliders, fit presets, processing options (blur radius, threshold value, invert toggle)
