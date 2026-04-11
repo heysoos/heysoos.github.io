@@ -1,8 +1,8 @@
 ---
 title: "Neural Cellular Automata"
-description: "Trainable cellular automata that learn to grow and maintain patterns."
+description: "Emergent texture and pattern formation via neural update rules applied locally to every cell."
 simulation: "nca"
 order: 3
 ---
 
-Neural Cellular Automata (NCA) replace the hand-designed rules of traditional cellular automata with small neural networks. Each cell observes its neighbors and updates its state through a learned function, enabling the system to grow, regenerate, and maintain complex patterns from simple initial conditions.
+A neural cellular automaton where each cell updates its state by applying a small neural network to its local neighborhood. Trained on texture targets or initialized randomly to explore the space of emergent dynamics.
