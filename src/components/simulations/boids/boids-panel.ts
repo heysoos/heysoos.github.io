@@ -1,6 +1,8 @@
 // src/components/simulations/boids/boids-panel.ts
 import type { BoidsController } from './boids-controller';
 import type { BoidsPreset } from '../../../data/boids-presets';
+import { buildImagePanelSection } from '../../../lib/webgpu/image-editor/image-panel-section';
+import { openImageEditorOverlay  } from '../../../lib/webgpu/image-editor/image-editor-overlay';
 
 export interface BoidsPanelOpts {
   onShaderEdit?: () => void;
@@ -346,4 +348,18 @@ export function buildBoidsPanel(
   addSection(container, 'Perception');
   addSlider(container, 'Vision Cone',  -1.0, 0.99, 0.05, () => controller.params.coneAngle,   v => { controller.params.coneAngle = v; });
   addSlider(container, 'Mouse Radius', 0.05, 0.5,  0.01, () => controller.params.mouseRadius, v => { controller.params.mouseRadius = v; });
+
+  // ── Image Force Field ─────────────────────────────────────────────
+  buildImagePanelSection(container, controller.imageProcessor, {
+    onOpenEditor: () => {
+      const viewport = document.getElementById('sim-viewport') ?? document.body;
+      openImageEditorOverlay(controller.imageProcessor, {
+        onClose:        () => { /* overlay closed */ },
+        onRebindGroups: () => controller.rebuildBoidsBindGroups(),
+        onSetForceMode: (m) => controller.imageForce.setForceMode(m),
+      }, viewport);
+    },
+    onRebindGroups: () => controller.rebuildBoidsBindGroups(),
+    imageForce: controller.imageForce,
+  });
 }

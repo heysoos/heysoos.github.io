@@ -3,6 +3,8 @@ import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '..
 import shaderCode from './boids.wgsl?raw';
 import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
+import { ImageProcessor } from '../../../lib/webgpu/image-editor/image-processor';
+import { BoidsImageForce } from './boids-image-force';
 
 const MAX_PARTICLES = 500000;
 
@@ -104,6 +106,9 @@ export class BoidsController {
   private mouseY = 0;
   private mouseActive = false;
   private trailRenderer = new TrailRenderer();
+  readonly imageProcessor = new ImageProcessor();
+  readonly imageForce     = new BoidsImageForce();
+  private overlayPipeline: GPURenderPipeline | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
 
@@ -120,7 +125,7 @@ export class BoidsController {
       const { device } = this.gpu;
 
       // ── Uniform / obstacle / vertex buffers ──────────────────────────
-      this.uniformBuffer = createUniformBuffer(device, 96);
+      this.uniformBuffer = createUniformBuffer(device, 112);
       // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
       this.obstacleBuffer = createUniformBuffer(device, 272);
 
@@ -227,6 +232,11 @@ export class BoidsController {
         }),
       ];
 
+      // ── Image processor + force must be ready before bind groups ─────
+      this.imageProcessor.init(device);
+      this.imageForce.init(device, this.imageProcessor);
+      this._buildOverlayPipeline(this.gpu.format);
+
       // ── Boids update + render pipelines ──────────────────────────────
       const boidsModule = device.createShaderModule({ code: shaderCode });
       this._createBoidsPipelines(boidsModule);
@@ -262,6 +272,8 @@ export class BoidsController {
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+        { binding: 8, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } },
       ],
     });
 
@@ -276,6 +288,7 @@ export class BoidsController {
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
           { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
       device.createBindGroup({
@@ -288,6 +301,7 @@ export class BoidsController {
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
           { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
     ];
@@ -417,6 +431,8 @@ export class BoidsController {
     const resized = resizeCanvasToDisplaySize(canvas);
     if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
+      this.imageProcessor.resize(canvas.width, canvas.height);
+      this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
@@ -424,7 +440,7 @@ export class BoidsController {
     const aspect = canvas.width > 0 && canvas.height > 0
       ? canvas.width / canvas.height : 1.0;
 
-    const uniformArray = new ArrayBuffer(96);
+    const uniformArray = new ArrayBuffer(112);
     const v = new DataView(uniformArray);
     v.setFloat32( 0, this.params.dt,                   true);
     v.setFloat32( 4, this.params.attractionRadius,      true);
@@ -452,6 +468,11 @@ export class BoidsController {
     const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
     v.setUint32 (88, gridDim,                          true);
     // byte 92: _pad3 (zero-initialized by ArrayBuffer)
+    const imgParams = this.imageForce.getExtraParams();
+    v.setFloat32(96, imgParams.imageStrength,  true);
+    v.setUint32 (100, imgParams.imageForceMode, true);
+    v.setUint32 (104, imgParams.imageInvert,    true);
+    // byte 108: _pad4 — zero from ArrayBuffer init
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const N = this.params.numParticles;
@@ -514,6 +535,30 @@ export class BoidsController {
       },
     );
 
+    // ── Image overlay ─────────────────────────────────────────────────
+    if (this.imageForce.isActive() && this.imageForce.showOverlay && this.overlayPipeline) {
+      const bg = device.createBindGroup({
+        layout: this.overlayPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.imageProcessor.getOutputSampler() },
+          { binding: 1, resource: this.imageProcessor.getCompositedTexture().createView() },
+        ],
+      });
+      const enc  = device.createCommandEncoder();
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{
+          view:    context.getCurrentTexture().createView(),
+          loadOp:  'load',
+          storeOp: 'store',
+        }],
+      });
+      pass.setPipeline(this.overlayPipeline);
+      pass.setBindGroup(0, bg);
+      pass.draw(6);
+      pass.end();
+      device.queue.submit([enc.finish()]);
+    }
+
     this.frame++;
     void device.queue.onSubmittedWorkDone().then(() => {
       if (!this.running) return;
@@ -528,4 +573,49 @@ export class BoidsController {
       }
     });
   };
+
+  private _buildOverlayPipeline(format: GPUTextureFormat): void {
+    const { device } = this.gpu!;
+    const wgsl = /* wgsl */`
+      @group(0) @binding(0) var s: sampler;
+      @group(0) @binding(1) var t: texture_2d<f32>;
+      struct V { @builtin(position) p: vec4f, @location(0) uv: vec2f }
+      @vertex fn vs(@builtin(vertex_index) i: u32) -> V {
+        var pos = array<vec2f,6>(
+          vec2f(-1,-1),vec2f(1,-1),vec2f(-1,1),
+          vec2f(-1,1),vec2f(1,-1),vec2f(1,1));
+        let p = pos[i];
+        return V(vec4f(p,0,1), p * vec2f(0.5,-0.5) + vec2f(0.5));
+      }
+      @fragment fn fs(v: V) -> @location(0) vec4f {
+        let c = textureSample(t, s, v.uv);
+        return vec4f(c.rgb, c.a * 0.45);
+      }
+    `;
+    const mod = device.createShaderModule({ code: wgsl });
+    this.overlayPipeline = device.createRenderPipeline({
+      layout: 'auto',
+      vertex:   { module: mod, entryPoint: 'vs' },
+      fragment: { module: mod, entryPoint: 'fs', targets: [{
+        format,
+        blend: {
+          color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+          alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        },
+      }]},
+      primitive: { topology: 'triangle-list' },
+    });
+  }
+
+  rebuildBoidsBindGroups(): void {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    const boidsModule = device.createShaderModule({ code: this.shaderSource });
+    this._createBoidsPipelines(boidsModule);
+  }
+
+  destroy(): void {
+    this.imageProcessor.destroy();
+    this.imageForce.destroy();
+  }
 }
