@@ -28,6 +28,9 @@ export class NCAController {
   private running = false;
   private animId = 0;
   brushOpts: BrushOptions = { mode: 'damage', shape: 'circle', size: 20, strength: 1.0 };
+  private brushActive = false;
+  private lastBrushX = -1;
+  private lastBrushY = -1;
   private currentWeights: Float32Array | null = null;
   private canvas!: HTMLCanvasElement;
 
@@ -315,7 +318,57 @@ export class NCAController {
     return this.currentWeights;
   }
 
-  // placeholder — implemented in Task 6
-  brush(_x: number, _y: number, _opts: BrushOptions): void {}
-  private setupBrushEvents(): void {}
+  brush(gx: number, gy: number, opts: BrushOptions): void {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    const { gridWidth: W, gridHeight: H, channels } = this.config;
+    const r = Math.floor(opts.size / 2);
+    const cell = new Float32Array(channels);
+
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (opts.shape === 'circle' && dx * dx + dy * dy > r * r) continue;
+        const x = ((gx + dx) % W + W) % W;
+        const y = ((gy + dy) % H + H) % H;
+        const idx = (y * W + x) * channels;
+        if (opts.mode === 'damage') {
+          cell.fill(0);
+        } else {
+          for (let c = 0; c < channels; c++) cell[c] = Math.random() * opts.strength;
+        }
+        // Write to both buffers so the next read is consistent
+        device.queue.writeBuffer(this.stateA, idx * 4, cell);
+        device.queue.writeBuffer(this.stateB, idx * 4, cell);
+      }
+    }
+  }
+
+  private setupBrushEvents(): void {
+    const toGrid = (e: MouseEvent): [number, number] => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.config.gridWidth  / rect.width;
+      const scaleY = this.config.gridHeight / rect.height;
+      return [
+        Math.floor((e.clientX - rect.left) * scaleX),
+        Math.floor((e.clientY - rect.top)  * scaleY),
+      ];
+    };
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      this.brushActive = true;
+      const [x, y] = toGrid(e);
+      this.lastBrushX = x; this.lastBrushY = y;
+      this.brush(x, y, this.brushOpts);
+    });
+
+    this.canvas.addEventListener('mousemove', (e) => {
+      if (!this.brushActive) return;
+      const [x, y] = toGrid(e);
+      if (x === this.lastBrushX && y === this.lastBrushY) return;
+      this.lastBrushX = x; this.lastBrushY = y;
+      this.brush(x, y, this.brushOpts);
+    });
+
+    window.addEventListener('mouseup', () => { this.brushActive = false; });
+  }
 }
