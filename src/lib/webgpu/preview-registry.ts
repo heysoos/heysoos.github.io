@@ -37,5 +37,20 @@ export async function createPreviewController(
       resume: () => ctrl.start(),
     }
   }
+  if (sim === 'nca') {
+    const [{ NCAController }, { NCA_PRESETS }] = await Promise.all([
+      import('../../components/simulations/nca/nca-controller'),
+      import('../../data/nca-presets'),
+    ])
+    const ctrl = new NCAController()
+    const ok = await ctrl.init(canvas)
+    if (!ok) return null
+    const preset = NCA_PRESETS.find(p => p.id === 'ca-vgg16-zebra') ?? NCA_PRESETS[0]
+    if (preset) await ctrl.loadPreset(preset)
+    return {
+      pause: () => ctrl.stop(),
+      resume: () => ctrl.start(),
+    }
+  }
   return null
 }
