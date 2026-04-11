@@ -174,9 +174,14 @@ export class NCAController {
 
   private applyCanvasStyle(): void {
     const { gridWidth: W, gridHeight: H } = this.config;
-    // Override the gallery page's width:100%;height:100% — display at exact pixel size, centered
-    this.canvas.style.width = `${W}px`;
-    this.canvas.style.height = `${H}px`;
+    // Scale up to fill the viewport while preserving AR — inline styles override
+    // the gallery page's `.sim-viewport canvas { width:100%; height:100% }` rule.
+    const parent = this.canvas.parentElement;
+    const vw = parent ? parent.clientWidth  : window.innerWidth;
+    const vh = parent ? parent.clientHeight : window.innerHeight;
+    const scale = Math.min(vw / W, vh / H);
+    this.canvas.style.width  = `${Math.round(W * scale)}px`;
+    this.canvas.style.height = `${Math.round(H * scale)}px`;
     this.canvas.style.position = 'absolute';
     this.canvas.style.top = '50%';
     this.canvas.style.left = '50%';
@@ -394,5 +399,9 @@ export class NCAController {
     });
 
     window.addEventListener('mouseup', () => { this.brushActive = false; });
+
+    // Rescale canvas when the viewport is resized
+    const ro = new ResizeObserver(() => this.applyCanvasStyle());
+    ro.observe(this.canvas.parentElement ?? document.body);
   }
 }
