@@ -36,7 +36,19 @@ const sim = project.data.simulation;
           <div class="shader-errors" id="shader-errors" style="display:none;"></div>
         </div>
       </div>
-      <div id="fps-display" class="fps-display"></div>
+      <div id="fps-display" class="fps-display">
+        <span id="fps-value">-- fps</span>
+        <div class="fps-popup" id="fps-popup">
+          <label class="fps-row">
+            <input type="checkbox" id="fps-unlimited" checked>
+            <span>Unlimited</span>
+          </label>
+          <div class="fps-slider-row" id="fps-slider-row">
+            <span id="fps-slider-label">60</span>
+            <input type="range" id="fps-slider" min="15" max="360" step="5" value="60">
+          </div>
+        </div>
+      </div>
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -415,9 +427,70 @@ const sim = project.data.simulation;
     font-size: 0.68rem;
     color: var(--text-muted);
     letter-spacing: 0.03em;
-    pointer-events: none;
     z-index: 10;
-    opacity: 0.6;
+    opacity: 0.5;
+    cursor: default;
+    transition: opacity 0.15s;
+  }
+
+  .fps-display:hover {
+    opacity: 1;
+  }
+
+  .fps-popup {
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    background: var(--bg-nav);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(8px);
+    padding: 0.5rem 0.65rem;
+    min-width: 140px;
+    white-space: nowrap;
+  }
+
+  .fps-display:hover .fps-popup {
+    display: flex;
+  }
+
+  .fps-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: var(--text-body);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .fps-row input[type=checkbox] {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .fps-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: var(--text-body);
+  }
+
+  .fps-slider-row input[type=range] {
+    width: 80px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  #fps-slider-label {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.2rem;
+    text-align: right;
   }
 
   h1 {
@@ -481,21 +554,45 @@ const sim = project.data.simulation;
       if (ok) {
         controller.start();
 
-        // ── FPS counter ────────────────────────────────────────────────────
-        const fpsEl = document.getElementById('fps-display') as HTMLElement;
-        let fpsFrames = 0;
-        let fpsLast = performance.now();
-        const trackFps = () => {
-          fpsFrames++;
-          const now = performance.now();
-          if (now - fpsLast >= 500) {
-            fpsEl.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsLast))} fps`;
-            fpsFrames = 0;
-            fpsLast = now;
+        // ── FPS counter + throttle UI ──────────────────────────────────────
+        const fpsValue    = document.getElementById('fps-value') as HTMLElement;
+        const fpsUnlimited = document.getElementById('fps-unlimited') as HTMLInputElement;
+        const fpsSlider   = document.getElementById('fps-slider') as HTMLInputElement;
+        const fpsSliderLabel = document.getElementById('fps-slider-label') as HTMLElement;
+        const fpsSliderRow = document.getElementById('fps-slider-row') as HTMLElement;
+        const ctrl = controller as unknown as { maxFps: number; tickCount: number };
+
+        // Measure FPS by sampling tickCount every 500 ms (accurate in unlimited mode)
+        let lastTick = ctrl.tickCount;
+        let lastMs   = performance.now();
+        setInterval(() => {
+          const now   = performance.now();
+          const ticks = ctrl.tickCount - lastTick;
+          const fps   = Math.round(ticks * 1000 / (now - lastMs));
+          fpsValue.textContent = `${fps} fps`;
+          lastTick = ctrl.tickCount;
+          lastMs   = now;
+        }, 500);
+
+        // Apply throttle setting to the controller
+        function applyMaxFps(): void {
+          if (fpsUnlimited.checked) {
+            ctrl.maxFps = Infinity;
+            fpsSliderRow.style.opacity = '0.35';
+            fpsSliderRow.style.pointerEvents = 'none';
+          } else {
+            ctrl.maxFps = parseInt(fpsSlider.value);
+            fpsSliderRow.style.opacity = '';
+            fpsSliderRow.style.pointerEvents = '';
           }
-          requestAnimationFrame(trackFps);
-        };
-        requestAnimationFrame(trackFps);
+        }
+
+        fpsUnlimited.addEventListener('change', applyMaxFps);
+        fpsSlider.addEventListener('input', () => {
+          fpsSliderLabel.textContent = fpsSlider.value;
+          applyMaxFps();
+        });
+        applyMaxFps(); // apply default (unlimited)
 
         if (sim === 'boids') {
           const boidsCtrl = controller as BoidsController;

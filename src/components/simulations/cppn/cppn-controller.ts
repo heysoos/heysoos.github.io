@@ -107,6 +107,8 @@ export class CPPNController {
   private layout!:        WeightLayout;
   private running   = false;
   private animId    = 0;
+  maxFps  = Infinity;
+  tickCount = 0;
   private animate   = true;
   private startTime = performance.now();
   private dimOffsets    = new Float32Array(Z_DIM);
@@ -239,7 +241,7 @@ export class CPPNController {
     this.tick();
   }
 
-  stop(): void { this.running = false; cancelAnimationFrame(this.animId); }
+  stop(): void { this.running = false; clearTimeout(this.animId); }
 
   reset(): void {
     this.randomizeDimOffsets();
@@ -300,6 +302,7 @@ export class CPPNController {
     pass.draw(6);
     pass.end();
     device.queue.submit([encoder.finish()]);
-    this.animId = requestAnimationFrame(this.tick);
+    this.tickCount++;
+    this.animId = window.setTimeout(this.tick, Number.isFinite(this.maxFps) ? 1000 / this.maxFps : 0) as unknown as number;
   };
 }

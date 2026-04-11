@@ -97,6 +97,8 @@ export class BoidsController {
   private frame = 0;
   private running = false;
   private animId = 0;
+  maxFps = Infinity;   // Infinity = unlimited (setTimeout 0); number = capped
+  tickCount = 0;
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
@@ -376,7 +378,7 @@ export class BoidsController {
 
   stop() {
     this.running = false;
-    cancelAnimationFrame(this.animId);
+    clearTimeout(this.animId);
   }
 
   reset() {
@@ -510,6 +512,7 @@ export class BoidsController {
     );
 
     this.frame++;
-    this.animId = requestAnimationFrame(this.tick);
+    this.tickCount++;
+    this.animId = window.setTimeout(this.tick, Number.isFinite(this.maxFps) ? 1000 / this.maxFps : 0) as unknown as number;
   };
 }

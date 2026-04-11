@@ -32,6 +32,8 @@ export class NCAController {
   private pingPong = 0; // 0 or 1
   private running = false;
   private animId = 0;
+  maxFps = Infinity;
+  tickCount = 0;
   brushOpts: BrushOptions = { mode: 'damage', shape: 'circle', size: 20, strength: 1.0 };
   private brushActive = false;
   private lastBrushX = -1;
@@ -194,7 +196,7 @@ export class NCAController {
   // ── Public API ────────────────────────────────────────────────────
 
   start(): void { if (this.running) return; this.running = true; this.tick(); }
-  stop():  void { this.running = false; cancelAnimationFrame(this.animId); }
+  stop():  void { this.running = false; clearTimeout(this.animId); }
   reset(): void { this.frameIndex = 0; this.pingPong = 0; this.seedGrid(); }
 
   private tick = (): void => {
@@ -239,7 +241,8 @@ export class NCAController {
     renderPass.end();
 
     device.queue.submit([encoder.finish()]);
-    this.animId = requestAnimationFrame(this.tick);
+    this.tickCount++;
+    this.animId = window.setTimeout(this.tick, Number.isFinite(this.maxFps) ? 1000 / this.maxFps : 0) as unknown as number;
   };
 
   async recompile(config: NCAConfig): Promise<void> {
