@@ -352,10 +352,12 @@ export function buildBoidsPanel(
   // ── Image Force Field ─────────────────────────────────────────────
   buildImagePanelSection(container, controller.imageProcessor, {
     onOpenEditor: () => {
+      const viewport = document.getElementById('sim-viewport') ?? document.body;
       openImageEditorOverlay(controller.imageProcessor, {
         onClose:        () => { /* overlay closed */ },
         onRebindGroups: () => controller.rebuildBoidsBindGroups(),
-      });
+        onSetForceMode: (m) => controller.imageForce.setForceMode(m),
+      }, viewport);
     },
     onRebindGroups: () => controller.rebuildBoidsBindGroups(),
     imageForce: controller.imageForce,

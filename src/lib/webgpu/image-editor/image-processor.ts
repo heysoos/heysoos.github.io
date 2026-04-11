@@ -12,7 +12,7 @@ import modeSdfCode       from './shaders/mode-sdf.wgsl?raw';
 
 const TEX_USAGE_COMPUTE_IN  = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
 const TEX_USAGE_COMPUTE_OUT = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
-const TEX_USAGE_RENDER_TGT  = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
+const TEX_USAGE_RENDER_TGT  = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING;
 
 export class ImageProcessor {
   private device!: GPUDevice;
@@ -60,8 +60,9 @@ export class ImageProcessor {
     invert:     false,
   };
 
-  // Thumbnail support
+  // Thumbnail / preview support
   private thumbnailContext: GPUCanvasContext | null = null;
+  private previewContext:   GPUCanvasContext | null = null;
   private blitPipeline: GPURenderPipeline | null = null;
 
   init(device: GPUDevice): void {
@@ -214,9 +215,11 @@ export class ImageProcessor {
     this._triggerReprocess();
   }
 
-  getOutputTexture(): GPUTexture    { return this.processedTexture; }
+  getOutputTexture(): GPUTexture     { return this.processedTexture; }
   getCompositedTexture(): GPUTexture { return this.compositedTexture; }
-  getOutputSampler(): GPUSampler    { return this.sampler; }
+  getOutputSampler(): GPUSampler     { return this.sampler; }
+  get canvasWidth():  number         { return this.width;  }
+  get canvasHeight(): number         { return this.height; }
 
   setThumbnailContext(ctx: GPUCanvasContext): void {
     this.thumbnailContext = ctx;
@@ -227,13 +230,33 @@ export class ImageProcessor {
   }
 
   renderThumbnail(): void {
-    if (!this.thumbnailContext || !this.blitPipeline) return;
-    const swapChainTexture = this.thumbnailContext.getCurrentTexture();
+    this._blitToContext(this.thumbnailContext, this.processedTexture);
+  }
+
+  setPreviewContext(ctx: GPUCanvasContext): void {
+    this.previewContext = ctx;
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    ctx.configure({ device: this.device, format, alphaMode: 'premultiplied' });
+    if (!this.blitPipeline) this._buildBlitPipeline(format);
+  }
+
+  clearPreviewContext(): void {
+    this.previewContext = null;
+  }
+
+  renderPreview(showForce: boolean): void {
+    const tex = showForce ? this.processedTexture : this.compositedTexture;
+    this._blitToContext(this.previewContext, tex);
+  }
+
+  private _blitToContext(ctx: GPUCanvasContext | null, texture: GPUTexture): void {
+    if (!ctx || !this.blitPipeline) return;
+    const swapChainTexture = ctx.getCurrentTexture();
     const bg = this.device.createBindGroup({
       layout: this.blitPipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: this.sampler },
-        { binding: 1, resource: this.processedTexture.createView() },
+        { binding: 1, resource: texture.createView() },
       ],
     });
     const enc  = this.device.createCommandEncoder();

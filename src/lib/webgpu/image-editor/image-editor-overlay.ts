@@ -1,75 +1,124 @@
 // src/lib/webgpu/image-editor/image-editor-overlay.ts
 
 import type { ImageProcessor } from './image-processor';
-import { BrushMode, ProcessingMode } from './image-editor-types';
+import { BrushMode } from './image-editor-types';
 import type { BrushOptions, ImageTransform } from './image-editor-types';
 import { createFileInput } from './image-uploader';
 
 export interface OverlayOpts {
   onClose:          () => void;
   onRebindGroups:   () => void;
+  onSetForceMode?:  (mode: number) => void;
 }
 
-export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayOpts): () => void {
+/**
+ * Opens the image editor overlay.
+ * @param container — mount point; should be the sim-viewport element so the editor
+ *   canvas covers exactly the same pixels as the boids canvas. Defaults to document.body.
+ */
+export function openImageEditorOverlay(
+  processor: ImageProcessor,
+  opts: OverlayOpts,
+  container: HTMLElement = document.body,
+): () => void {
+  const useFixed = container === document.body;
+
   // ── Root overlay ──────────────────────────────────────────────────
   const overlay = document.createElement('div');
   overlay.style.cssText = [
-    'position:fixed;inset:0;z-index:1000',
-    'display:flex',
-    'background:rgba(5,4,2,0.82)',
-    'backdrop-filter:blur(2px)',
+    `position:${useFixed ? 'fixed' : 'absolute'};inset:0;z-index:100`,
+    'pointer-events:none',  // children opt-in with pointer-events:auto
   ].join(';');
-  document.body.appendChild(overlay);
+  container.appendChild(overlay);
 
-  // ── Left sidebar ──────────────────────────────────────────────────
+  // Background WebGPU canvas — shows composited image or force field
+  const previewCanvas = document.createElement('canvas');
+  previewCanvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+  overlay.appendChild(previewCanvas);
+
+  // Foreground 2D canvas — interaction, handles, bounds
+  const editorCanvas = document.createElement('canvas');
+  editorCanvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:auto;cursor:crosshair;';
+  overlay.appendChild(editorCanvas);
+
+  // Brush cursor circle
+  const brushCursor = document.createElement('div');
+  brushCursor.style.cssText = 'position:absolute;pointer-events:none;border:1.5px solid rgba(255,255,255,0.6);border-radius:50%;display:none;';
+  overlay.appendChild(brushCursor);
+
+  // ── Sidebar (floats over canvas, same spot as params-panel) ───────
   const sidebar = document.createElement('div');
   sidebar.style.cssText = [
-    'width:180px;flex-shrink:0',
-    'background:#0f0c07',
-    'border-right:1px solid #2a2418',
-    'padding:12px 10px',
+    'position:absolute;top:1rem;right:1rem',
+    'width:220px;max-height:calc(100% - 2rem)',
+    'background:var(--bg-nav,#0f0c07)',
+    'border:1px solid var(--bg-surface-border,#2a2418)',
+    'border-radius:var(--border-radius,4px)',
+    'backdrop-filter:blur(8px)',
+    'padding:0.75rem',
     'overflow-y:auto',
-    'display:flex;flex-direction:column;gap:10px',
+    'display:flex;flex-direction:column;gap:8px',
+    'pointer-events:auto',
+    'z-index:10',
   ].join(';');
   overlay.appendChild(sidebar);
 
-  // ── Right canvas area ─────────────────────────────────────────────
-  const canvasWrap = document.createElement('div');
-  canvasWrap.style.cssText = 'flex:1;position:relative;overflow:hidden;';
-  overlay.appendChild(canvasWrap);
-
-  const editorCanvas = document.createElement('canvas');
-  editorCanvas.style.cssText = 'width:100%;height:100%;display:block;';
-  canvasWrap.appendChild(editorCanvas);
-
-  // ── Brush cursor ──────────────────────────────────────────────────
-  const brushCursor = document.createElement('div');
-  brushCursor.style.cssText = 'position:absolute;pointer-events:none;border:1.5px solid rgba(255,255,255,0.55);border-radius:50%;display:none;';
-  canvasWrap.appendChild(brushCursor);
-
   // ── State ─────────────────────────────────────────────────────────
-  let currentBrush: BrushMode = BrushMode.Paint;
-  let brushRadius   = 30;   // canvas pixels
+  type EditorMode = BrushMode | 'move';
+  let currentMode: EditorMode = BrushMode.Paint;
+  let brushRadius   = 30;   // CSS pixels
   let brushSoftness = 0.7;
   let isPainting    = false;
   let showForce     = true;
 
-  // Image transform dragging
-  let isDraggingImg = false;
-  let dragStartX = 0, dragStartY = 0;
+  let isDraggingImg  = false;
+  let dragStartCSS_X = 0, dragStartCSS_Y = 0;
   let dragStartTf: ImageTransform = { ...processor.transform };
 
-  // Resize handle dragging
   type HandleId = 'tl'|'tc'|'tr'|'ml'|'mr'|'bl'|'bc'|'br';
-  let isResizing = false;
+  let isResizing    = false;
   let resizeHandle: HandleId | null = null;
   let resizeStartTf: ImageTransform = { ...processor.transform };
-  let resizeStartMx = 0, resizeStartMy = 0;
+  let resizeStartCSS_X = 0, resizeStartCSS_Y = 0;
+
+  // ── Coordinate helpers ────────────────────────────────────────────
+  // editorCanvas.width  = processor.canvasWidth  (set in resizeEditorCanvas)
+  // editorCanvas.height = processor.canvasHeight
+  // So canvas pixel coords == texture pixel coords — no scaling needed.
+  // We only need CSS→canvas conversion (for DPR).
+
+  /** Mouse position in texture/canvas pixels. */
+  function canvasXY(e: MouseEvent): [number, number] {
+    const r = editorCanvas.getBoundingClientRect();
+    const sx = editorCanvas.width  / r.width;
+    const sy = editorCanvas.height / r.height;
+    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
+  }
+
+  /** Mouse position in CSS pixels (for UI elements like the cursor div). */
+  function cssXY(e: MouseEvent): [number, number] {
+    const r = editorCanvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+
+  /** Scale: CSS pixels → texture pixels (≈ device pixel ratio). */
+  function cssToTex(): number {
+    return editorCanvas.width / editorCanvas.clientWidth;
+  }
+
+  // Convert a transform (texture-pixel space) to canvas-pixel space for 2D drawing.
+  // Since editorCanvas.width == processor.canvasWidth, this is an identity.
+  // Kept for clarity and to survive future DPR changes.
+  function tfToCanvas(tf: ImageTransform): ImageTransform {
+    const sx = editorCanvas.width  / (processor.canvasWidth  || editorCanvas.width);
+    const sy = editorCanvas.height / (processor.canvasHeight || editorCanvas.height);
+    return { offsetX: tf.offsetX * sx, offsetY: tf.offsetY * sy, scaleX: tf.scaleX * sx, scaleY: tf.scaleY * sy };
+  }
 
   // ── Sidebar helpers ───────────────────────────────────────────────
   const makeLabel = (text: string): HTMLElement => {
     const el = document.createElement('div');
-    el.style.cssText = 'font-size:0.58rem;color:#5a4a35;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:2px;';
+    el.style.cssText = 'font-size:0.58rem;color:var(--text-muted,#5a4a35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1px;';
     el.textContent = text;
     return el;
   };
@@ -78,7 +127,7 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
     const b = document.createElement('button');
     b.textContent = text;
     b.style.cssText = [
-      'flex:1;padding:4px 0;border-radius:3px;font-family:inherit;font-size:0.62rem;cursor:pointer',
+      'flex:1;padding:3px 0;border-radius:3px;font-family:inherit;font-size:0.62rem;cursor:pointer',
       active
         ? 'background:#1e2818;border:1px solid #40c0a0;color:#80e0c8'
         : 'background:#1a1610;border:1px solid #2a2418;color:#7a6a50',
@@ -92,7 +141,7 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = String(min); inp.max = String(max);
     inp.step = String(step); inp.value = String(val);
-    inp.style.cssText = 'width:100%;margin-top:2px;';
+    inp.style.cssText = 'width:100%;margin-top:2px;accent-color:var(--accent);';
     inp.addEventListener('input', () => {
       lbl.textContent = `${label}: ${Number(inp.value).toFixed(2)}`;
       cb(Number(inp.value));
@@ -101,63 +150,84 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
     return row;
   };
 
-  // ── Brush section ─────────────────────────────────────────────────
-  sidebar.appendChild(makeLabel('Brush Mode'));
-  const brushRow = document.createElement('div');
-  brushRow.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;';
+  // ── Tool buttons ──────────────────────────────────────────────────
+  sidebar.appendChild(makeLabel('Tool'));
+  const modeRow = document.createElement('div');
+  modeRow.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;';
 
-  const brushBtns: Record<BrushMode, HTMLButtonElement> = {
-    [BrushMode.Paint]:      makeBtn('Paint',      true),
-    [BrushMode.ErasePaint]: makeBtn('Erase',      false),
-    [BrushMode.MaskImage]:  makeBtn('Mask Img',   false),
-    [BrushMode.Blur]:       makeBtn('Blur',        false),
-  };
+  const allModes: Array<[EditorMode, string]> = [
+    [BrushMode.Paint,      'Paint'],
+    [BrushMode.ErasePaint, 'Erase'],
+    [BrushMode.MaskImage,  'Mask'],
+    [BrushMode.Blur,       'Blur'],
+    ['move',               'Move'],
+  ];
 
-  const selectBrush = (mode: BrushMode) => {
-    currentBrush = mode;
-    Object.entries(brushBtns).forEach(([m, btn]) => {
+  const modeBtns = new Map<EditorMode, HTMLButtonElement>();
+  allModes.forEach(([mode, label]) => {
+    const btn = makeBtn(label, mode === BrushMode.Paint);
+    modeBtns.set(mode, btn);
+    btn.addEventListener('click', () => selectMode(mode));
+    modeRow.appendChild(btn);
+  });
+  sidebar.appendChild(modeRow);
+
+  function selectMode(mode: EditorMode) {
+    currentMode = mode;
+    modeBtns.forEach((btn, m) => {
       const active = m === mode;
-      btn.style.background = active ? '#1e2818' : '#1a1610';
+      btn.style.background  = active ? '#1e2818' : '#1a1610';
       btn.style.borderColor = active ? '#40c0a0' : '#2a2418';
       btn.style.color       = active ? '#80e0c8' : '#7a6a50';
     });
-    // Disable Mask Image if no image loaded
-    brushBtns[BrushMode.MaskImage].disabled = !processor.hasImage;
-    brushBtns[BrushMode.MaskImage].style.opacity = processor.hasImage ? '1' : '0.35';
-  };
-
-  Object.entries(brushBtns).forEach(([mode, btn]) => {
-    btn.addEventListener('click', () => selectBrush(mode as BrushMode));
-    brushRow.appendChild(btn);
-  });
-  sidebar.appendChild(brushRow);
+    const maskBtn = modeBtns.get(BrushMode.MaskImage)!;
+    maskBtn.disabled      = !processor.hasImage;
+    maskBtn.style.opacity = processor.hasImage ? '1' : '0.35';
+    editorCanvas.style.cursor = mode === 'move' ? 'default' : 'crosshair';
+    if (mode === 'move') brushCursor.style.display = 'none';
+  }
 
   sidebar.appendChild(makeSlider('Size', 5, 200, brushRadius, 1, v => { brushRadius = v; }));
   sidebar.appendChild(makeSlider('Softness', 0, 1, brushSoftness, 0.01, v => { brushSoftness = v; }));
 
-  // ── Processing section ────────────────────────────────────────────
+  // ── Force mode ────────────────────────────────────────────────────
+  sidebar.appendChild(makeLabel('Force Mode'));
+  const forceModeRow = document.createElement('div');
+  forceModeRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;';
+  const forceModeNames = ['Attract', 'Repel', 'Grad Flow', 'Grad Edge', 'Threshold', 'SDF'];
+  const forceModeBtns: HTMLButtonElement[] = [];
+  let currentForceMode = processor.params.mode;
+
+  const selectForceMode = (i: number) => {
+    currentForceMode = i;
+    forceModeBtns.forEach((b, idx) => {
+      const active = idx === i;
+      b.style.background  = active ? '#1e2818' : '#1a1610';
+      b.style.borderColor = active ? '#40c0a0' : '#2a2418';
+      b.style.color       = active ? '#80e0c8' : '#7a6a50';
+    });
+    processor.setMode(i as import('./image-editor-types').ProcessingMode);
+    opts.onSetForceMode?.(i);
+    renderPreview();
+  };
+
+  forceModeNames.forEach((name, i) => {
+    const btn = makeBtn(name, i === currentForceMode);
+    btn.addEventListener('click', () => selectForceMode(i));
+    forceModeBtns.push(btn);
+    forceModeRow.appendChild(btn);
+  });
+  sidebar.appendChild(forceModeRow);
+
+  // ── Processing ────────────────────────────────────────────────────
   sidebar.appendChild(makeLabel('Processing'));
-
   sidebar.appendChild(makeSlider('Blur radius', 0, 20, processor.params.blurRadius, 0.5,
-    v => processor.setBlurRadius(v)));
-
+    v => { processor.setBlurRadius(v); renderPreview(); }));
   sidebar.appendChild(makeSlider('Threshold', 0, 1, processor.params.threshold, 0.01,
-    v => processor.setThreshold(v)));
-
-  const invertRow = document.createElement('div');
-  invertRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
-  const invertLbl = document.createElement('span');
-  invertLbl.style.cssText = 'font-size:0.6rem;color:#7a6a50;';
-  invertLbl.textContent = 'Invert';
-  const invertChk = document.createElement('input');
-  invertChk.type    = 'checkbox';
-  invertChk.checked = processor.params.invert;
-  invertChk.addEventListener('change', () => processor.setInvert(invertChk.checked));
-  invertRow.appendChild(invertLbl); invertRow.appendChild(invertChk);
-  sidebar.appendChild(invertRow);
+    v => { processor.setThreshold(v); renderPreview(); }));
 
   // ── Fit presets ───────────────────────────────────────────────────
-  sidebar.appendChild(makeLabel('Fit Preset'));
+  sidebar.appendChild(makeLabel('Fit'));
   const fitRow = document.createElement('div');
   fitRow.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;';
   const fits: Array<[string, () => ImageTransform]> = [
@@ -170,19 +240,21 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   fits.forEach(([name, tfFn]) => {
     const btn = makeBtn(name);
     btn.addEventListener('click', () => {
-      const tf = tfFn();
-      processor.setTransform(tf);
+      processor.setTransform(tfFn());
       renderEditorCanvas();
+      renderPreview();
     });
     fitRow.appendChild(btn);
   });
   sidebar.appendChild(fitRow);
 
-  // ── Load image / Reset / Clear ─────────────────────────────────────
+  // ── Load / Reset / Clear ──────────────────────────────────────────
   const fileInput = createFileInput((bmp) => {
     processor.loadImage(bmp);
     opts.onRebindGroups();
-    selectBrush(currentBrush);
+    selectMode(currentMode);
+    renderEditorCanvas();
+    renderPreview();
   });
   document.body.appendChild(fileInput);
 
@@ -192,7 +264,7 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   sidebar.appendChild(loadBtn);
 
   const resetPaintBtn = makeBtn('Reset Paint');
-  resetPaintBtn.addEventListener('click', () => processor.resetPaint());
+  resetPaintBtn.addEventListener('click', () => { processor.resetPaint(); renderPreview(); });
   resetPaintBtn.style.width = '100%';
   sidebar.appendChild(resetPaintBtn);
 
@@ -200,20 +272,22 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   clearImgBtn.addEventListener('click', () => {
     processor.clearImage();
     opts.onRebindGroups();
-    selectBrush(currentBrush);
+    selectMode(currentMode);
+    renderEditorCanvas();
+    renderPreview();
   });
   clearImgBtn.style.width = '100%';
   sidebar.appendChild(clearImgBtn);
 
-  // ── Force overlay toggle + Done button ────────────────────────────
+  // ── Show Force toggle ─────────────────────────────────────────────
   const forceToggleBtn = makeBtn('Show Force', true);
   forceToggleBtn.style.width = '100%';
   forceToggleBtn.addEventListener('click', () => {
     showForce = !showForce;
-    forceToggleBtn.style.background   = showForce ? '#1e2818' : '#1a1610';
-    forceToggleBtn.style.borderColor  = showForce ? '#40c0a0' : '#2a2418';
-    forceToggleBtn.style.color        = showForce ? '#80e0c8' : '#7a6a50';
-    renderEditorCanvas();
+    forceToggleBtn.style.background  = showForce ? '#1e2818' : '#1a1610';
+    forceToggleBtn.style.borderColor = showForce ? '#40c0a0' : '#2a2418';
+    forceToggleBtn.style.color       = showForce ? '#80e0c8' : '#7a6a50';
+    renderPreview();
   });
   sidebar.appendChild(forceToggleBtn);
 
@@ -223,13 +297,27 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   doneBtn.addEventListener('click', close);
   sidebar.appendChild(doneBtn);
 
-  // ── Editor canvas: 2D rendering of transform/handles/force ────────
-  function getCanvasRect() { return editorCanvas.getBoundingClientRect(); }
+  // ── Preview rendering ─────────────────────────────────────────────
+  function initPreviewContext() {
+    const ctx = previewCanvas.getContext('webgpu') as GPUCanvasContext | null;
+    if (ctx) processor.setPreviewContext(ctx);
+  }
 
+  function renderPreview() {
+    processor.renderPreview(showForce);
+  }
+
+  // ── Editor canvas ─────────────────────────────────────────────────
   function resizeEditorCanvas() {
-    const r = getCanvasRect();
-    editorCanvas.width  = Math.round(r.width);
-    editorCanvas.height = Math.round(r.height);
+    // Match GPU texture dimensions exactly so pixel coords need no scaling.
+    const tw = processor.canvasWidth;
+    const th = processor.canvasHeight;
+    editorCanvas.width  = tw > 0 ? tw : Math.round(editorCanvas.clientWidth);
+    editorCanvas.height = th > 0 ? th : Math.round(editorCanvas.clientHeight);
+    previewCanvas.width  = editorCanvas.width;
+    previewCanvas.height = editorCanvas.height;
+    initPreviewContext();
+    renderPreview();
     renderEditorCanvas();
   }
 
@@ -239,114 +327,101 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
     const { width: cw, height: ch } = editorCanvas;
     ctx.clearRect(0, 0, cw, ch);
 
-    const tf = processor.transform;
-
-    // Draw image bounds
     if (processor.hasImage) {
-      ctx.strokeStyle = 'rgba(224,160,64,0.5)';
-      ctx.lineWidth   = 1;
-      ctx.strokeRect(tf.offsetX, tf.offsetY, tf.scaleX, tf.scaleY);
+      const ctf = tfToCanvas(processor.transform);
+      ctx.strokeStyle = 'rgba(224,160,64,0.6)';
+      ctx.lineWidth   = cssToTex();  // 1 CSS pixel width
+      ctx.strokeRect(ctf.offsetX, ctf.offsetY, ctf.scaleX, ctf.scaleY);
+      drawHandles(ctx, ctf);
     }
-
-    // Draw handles
-    if (processor.hasImage) {
-      drawHandles(ctx, tf);
-    }
-
-    // "no force" zones
-    ctx.font      = '10px monospace';
-    ctx.fillStyle = 'rgba(90,74,53,0.6)';
-    ctx.textAlign = 'center';
-    if (tf.offsetY > 20) ctx.fillText('no force', cw / 2, tf.offsetY / 2);
-    const botY = tf.offsetY + tf.scaleY;
-    if (botY < ch - 20) ctx.fillText('no force', cw / 2, botY + (ch - botY) / 2);
   }
 
-  const HANDLE_SIZE = 8;
+  const HANDLE_PX = 8; // logical pixels (will be scaled by cssToTex)
   const handles: Array<{ id: HandleId; ax: number; ay: number }> = [
     { id: 'tl', ax: 0,   ay: 0   }, { id: 'tc', ax: 0.5, ay: 0   }, { id: 'tr', ax: 1,   ay: 0   },
     { id: 'ml', ax: 0,   ay: 0.5 },                                   { id: 'mr', ax: 1,   ay: 0.5 },
     { id: 'bl', ax: 0,   ay: 1   }, { id: 'bc', ax: 0.5, ay: 1   }, { id: 'br', ax: 1,   ay: 1   },
   ];
 
-  function drawHandles(ctx: CanvasRenderingContext2D, tf: ImageTransform) {
+  function drawHandles(ctx: CanvasRenderingContext2D, ctf: ImageTransform) {
+    const s = HANDLE_PX * cssToTex();
     ctx.fillStyle = '#e0c060';
     handles.forEach(({ ax, ay }) => {
-      const hx = tf.offsetX + ax * tf.scaleX - HANDLE_SIZE / 2;
-      const hy = tf.offsetY + ay * tf.scaleY - HANDLE_SIZE / 2;
-      ctx.fillRect(hx, hy, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.fillRect(ctf.offsetX + ax * ctf.scaleX - s / 2, ctf.offsetY + ay * ctf.scaleY - s / 2, s, s);
     });
   }
 
-  function hitHandle(mx: number, my: number, tf: ImageTransform): HandleId | null {
+  // Hit testing in canvas-pixel space
+  function hitHandle(mx: number, my: number): HandleId | null {
+    const ctf = tfToCanvas(processor.transform);
+    const s = (HANDLE_PX + 4) * cssToTex();
     for (const { id, ax, ay } of handles) {
-      const hx = tf.offsetX + ax * tf.scaleX;
-      const hy = tf.offsetY + ay * tf.scaleY;
-      if (Math.abs(mx - hx) < HANDLE_SIZE + 2 && Math.abs(my - hy) < HANDLE_SIZE + 2) return id;
+      const hx = ctf.offsetX + ax * ctf.scaleX;
+      const hy = ctf.offsetY + ay * ctf.scaleY;
+      if (Math.abs(mx - hx) < s && Math.abs(my - hy) < s) return id;
     }
     return null;
   }
 
-  function hitImage(mx: number, my: number, tf: ImageTransform): boolean {
-    return mx >= tf.offsetX && mx <= tf.offsetX + tf.scaleX &&
-           my >= tf.offsetY && my <= tf.offsetY + tf.scaleY;
+  function hitImage(mx: number, my: number): boolean {
+    const ctf = tfToCanvas(processor.transform);
+    return mx >= ctf.offsetX && mx <= ctf.offsetX + ctf.scaleX &&
+           my >= ctf.offsetY && my <= ctf.offsetY + ctf.scaleY;
   }
 
-  // Canvas-relative mouse coords
-  function canvasXY(e: MouseEvent): [number, number] {
-    const r = editorCanvas.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
-  }
-
-  // ── Mouse events: brush painting ──────────────────────────────────
+  // ── Mouse events ──────────────────────────────────────────────────
   editorCanvas.addEventListener('mousedown', (e) => {
-    const [mx, my] = canvasXY(e);
-    const tf = processor.transform;
+    const [mx, my] = canvasXY(e);  // texture/canvas pixels
 
-    // Check resize handles first
-    const h = hitHandle(mx, my, tf);
-    if (h && processor.hasImage) {
-      isResizing = true; resizeHandle = h;
-      resizeStartTf = { ...tf };
-      resizeStartMx = mx; resizeStartMy = my;
+    if (currentMode === 'move' && processor.hasImage) {
+      const h = hitHandle(mx, my);
+      if (h) {
+        isResizing = true; resizeHandle = h;
+        resizeStartTf = { ...processor.transform };
+        [resizeStartCSS_X, resizeStartCSS_Y] = cssXY(e);
+        return;
+      }
+      if (hitImage(mx, my)) {
+        isDraggingImg = true;
+        [dragStartCSS_X, dragStartCSS_Y] = cssXY(e);
+        dragStartTf = { ...processor.transform };
+        return;
+      }
       return;
     }
 
-    // Check image drag
-    if (hitImage(mx, my, tf) && processor.hasImage) {
-      isDraggingImg = true;
-      dragStartX = mx; dragStartY = my;
-      dragStartTf = { ...tf };
-      return;
-    }
-
-    // Else: brush stroke
     isPainting = true;
     applyBrushAt(mx, my);
   });
 
   editorCanvas.addEventListener('mousemove', (e) => {
-    const [mx, my] = canvasXY(e);
+    const [cx, cy] = cssXY(e);     // CSS pixels for cursor display
+    const [mx, my] = canvasXY(e);  // texture pixels for logic
 
-    // Update brush cursor
-    const sz = brushRadius * 2;
-    brushCursor.style.display = 'block';
-    brushCursor.style.width   = sz + 'px';
-    brushCursor.style.height  = sz + 'px';
-    brushCursor.style.left    = (mx - brushRadius) + 'px';
-    brushCursor.style.top     = (my - brushRadius) + 'px';
+    if (currentMode !== 'move') {
+      const sz = brushRadius * 2;
+      brushCursor.style.display = 'block';
+      brushCursor.style.width   = sz + 'px';
+      brushCursor.style.height  = sz + 'px';
+      brushCursor.style.left    = (cx - brushRadius) + 'px';
+      brushCursor.style.top     = (cy - brushRadius) + 'px';
+    } else {
+      brushCursor.style.display = 'none';
+    }
 
     if (isResizing && resizeHandle) {
-      applyResize(mx, my);
+      applyResize(cx, cy);  // resize uses CSS delta
       return;
     }
     if (isDraggingImg) {
+      const dpr = cssToTex();
       processor.setTransform({
-        ...processor.transform,
-        offsetX: dragStartTf.offsetX + (mx - dragStartX),
-        offsetY: dragStartTf.offsetY + (my - dragStartY),
+        ...dragStartTf,
+        offsetX: dragStartTf.offsetX + (cx - dragStartCSS_X) * dpr,
+        offsetY: dragStartTf.offsetY + (cy - dragStartCSS_Y) * dpr,
       });
       renderEditorCanvas();
+      renderPreview();
       return;
     }
     if (isPainting) applyBrushAt(mx, my);
@@ -357,49 +432,57 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   editorCanvas.addEventListener('mouseleave', () => { brushCursor.style.display = 'none'; stopAll(); });
 
   function applyBrushAt(mx: number, my: number) {
-    const brushOpts: BrushOptions = { mode: currentBrush, x: mx, y: my, radius: brushRadius, softness: brushSoftness };
+    // mx, my already in texture/canvas pixels; brush radius converted from CSS
+    const brushOpts: BrushOptions = {
+      mode:     currentMode as BrushMode,
+      x:        mx,
+      y:        my,
+      radius:   brushRadius * cssToTex(),
+      softness: brushSoftness,
+    };
     processor.brushStroke(brushOpts);
     renderEditorCanvas();
+    renderPreview();
   }
 
-  function applyResize(mx: number, my: number) {
-    const dx = mx - resizeStartMx;
-    const dy = my - resizeStartMy;
-    const tf  = { ...resizeStartTf };
-    const id  = resizeHandle!;
-
-    if (id.includes('l')) { tf.offsetX += dx; tf.scaleX -= dx; }
-    if (id.includes('r')) { tf.scaleX  += dx; }
-    if (id.includes('t')) { tf.offsetY += dy; tf.scaleY -= dy; }
-    if (id.includes('b')) { tf.scaleY  += dy; }
-
-    // Clamp: minimum size 20px
+  function applyResize(cssMx: number, cssMy: number) {
+    const dpr  = cssToTex();
+    const dtx  = (cssMx - resizeStartCSS_X) * dpr;
+    const dty  = (cssMy - resizeStartCSS_Y) * dpr;
+    const tf   = { ...resizeStartTf };
+    const id   = resizeHandle!;
+    if (id.includes('l')) { tf.offsetX += dtx; tf.scaleX -= dtx; }
+    if (id.includes('r')) { tf.scaleX  += dtx; }
+    if (id.includes('t')) { tf.offsetY += dty; tf.scaleY -= dty; }
+    if (id.includes('b')) { tf.scaleY  += dty; }
     if (tf.scaleX < 20 || tf.scaleY < 20) return;
     processor.setTransform(tf);
     renderEditorCanvas();
+    renderPreview();
   }
 
-  // ── Fit transform helpers ──────────────────────────────────────────
+  // Fit helpers — always in texture-pixel space
   function fitTransform(mode: string): ImageTransform {
-    const cw = editorCanvas.width  || editorCanvas.clientWidth;
-    const ch = editorCanvas.height || editorCanvas.clientHeight;
-    const imgAspect = processor.imageWidth / processor.imageHeight || 16/9;
+    const cw = processor.canvasWidth  || editorCanvas.clientWidth;
+    const ch = processor.canvasHeight || editorCanvas.clientHeight;
+    const imgAspect    = processor.imageWidth / processor.imageHeight || 16 / 9;
     const canvasAspect = cw / ch;
     let iw: number, ih: number;
     if (mode === 'fill') {
       if (imgAspect > canvasAspect) { ih = ch; iw = ih * imgAspect; }
-      else { iw = cw; ih = iw / imgAspect; }
+      else                          { iw = cw; ih = iw / imgAspect; }
     } else if (mode === 'contain') {
       if (imgAspect > canvasAspect) { iw = cw; ih = iw / imgAspect; }
-      else { ih = ch; iw = ih * imgAspect; }
+      else                          { ih = ch; iw = ih * imgAspect; }
     } else if (mode === 'width')  { iw = cw; ih = iw / imgAspect; }
     else if (mode === 'height')   { ih = ch; iw = ih * imgAspect; }
     else                          { iw = Math.min(cw, processor.imageWidth || cw); ih = iw / imgAspect; }
     return { offsetX: (cw - iw) / 2, offsetY: (ch - ih) / 2, scaleX: iw, scaleY: ih };
   }
 
-  // ── Cleanup / close ───────────────────────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────────────
   function close() {
+    processor.clearPreviewContext();
     fileInput.remove();
     overlay.remove();
     resizeObserver.disconnect();
@@ -407,9 +490,9 @@ export function openImageEditorOverlay(processor: ImageProcessor, opts: OverlayO
   }
 
   const resizeObserver = new ResizeObserver(resizeEditorCanvas);
-  resizeObserver.observe(canvasWrap);
+  resizeObserver.observe(container);
   resizeEditorCanvas();
-  selectBrush(BrushMode.Paint);
+  selectMode(BrushMode.Paint);
 
   return close;
 }

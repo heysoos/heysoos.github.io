@@ -8,11 +8,12 @@ export interface ImagePanelSectionOpts {
   onOpenEditor:     () => void;
   onRebindGroups:   () => void;  // called after image load/clear so controller rebuilds bind groups
   imageForce:       {
-    setEnabled:   (v: boolean) => void;
-    setStrength:  (v: number)  => void;
-    setForceMode: (m: number)  => void;
-    setInvert:    (v: boolean) => void;
-    isActive:     () => boolean;
+    setEnabled:     (v: boolean) => void;
+    setStrength:    (v: number)  => void;
+    setForceMode:   (m: number)  => void;
+    setInvert:      (v: boolean) => void;
+    setShowOverlay: (v: boolean) => void;
+    isActive:       () => boolean;
   };
 }
 
@@ -133,6 +134,22 @@ export function buildImagePanelSection(
   };
 
   makeSlider('Strength', 0, 2, 0.5, 0.01, v => opts.imageForce.setStrength(v));
+
+  // ── Show overlay toggle ────────────────────────────────────────────
+  const overlayRow = document.createElement('div');
+  overlayRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:0.3rem;';
+  const overlayLbl = document.createElement('span');
+  overlayLbl.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
+  overlayLbl.textContent   = 'Show image';
+  const overlayChk = document.createElement('input');
+  overlayChk.type    = 'checkbox';
+  overlayChk.checked = true;
+  overlayChk.addEventListener('change', () => {
+    opts.imageForce.setShowOverlay(overlayChk.checked);
+  });
+  overlayRow.appendChild(overlayLbl);
+  overlayRow.appendChild(overlayChk);
+  section.appendChild(overlayRow);
 
   // ── Invert toggle ──────────────────────────────────────────────────
   const invertRow = document.createElement('div');

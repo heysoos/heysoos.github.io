@@ -531,7 +531,7 @@ export class BoidsController {
     );
 
     // ── Image overlay ─────────────────────────────────────────────────
-    if (this.imageForce.isActive() && this.overlayPipeline) {
+    if (this.imageForce.isActive() && this.imageForce.showOverlay && this.overlayPipeline) {
       const bg = device.createBindGroup({
         layout: this.overlayPipeline.getBindGroupLayout(0),
         entries: [

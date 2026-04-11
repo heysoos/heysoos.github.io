@@ -12,8 +12,9 @@ export class BoidsImageForce {
 
   private _strength   = 0.5;
   private _forceMode: ImageForceMode = ProcessingMode.LuminanceAttract;
-  private _invert     = false;
-  private _enabled    = true;
+  private _invert      = false;
+  private _enabled     = true;
+  private _showOverlay = true;
 
   init(device: GPUDevice, processor: ImageProcessor): void {
     this.device    = device;
@@ -45,10 +46,13 @@ export class BoidsImageForce {
     };
   }
 
-  setStrength(v: number):          void { this._strength  = v; }
-  setForceMode(m: ImageForceMode): void { this._forceMode = m; }
-  setInvert(v: boolean):           void { this._invert    = v; }
-  setEnabled(v: boolean):          void { this._enabled   = v; }
+  setStrength(v: number):          void { this._strength     = v; }
+  setForceMode(m: ImageForceMode): void { this._forceMode    = m; }
+  setInvert(v: boolean):           void { this._invert       = v; }
+  setEnabled(v: boolean):          void { this._enabled      = v; }
+  setShowOverlay(v: boolean):      void { this._showOverlay  = v; }
+
+  get showOverlay(): boolean { return this._showOverlay; }
 
   isActive(): boolean {
     return this._enabled && (this.processor.hasImage || this.processor.hasPaint);
