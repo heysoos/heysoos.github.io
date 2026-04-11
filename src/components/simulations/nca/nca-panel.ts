@@ -1,6 +1,6 @@
 // src/components/simulations/nca/nca-panel.ts
 import type { NCAController } from './nca-controller';
-import type { NCAPreset, NCAActivation, NCAGridSize, NCASeedMode } from './nca-types';
+import type { NCAPreset, NCAActivation, NCAFilters, NCAGridSize, NCASeedMode } from './nca-types';
 
 export interface NCAPanelOpts {
   presets?: NCAPreset[];
@@ -69,16 +69,28 @@ function toggle(parent: HTMLElement, label: string, checked: boolean, onChange: 
   parent.appendChild(wrap);
 }
 
-function segmented(parent: HTMLElement, options: string[], value: string, onChange: (v: string) => void): void {
+function segmented(
+  parent: HTMLElement, options: string[], value: string, onChange: (v: string) => void,
+): (newValue: string) => void {
   const wrap = el('div', 'display:flex;gap:4px;margin-bottom:0.3rem;flex-wrap:wrap;');
+  const buttons: HTMLButtonElement[] = [];
   for (const opt of options) {
-    btn(wrap, opt, () => {
+    const b = btn(wrap, opt, () => {
       onChange(opt);
-      wrap.querySelectorAll('button').forEach(b2 =>
-        (b2 as HTMLButtonElement).style.borderColor = b2.textContent === opt ? 'var(--accent)' : 'var(--bg-surface-border)');
+      buttons.forEach(b2 => {
+        b2.style.borderColor = b2.textContent === opt ? 'var(--accent)' : 'var(--bg-surface-border)';
+        b2.style.color       = b2.textContent === opt ? 'var(--accent)' : 'var(--text-muted)';
+      });
     }, opt === value ? 'border-color:var(--accent);color:var(--accent);' : '');
+    buttons.push(b);
   }
   parent.appendChild(wrap);
+  return (newValue: string) => {
+    buttons.forEach(b => {
+      b.style.borderColor = b.textContent === newValue ? 'var(--accent)' : 'var(--bg-surface-border)';
+      b.style.color       = b.textContent === newValue ? 'var(--accent)' : 'var(--text-muted)';
+    });
+  };
 }
 
 // ── Accordion section ─────────────────────────────────────────────
@@ -116,19 +128,33 @@ export function buildNCAPanel(
 
   const { presets = [], activePresetId, onPresetLoad, onClose } = opts;
 
+  // Refresh functions — assigned after architecture section is built; closures capture by reference
+  let refreshChannels:   (v: string) => void = () => {};
+  let refreshHidden:     (v: string) => void = () => {};
+  let refreshActivation: (v: string) => void = () => {};
+  const filterBtns: Array<{ key: keyof NCAFilters; b: HTMLButtonElement }> = [];
+
   // ── Presets section ───────────────────────────────────────────
   const presetsBody = section(container, 'Presets', true);
   const presetRow = row(presetsBody);
   for (const preset of presets) {
-    const b = btn(presetRow, preset.name, () => {
-      ctrl.loadPreset(preset);
-      // Highlight active preset in-place — no panel rebuild
+    const b = btn(presetRow, preset.name, async () => {
+      await ctrl.loadPreset(preset);
+      // Highlight active preset in-place
       presetRow.querySelectorAll('button').forEach((b2) => {
         (b2 as HTMLButtonElement).style.borderColor = 'var(--bg-surface-border)';
         (b2 as HTMLButtonElement).style.color = 'var(--text-muted)';
       });
       b.style.borderColor = 'var(--accent)';
       b.style.color = 'var(--accent)';
+      // Sync architecture controls to the loaded preset's config
+      refreshChannels(String(ctrl.config.channels));
+      refreshHidden(String(ctrl.config.hidden));
+      refreshActivation(ctrl.config.activation);
+      for (const { key, b: fb } of filterBtns) {
+        fb.style.borderColor = ctrl.config.filters[key] ? 'var(--accent)' : 'var(--bg-surface-border)';
+        fb.style.color       = ctrl.config.filters[key] ? 'var(--accent)' : 'var(--text-muted)';
+      }
       onPresetLoad?.(preset);
     });
     if (preset.id === activePresetId) {
@@ -143,12 +169,12 @@ export function buildNCAPanel(
   const archBody = section(container, 'Architecture', true);
 
   archBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Channels'));
-  segmented(archBody, ['8', '16', '32'], String(ctrl.config.channels), (v) => {
+  refreshChannels = segmented(archBody, ['8', '12', '16', '32'], String(ctrl.config.channels), (v) => {
     ctrl.setParams({ channels: parseInt(v) as 8 | 16 | 32 });
   });
 
   archBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Hidden'));
-  segmented(archBody, ['32', '64', '128'], String(ctrl.config.hidden), (v) => {
+  refreshHidden = segmented(archBody, ['32', '64', '96', '128'], String(ctrl.config.hidden), (v) => {
     ctrl.setParams({ hidden: parseInt(v) as 32 | 64 | 128 });
   });
 
@@ -165,13 +191,14 @@ export function buildNCAPanel(
       const f = { ...ctrl.config.filters, [key]: !ctrl.config.filters[key] };
       ctrl.setParams({ filters: f });
       b.style.borderColor = ctrl.config.filters[key] ? 'var(--accent)' : 'var(--bg-surface-border)';
-      b.style.color = ctrl.config.filters[key] ? 'var(--accent)' : '';
+      b.style.color       = ctrl.config.filters[key] ? 'var(--accent)' : 'var(--text-muted)';
     });
     if (ctrl.config.filters[key]) { b.style.borderColor = 'var(--accent)'; b.style.color = 'var(--accent)'; }
+    filterBtns.push({ key, b });
   }
 
   archBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Activation'));
-  segmented(archBody, ['relu', 'tanh', 'leakyrelu'], ctrl.config.activation, (v) => {
+  refreshActivation = segmented(archBody, ['relu', 'tanh', 'leakyrelu'], ctrl.config.activation, (v) => {
     ctrl.setParams({ activation: v as NCAActivation });
   });
 
