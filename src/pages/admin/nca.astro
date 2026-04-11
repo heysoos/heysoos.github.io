@@ -1,0 +1,159 @@
+---
+// src/pages/admin/nca.astro
+// Dev-only admin page. Write-to-disk API only exists during `npm run dev`.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="NCA Admin">
+  <div class="admin-wrap">
+    <div class="admin-canvas-area">
+      <canvas id="admin-canvas" style="image-rendering: pixelated;"></canvas>
+      <div id="admin-fallback" class="admin-fallback" style="display:none;">
+        <p>WebGPU not available.</p>
+      </div>
+      <div class="sim-controls">
+        <button id="btn-play-pause" class="sim-btn">⏸</button>
+        <button id="btn-reset" class="sim-btn">↺</button>
+      </div>
+    </div>
+    <div class="admin-sidebar">
+      <div id="params-panel" class="params-panel"></div>
+      <div class="save-section">
+        <input id="preset-name" type="text" placeholder="Preset name…" />
+        <button id="btn-save">Save Preset</button>
+        <div id="save-status"></div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .admin-wrap {
+    display: flex;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+  }
+  .admin-canvas-area {
+    flex: 1;
+    position: relative;
+    background: var(--bg-primary);
+  }
+  #admin-canvas { width: 100%; height: 100%; display: block; }
+  .admin-fallback {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+  }
+  .sim-controls {
+    position: absolute; bottom: 1rem; left: 1rem;
+    display: flex; gap: 0.5rem;
+  }
+  .sim-btn {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text-body);
+    cursor: pointer;
+  }
+  .admin-sidebar {
+    width: 260px;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--bg-surface-border);
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .params-panel { flex: 1; }
+  .save-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--bg-surface-border);
+  }
+  #preset-name, #btn-save {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-body);
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  #save-status { font-size: 0.72rem; color: var(--accent); }
+</style>
+
+<script>
+  import { NCAController } from '../../components/simulations/nca/nca-controller';
+  import { buildNCAPanel } from '../../components/simulations/nca/nca-panel';
+  import { NCA_PRESETS } from '../../data/nca-presets';
+
+  const canvas   = document.getElementById('admin-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('admin-fallback') as HTMLElement;
+  const panel    = document.getElementById('params-panel') as HTMLElement;
+  const nameInp  = document.getElementById('preset-name') as HTMLInputElement;
+  const saveBtn  = document.getElementById('btn-save') as HTMLButtonElement;
+  const statusEl = document.getElementById('save-status') as HTMLElement;
+
+  const ctrl = new NCAController();
+  const ok = await ctrl.init(canvas);
+  if (!ok) { canvas.style.display = 'none'; fallback.style.display = 'flex'; }
+  else {
+    ctrl.start();
+
+    const defaultPreset = NCA_PRESETS.find(p => p.isDefault) ?? NCA_PRESETS[0];
+    if (defaultPreset) ctrl.loadPreset(defaultPreset);
+
+    function rebuild(activeId?: string): void {
+      panel.innerHTML = '';
+      buildNCAPanel(panel, ctrl, {
+        presets: NCA_PRESETS,
+        activePresetId: activeId,
+        onPresetLoad: (p) => rebuild(p.id),
+      });
+    }
+    rebuild(defaultPreset?.id);
+
+    document.getElementById('btn-play-pause')!.addEventListener('click', (e) => {
+      const b = e.currentTarget as HTMLButtonElement;
+      if ((ctrl as any)['running']) { ctrl.stop(); b.textContent = '▶'; }
+      else { ctrl.start(); b.textContent = '⏸'; }
+    });
+    document.getElementById('btn-reset')!.addEventListener('click', () => ctrl.reset());
+
+    saveBtn.addEventListener('click', async () => {
+      const name = nameInp.value.trim();
+      if (!name) { statusEl.textContent = 'Enter a name first.'; return; }
+      const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+      const weights = ctrl.getCurrentWeights();
+      if (!weights) { statusEl.textContent = 'No weights to save.'; return; }
+
+      const preset = {
+        id,
+        name,
+        config: { ...ctrl.config },
+        weights: Array.from(weights),
+      };
+
+      const existing = NCA_PRESETS.filter(p => p.id !== id);
+      const updated = [...existing, preset];
+
+      try {
+        const res = await fetch('/api/admin/save-nca-presets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated),
+        });
+        const json = await res.json();
+        statusEl.textContent = json.ok ? `Saved "${name}"` : `Error: ${json.error}`;
+      } catch (err) {
+        statusEl.textContent = String(err);
+      }
+    });
+  }
+</script>
