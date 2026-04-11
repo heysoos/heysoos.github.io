@@ -181,7 +181,6 @@ export function buildNCAPanel(
   slider(visBody, 'R channel', 0, ch, 1, ctrl.config.channelR, (v) => ctrl.setParams({ channelR: Math.round(v) }));
   slider(visBody, 'G channel', 0, ch, 1, ctrl.config.channelG, (v) => ctrl.setParams({ channelG: Math.round(v) }));
   slider(visBody, 'B channel', 0, ch, 1, ctrl.config.channelB, (v) => ctrl.setParams({ channelB: Math.round(v) }));
-  toggle(visBody, 'Normalize', ctrl.config.normalizeDisplay, (v) => ctrl.setParams({ normalizeDisplay: v }));
 
   // ── Grid section ──────────────────────────────────────────────
   const gridBody = section(container, 'Grid', false);

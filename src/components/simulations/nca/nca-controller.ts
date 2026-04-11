@@ -235,6 +235,15 @@ export class NCAController {
       this.stateB.destroy();
       this.createBuffers();
       this.seedGrid();
+      // Re-upload weights after buffer recreation (createBuffers creates a fresh empty weight buffer)
+      if (this.currentWeights) {
+        const needed = this.layout.totalCount * 4;
+        const w = this.currentWeights.byteLength === needed
+          ? this.currentWeights
+          : generateWeights(this.config, Date.now());
+        this.currentWeights = w;
+        this.gpu!.device.queue.writeBuffer(this.weightBuffer, 0, w);
+      }
     }
     await this.buildPipelines();
     this.updateUniforms();
