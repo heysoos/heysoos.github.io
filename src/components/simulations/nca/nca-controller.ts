@@ -27,6 +27,8 @@ export class NCAController {
   private pingPong = 0; // 0 or 1
   private running = false;
   private animId = 0;
+  brushOpts: BrushOptions = { mode: 'damage', shape: 'circle', size: 20, strength: 1.0 };
+  private currentWeights: Float32Array | null = null;
   private canvas!: HTMLCanvasElement;
 
   config: NCAConfig = { ...DEFAULT_NCA_CONFIG };
@@ -46,6 +48,7 @@ export class NCAController {
       });
       this.seedGrid();
       const weights = generateWeights(this.config, Date.now());
+      this.currentWeights = weights;
       this.gpu.device.queue.writeBuffer(this.weightBuffer, 0, weights);
       await this.buildPipelines();
       this.updateUniforms();
@@ -216,11 +219,101 @@ export class NCAController {
     this.animId = requestAnimationFrame(this.tick);
   };
 
-  // placeholder — implemented in Task 5
-  async recompile(_config: NCAConfig): Promise<void> {}
-  loadPreset(_preset: NCAPreset): void {}
-  randomInit(): void {}
-  setParams(_partial: Partial<NCAConfig>): void {}
+  async recompile(config: NCAConfig): Promise<void> {
+    const wasRunning = this.running;
+    this.stop();
+    this.config = { ...config };
+    this.layout = computeWeightLayout(config);
+    // Recreate state buffers only if grid size changed
+    const { gridWidth: W, gridHeight: H, channels } = config;
+    const stateSize = W * H * channels * 4;
+    if (this.stateA.size !== stateSize) {
+      this.stateA.destroy();
+      this.stateB.destroy();
+      this.createBuffers();
+      this.seedGrid();
+    }
+    await this.buildPipelines();
+    this.updateUniforms();
+    if (wasRunning) this.start();
+  }
+
+  loadPreset(preset: NCAPreset): void {
+    const prev = this.config;
+    const next = preset.config;
+    const archChanged =
+      prev.channels !== next.channels ||
+      prev.hidden !== next.hidden ||
+      prev.activation !== next.activation ||
+      prev.filters.identity !== next.filters.identity ||
+      prev.filters.sobelX !== next.filters.sobelX ||
+      prev.filters.sobelY !== next.filters.sobelY ||
+      prev.filters.laplacian !== next.filters.laplacian ||
+      prev.gridWidth !== next.gridWidth ||
+      prev.gridHeight !== next.gridHeight;
+
+    this.config = { ...next };
+    this.layout = computeWeightLayout(next);
+
+    // Write weights immediately
+    const w = new Float32Array(preset.weights);
+    if (this.weightBuffer.size < w.byteLength) {
+      this.weightBuffer.destroy();
+      this.weightBuffer = this.gpu!.device.createBuffer({
+        size: w.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+    }
+    this.gpu!.device.queue.writeBuffer(this.weightBuffer, 0, w);
+    this.currentWeights = w;
+
+    if (archChanged) {
+      void this.recompile(next).then(() => {
+        this.gpu!.device.queue.writeBuffer(this.weightBuffer, 0, w); // re-write after recompile
+      });
+    } else {
+      this.updateUniforms();
+    }
+  }
+
+  randomInit(): void {
+    const weights = generateWeights(this.config, Date.now());
+    this.currentWeights = weights;
+    const needed = weights.byteLength;
+    if (this.weightBuffer.size < needed) {
+      this.weightBuffer.destroy();
+      this.weightBuffer = this.gpu!.device.createBuffer({
+        size: needed,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this.buildBindGroups();
+    }
+    this.gpu!.device.queue.writeBuffer(this.weightBuffer, 0, weights);
+    this.reset();
+  }
+
+  setParams(partial: Partial<NCAConfig>): void {
+    const archKeys: (keyof NCAConfig)[] = ['channels', 'hidden', 'activation', 'gridWidth', 'gridHeight'];
+    const filterKeys = ['identity', 'sobelX', 'sobelY', 'laplacian'] as const;
+
+    const needsRecompile =
+      archKeys.some(k => k in partial && (partial as any)[k] !== (this.config as any)[k]) ||
+      (partial.filters !== undefined &&
+        filterKeys.some(k => partial.filters![k] !== this.config.filters[k]));
+
+    Object.assign(this.config, partial);
+    if (partial.filters) this.config.filters = { ...this.config.filters, ...partial.filters };
+
+    if (needsRecompile) {
+      void this.recompile(this.config);
+    } else {
+      this.updateUniforms();
+    }
+  }
+
+  getCurrentWeights(): Float32Array | null {
+    return this.currentWeights;
+  }
 
   // placeholder — implemented in Task 6
   brush(_x: number, _y: number, _opts: BrushOptions): void {}
