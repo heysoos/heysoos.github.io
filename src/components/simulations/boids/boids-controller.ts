@@ -228,13 +228,15 @@ export class BoidsController {
         }),
       ];
 
+      // ── Image processor + force must be ready before bind groups ─────
+      this.imageProcessor.init(device);
+      this.imageForce.init(device, this.imageProcessor);
+
       // ── Boids update + render pipelines ──────────────────────────────
       const boidsModule = device.createShaderModule({ code: shaderCode });
       this._createBoidsPipelines(boidsModule);
 
       this.trailRenderer.init(device, this.gpu!.format, canvas.width || 1, canvas.height || 1);
-      this.imageProcessor.init(device);
-      this.imageForce.init(device, this.imageProcessor);
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
 
