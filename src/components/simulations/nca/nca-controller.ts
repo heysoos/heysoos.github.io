@@ -169,8 +169,52 @@ export class NCAController {
   stop():  void { this.running = false; cancelAnimationFrame(this.animId); }
   reset(): void { this.frameIndex = 0; this.pingPong = 0; this.seedGrid(); }
 
-  // placeholder — implemented in Task 4
-  private tick = () => {};
+  private tick = (): void => {
+    if (!this.running || !this.gpu) return;
+    const { device, context } = this.gpu;
+    const { gridWidth: W, gridHeight: H } = this.config;
+
+    // Resize canvas to grid size (pixelated CSS scaling handles display)
+    if (this.canvas.width !== W || this.canvas.height !== H) {
+      this.canvas.width  = W;
+      this.canvas.height = H;
+    }
+
+    const encoder = device.createCommandEncoder();
+
+    // Run stepsPerFrame compute passes (ping-pong)
+    for (let s = 0; s < this.config.stepsPerFrame; s++) {
+      // Update frameIndex uniform before each step
+      const iu = new Uint32Array([this.frameIndex]);
+      device.queue.writeBuffer(this.uniformBuffer, 8, iu); // offset 8 = frameIndex (u32 at index 2)
+
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(this.computePipeline);
+      pass.setBindGroup(0, this.computeBindGroups[this.pingPong]);
+      pass.dispatchWorkgroups(Math.ceil(W / 8), Math.ceil(H / 8));
+      pass.end();
+
+      this.pingPong ^= 1;
+      this.frameIndex++;
+    }
+
+    // Render pass — read from the most recently written buffer
+    const readBuf = this.pingPong; // after ping-pong flips, pingPong points to the last output
+    const renderPass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: context.getCurrentTexture().createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: 'clear', storeOp: 'store',
+      }],
+    });
+    renderPass.setPipeline(this.renderPipeline);
+    renderPass.setBindGroup(0, this.renderBindGroups[readBuf]);
+    renderPass.draw(6);
+    renderPass.end();
+
+    device.queue.submit([encoder.finish()]);
+    this.animId = requestAnimationFrame(this.tick);
+  };
 
   // placeholder — implemented in Task 5
   async recompile(_config: NCAConfig): Promise<void> {}
