@@ -20,12 +20,12 @@ Self-contained; no dependency on any simulation. Any simulation imports what it 
 
 | File | Responsibility |
 |------|---------------|
-| `image-editor-types.ts` | Shared interfaces: `ImageTransform`, `ProcessingMode`, `BrushOptions`, `ImageEditorState` |
-| `image-uploader.ts` | File `→` `GPUTexture` (sourceTexture). Accepts PNG/JPG/SVG via `<input type=file>` or drag-and-drop. Decodes via `createImageBitmap`, uploads with `device.queue.copyExternalImageToTexture`. |
+| `image-editor-types.ts` | Shared interfaces: `ImageTransform`, `ProcessingMode`, `BrushMode`, `BrushOptions`, `ImageEditorState` |
+| `image-uploader.ts` | File `→` `GPUTexture` (sourceTexture). Accepts PNG/JPG/SVG via `<input type=file>` or drag-and-drop. Decodes via `createImageBitmap`, uploads with `device.queue.copyExternalImageToTexture`. Optional — editor works without it. |
 | `image-processor.ts` | Owns the GPU texture stack and processing pipeline. Exposes `setTransform()`, `setMode()`, `setProcessingParams()`, `triggerReprocess()`, `getOutputTexture(): GPUTexture`. |
-| `image-brush.ts` | Brush render pass: paints soft-circle strokes into `paintMaskTexture` via a fragment shader. Brush modes: **erase** (write 0 to mask), **blur** (convolve neighborhood in mask). Params: size, softness. |
-| `image-editor-overlay.ts` | Full-screen overlay UI. Left sidebar (brush controls, fit presets, processing mode pills, transform sliders). Right area: interactive editing canvas with drag-to-move, 8 resize handles, force field arrow overlay, brush cursor, coordinate readout. Boids continue running behind dimmed overlay. |
-| `image-panel-section.ts` | Compact panel widget: live thumbnail of `processedTexture`, force mode pills, strength/radius sliders, "Open Editor" button. Plugs into any simulation's side panel. |
+| `image-brush.ts` | Brush render passes. **Paint** and **Erase paint** write to `paintCanvasTexture`; **Mask image** writes to `imageMaskTexture`. All modes accept size + softness. Triggers reprocess after each stroke. |
+| `image-editor-overlay.ts` | Full-screen overlay UI. Left sidebar (brush mode selector, size/softness sliders, fit presets, processing mode pills, transform sliders, Reset Paint / Clear Image buttons). Right area: interactive editing canvas with drag-to-move, 8 resize handles, force field overlay toggle, brush cursor, coordinate readout. Boids continue running behind dimmed overlay. |
+| `image-panel-section.ts` | Compact panel widget: live thumbnail of `processedTexture`. When image loaded: force mode pills, strength slider, invert toggle, enable toggle, "Open Editor", "Clear Image". When no image: "Paint Force Field" button opens editor to blank canvas. Always shows "Reset Paint" if `paintCanvasTexture` is non-empty. |
 
 **Public interface of `ImageProcessor`:**
 ```ts
@@ -86,26 +86,36 @@ When no image has ever been loaded, bindings 7 & 8 point to a 1×1 zero texture 
 
 All textures are `rgba8unorm`, sized to the canvas resolution and updated when the canvas resizes.
 
-| Texture | Updated when |
-|---------|-------------|
-| `sourceTexture` | Image loaded |
-| `paintMaskTexture` | Brush stroke |
-| `compositedTexture` | Reprocess triggered (src × mask, transform applied) |
-| `processedTexture` | Reprocess triggered (final output: mode pass applied to composited) |
+| Texture | Initial value | Updated when |
+|---------|--------------|-------------|
+| `sourceTexture` | zeros (1×1 dummy until image loaded) | Image loaded |
+| `imageMaskTexture` | all-ones (full opacity) | "Mask image" brush stroke |
+| `paintCanvasTexture` | zeros | "Paint" / "Erase paint" / "Blur" brush stroke |
+| `compositedTexture` | — | Reprocess triggered |
+| `processedTexture` | — | Reprocess triggered (final output) |
 
-The composite pass applies the `ImageTransform` — it maps image pixels into canvas space, leaving zeros outside the image bounds. Downstream passes (blur, mode) always work in canvas space. This means the boids shader samples at `uv = pos * 0.5 + 0.5` with no additional transform logic.
+**Three-layer composite** (Pass 1):
+```
+compositedTexture = (sourceTexture × imageMaskTexture) + paintCanvasTexture
+```
+
+- **No image loaded:** `sourceTexture` is zeros → `output = paintCanvasTexture`. Users paint force fields directly from scratch.
+- **Image only:** `output = sourceTexture × imageMaskTexture`. Same as before.
+- **Image + paint:** both layers contribute additively.
+
+The composite pass also applies `ImageTransform` to `sourceTexture` (placing it in canvas space). `paintCanvasTexture` is always in canvas space — brush strokes map directly to canvas pixels. Downstream passes (blur, mode) operate on `compositedTexture` in canvas space. The boids shader samples at `uv = pos * 0.5 + 0.5` with no transform logic.
 
 ---
 
 ## Processing Pipeline (GPU compute passes, run on demand)
 
 ```
-sourceTexture + paintMaskTexture
+sourceTexture + imageMaskTexture + paintCanvasTexture
         │
         ▼
 [Pass 1] Composite + Transform
-   — applies ImageTransform (offset, scale)
-   — multiplies source by mask
+   — applies ImageTransform to sourceTexture (offset, scale → canvas space)
+   — output = (sourceTexture × imageMaskTexture) + paintCanvasTexture
    — writes to compositedTexture
         │
         ▼
@@ -217,8 +227,14 @@ Bind groups are rebuilt (cheaply) when an image is first loaded or swapped. When
 - "Clear Image" button (unloads image, frees VRAM, resets to dummy texture)
 
 **Editor overlay** (mounted on demand, boids continue):
-- Left sidebar: brush tool (Erase / Blur), size + softness sliders, fit presets, processing options (blur radius, threshold value, invert toggle)
-- Right canvas: image with 8 resize handles, drag-to-move, force-arrow overlay toggle, brush cursor, NDC/UV/force coordinate readout in sidebar
+- Left sidebar:
+  - Brush mode: **Paint** | **Erase paint** | **Mask image** (greyed out if no image loaded) | **Blur**
+  - Size + softness sliders
+  - Fit presets + transform sliders (only relevant when image loaded)
+  - Processing options: blur radius, threshold value, invert toggle
+  - "Reset Paint" button (clears `paintCanvasTexture`)
+  - "Clear Image" button (unloads image, resets `sourceTexture` and `imageMaskTexture`)
+- Right canvas: drag-to-move + 8 resize handles on image (if loaded), force-arrow overlay toggle, brush cursor, NDC/UV/force coordinate readout in sidebar
 - All changes apply live (immediate reprocess pass)
 - "Done" button → unmounts overlay, returns to full boids view
 
@@ -233,7 +249,7 @@ Bind groups are rebuilt (cheaply) when an image is first loaded or swapped. When
 - `src/lib/webgpu/image-editor/image-brush.ts`
 - `src/lib/webgpu/image-editor/image-editor-overlay.ts`
 - `src/lib/webgpu/image-editor/image-panel-section.ts`
-- `src/lib/webgpu/image-editor/shaders/composite.wgsl`
+- `src/lib/webgpu/image-editor/shaders/composite.wgsl`  ← three-layer blend
 - `src/lib/webgpu/image-editor/shaders/blur.wgsl`
 - `src/lib/webgpu/image-editor/shaders/mode-luminance.wgsl`
 - `src/lib/webgpu/image-editor/shaders/mode-gradient.wgsl`
