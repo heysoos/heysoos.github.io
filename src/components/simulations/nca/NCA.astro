@@ -1,5 +1,8 @@
+---
+// src/components/simulations/nca/NCA.astro
+---
 <div class="sim-container">
-  <canvas id="nca-canvas"></canvas>
+  <canvas id="nca-canvas" style="image-rendering: pixelated;"></canvas>
   <div id="nca-fallback" class="fallback" style="display:none;">
     <p>WebGPU is not supported in your browser.</p>
   </div>
@@ -14,12 +17,3 @@
     background: var(--bg-primary); color: var(--text-muted);
   }
 </style>
-
-<script>
-  import { NCAController } from './nca-controller';
-  const canvas = document.getElementById('nca-canvas') as HTMLCanvasElement;
-  const fallback = document.getElementById('nca-fallback') as HTMLElement;
-  const ctrl = new NCAController();
-  const ok = await ctrl.init(canvas);
-  if (ok) { ctrl.start(); } else { canvas.style.display = 'none'; fallback.style.display = 'flex'; }
-</script>
