@@ -25,24 +25,24 @@ function buildPerceptionCode(config: NCAConfig, nFilters: number): string {
     `    perc[c * ${nFilters}u + ${idx}u] = ${expr};`;
 
   if (filters.identity) {
-    lines.push(p(fi++, 'get(xi, yi, c)'));
+    lines.push(p(fi++, 'cell(xi, yi, c)'));
   }
   if (filters.sobelX) {
     lines.push(p(fi++,
-      '(-1.0*get(xi-1,yi-1,c) + get(xi+1,yi-1,c) +\n' +
-      '      -2.0*get(xi-1,yi,c)   + 2.0*get(xi+1,yi,c) +\n' +
-      '      -1.0*get(xi-1,yi+1,c) + get(xi+1,yi+1,c)) / 8.0'));
+      '(-1.0*cell(xi-1,yi-1,c) + cell(xi+1,yi-1,c) +\n' +
+      '      -2.0*cell(xi-1,yi,c)   + 2.0*cell(xi+1,yi,c) +\n' +
+      '      -1.0*cell(xi-1,yi+1,c) + cell(xi+1,yi+1,c)) / 8.0'));
   }
   if (filters.sobelY) {
     lines.push(p(fi++,
-      '(-1.0*get(xi-1,yi-1,c) - 2.0*get(xi,yi-1,c) - get(xi+1,yi-1,c) +\n' +
-      '       get(xi-1,yi+1,c) + 2.0*get(xi,yi+1,c) + get(xi+1,yi+1,c)) / 8.0'));
+      '(-1.0*cell(xi-1,yi-1,c) - 2.0*cell(xi,yi-1,c) - cell(xi+1,yi-1,c) +\n' +
+      '       cell(xi-1,yi+1,c) + 2.0*cell(xi,yi+1,c) + cell(xi+1,yi+1,c)) / 8.0'));
   }
   if (filters.laplacian) {
     lines.push(p(fi++,
-      '(get(xi-1,yi-1,c) + 2.0*get(xi,yi-1,c) + get(xi+1,yi-1,c) +\n' +
-      '       2.0*get(xi-1,yi,c) - 12.0*get(xi,yi,c) + 2.0*get(xi+1,yi,c) +\n' +
-      '       get(xi-1,yi+1,c) + 2.0*get(xi,yi+1,c) + get(xi+1,yi+1,c)) / 16.0'));
+      '(cell(xi-1,yi-1,c) + 2.0*cell(xi,yi-1,c) + cell(xi+1,yi-1,c) +\n' +
+      '       2.0*cell(xi-1,yi,c) - 12.0*cell(xi,yi,c) + 2.0*cell(xi+1,yi,c) +\n' +
+      '       cell(xi-1,yi+1,c) + 2.0*cell(xi,yi+1,c) + cell(xi+1,yi+1,c)) / 16.0'));
   }
   return lines.join('\n');
 }
@@ -91,7 +91,7 @@ fn pcg(v: u32) -> u32 {
   return (x >> 22u) ^ x;
 }
 
-fn get(xi: i32, yi: i32, c: u32) -> f32 {
+fn cell(xi: i32, yi: i32, c: u32) -> f32 {
   let x = u32((xi + i32(u.gridW)) % i32(u.gridW));
   let y = u32((yi + i32(u.gridH)) % i32(u.gridH));
   return stateIn[(y * u.gridW + x) * CHANNELS + c];
