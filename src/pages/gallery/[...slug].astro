@@ -747,7 +747,6 @@ const sim = project.data.simulation;
               onClose: () => { panel.style.display = 'none'; panelOpen = false; },
               onPresetLoad: (preset) => {
                 activeNCAId = preset.id;
-                buildPanel(preset.id);
               },
             });
           }

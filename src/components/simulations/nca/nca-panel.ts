@@ -122,8 +122,14 @@ export function buildNCAPanel(
   for (const preset of presets) {
     const b = btn(presetRow, preset.name, () => {
       ctrl.loadPreset(preset);
+      // Highlight active preset in-place — no panel rebuild
+      presetRow.querySelectorAll('button').forEach((b2) => {
+        (b2 as HTMLButtonElement).style.borderColor = 'var(--bg-surface-border)';
+        (b2 as HTMLButtonElement).style.color = 'var(--text-muted)';
+      });
+      b.style.borderColor = 'var(--accent)';
+      b.style.color = 'var(--accent)';
       onPresetLoad?.(preset);
-      buildNCAPanel(container, ctrl, { ...opts, activePresetId: preset.id });
     });
     if (preset.id === activePresetId) {
       b.style.borderColor = 'var(--accent)';
@@ -134,7 +140,7 @@ export function buildNCAPanel(
   btn(actionsRow, 'Random Init', () => { ctrl.randomInit(); });
 
   // ── Architecture section ──────────────────────────────────────
-  const archBody = section(container, 'Architecture', false);
+  const archBody = section(container, 'Architecture', true);
 
   archBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Channels'));
   segmented(archBody, ['8', '16', '32'], String(ctrl.config.channels), (v) => {
@@ -176,22 +182,50 @@ export function buildNCAPanel(
   slider(runtimeBody, 'dt', 0.1, 2, 0.01, ctrl.config.dt, (v) => ctrl.setParams({ dt: v }));
 
   // ── Visualization section ─────────────────────────────────────
-  const visBody = section(container, 'Visualization', false);
+  const visBody = section(container, 'Visualization', true);
   const ch = ctrl.config.channels - 1;
   slider(visBody, 'R channel', 0, ch, 1, ctrl.config.channelR, (v) => ctrl.setParams({ channelR: Math.round(v) }));
   slider(visBody, 'G channel', 0, ch, 1, ctrl.config.channelG, (v) => ctrl.setParams({ channelG: Math.round(v) }));
   slider(visBody, 'B channel', 0, ch, 1, ctrl.config.channelB, (v) => ctrl.setParams({ channelB: Math.round(v) }));
 
   // ── Grid section ──────────────────────────────────────────────
-  const gridBody = section(container, 'Grid', false);
-  gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Width'));
-  segmented(gridBody, ['128', '256', '512'], String(ctrl.config.gridWidth), (v) => {
+  const gridBody = section(container, 'Grid', true);
+
+  let aspectLocked = true;
+
+  // Locked mode: single "Resolution" control sets both W and H
+  const lockedWrap = el('div', '');
+  lockedWrap.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Resolution'));
+  segmented(lockedWrap, ['128', '256', '512'], String(ctrl.config.gridWidth), (v) => {
+    ctrl.setParams({ gridWidth: parseInt(v) as NCAGridSize, gridHeight: parseInt(v) as NCAGridSize });
+  });
+  gridBody.appendChild(lockedWrap);
+
+  // Unlocked mode: separate W and H controls
+  const unlockedWrap = el('div', 'display:none;');
+  unlockedWrap.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Width'));
+  segmented(unlockedWrap, ['128', '256', '512'], String(ctrl.config.gridWidth), (v) => {
     ctrl.setParams({ gridWidth: parseInt(v) as NCAGridSize });
   });
-  gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Height'));
-  segmented(gridBody, ['128', '256', '512'], String(ctrl.config.gridHeight), (v) => {
+  unlockedWrap.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Height'));
+  segmented(unlockedWrap, ['128', '256', '512'], String(ctrl.config.gridHeight), (v) => {
     ctrl.setParams({ gridHeight: parseInt(v) as NCAGridSize });
   });
+  gridBody.appendChild(unlockedWrap);
+
+  // Aspect lock toggle
+  const lockWrap = el('div', 'display:flex;justify-content:space-between;align-items:center;margin:0.3rem 0;');
+  lockWrap.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);', 'Lock aspect'));
+  const lockInp = el('input', 'cursor:pointer;accent-color:var(--accent);') as HTMLInputElement;
+  lockInp.type = 'checkbox'; lockInp.checked = true;
+  lockInp.addEventListener('change', () => {
+    aspectLocked = lockInp.checked;
+    lockedWrap.style.display = aspectLocked ? '' : 'none';
+    unlockedWrap.style.display = aspectLocked ? 'none' : '';
+  });
+  lockWrap.appendChild(lockInp);
+  gridBody.appendChild(lockWrap);
+
   gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Seed mode'));
   segmented(gridBody, ['random', 'center', 'blank'], ctrl.config.seedMode, (v) => {
     ctrl.setParams({ seedMode: v as NCASeedMode });
