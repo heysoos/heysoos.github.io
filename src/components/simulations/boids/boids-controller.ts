@@ -3,6 +3,8 @@ import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '..
 import shaderCode from './boids.wgsl?raw';
 import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
+import { ImageProcessor } from '../../../lib/webgpu/image-editor/image-processor';
+import { BoidsImageForce } from './boids-image-force';
 
 const MAX_PARTICLES = 500000;
 
@@ -101,6 +103,8 @@ export class BoidsController {
   private mouseY = 0;
   private mouseActive = false;
   private trailRenderer = new TrailRenderer();
+  readonly imageProcessor = new ImageProcessor();
+  readonly imageForce     = new BoidsImageForce();
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
 
@@ -117,7 +121,7 @@ export class BoidsController {
       const { device } = this.gpu;
 
       // ── Uniform / obstacle / vertex buffers ──────────────────────────
-      this.uniformBuffer = createUniformBuffer(device, 96);
+      this.uniformBuffer = createUniformBuffer(device, 112);
       // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
       this.obstacleBuffer = createUniformBuffer(device, 272);
 
@@ -229,6 +233,8 @@ export class BoidsController {
       this._createBoidsPipelines(boidsModule);
 
       this.trailRenderer.init(device, this.gpu!.format, canvas.width || 1, canvas.height || 1);
+      this.imageProcessor.init(device);
+      this.imageForce.init(device, this.imageProcessor);
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
 
@@ -259,6 +265,8 @@ export class BoidsController {
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+        { binding: 8, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } },
       ],
     });
 
@@ -273,6 +281,7 @@ export class BoidsController {
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
           { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
       device.createBindGroup({
@@ -285,6 +294,7 @@ export class BoidsController {
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
           { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
     ];
@@ -412,6 +422,7 @@ export class BoidsController {
     const resized = resizeCanvasToDisplaySize(canvas);
     if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
+      this.imageProcessor.resize(canvas.width, canvas.height);
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
@@ -419,7 +430,7 @@ export class BoidsController {
     const aspect = canvas.width > 0 && canvas.height > 0
       ? canvas.width / canvas.height : 1.0;
 
-    const uniformArray = new ArrayBuffer(96);
+    const uniformArray = new ArrayBuffer(112);
     const v = new DataView(uniformArray);
     v.setFloat32( 0, this.params.dt,                   true);
     v.setFloat32( 4, this.params.attractionRadius,      true);
@@ -447,6 +458,11 @@ export class BoidsController {
     const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
     v.setUint32 (88, gridDim,                          true);
     // byte 92: _pad3 (zero-initialized by ArrayBuffer)
+    const imgParams = this.imageForce.getExtraParams();
+    v.setFloat32(96, imgParams.imageStrength,  true);
+    v.setUint32 (100, imgParams.imageForceMode, true);
+    v.setUint32 (104, imgParams.imageInvert,    true);
+    // byte 108: _pad4 — zero from ArrayBuffer init
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const N = this.params.numParticles;
@@ -512,4 +528,16 @@ export class BoidsController {
     this.frame++;
     this.animId = requestAnimationFrame(this.tick);
   };
+
+  rebuildBoidsBindGroups(): void {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    const boidsModule = device.createShaderModule({ code: this.shaderSource });
+    this._createBoidsPipelines(boidsModule);
+  }
+
+  destroy(): void {
+    this.imageProcessor.destroy();
+    this.imageForce.destroy();
+  }
 }
