@@ -23,8 +23,8 @@ fn modeMain(@builtin(global_invocation_id) id: vec3u) {
     for (var dx = -1; dx <= 1; dx++) {
       let coord = clamp(vec2i(id.xy) + vec2i(dx, dy), vec2i(0), d - vec2i(1));
       let s     = lum(textureLoad(inTex, coord, 0));
-      let wx    = f32(dx) * select(1.0, 2.0, dx == 0);
-      let wy    = f32(dy) * select(1.0, 2.0, dy == 0);
+      let wx    = f32(dx) * select(1.0, 2.0, dy == 0); // Sobel Gx: center row weighted ×2
+      let wy    = f32(dy) * select(1.0, 2.0, dx == 0); // Sobel Gy: center col weighted ×2
       gx += s * wx;
       gy += s * wy;
     }
