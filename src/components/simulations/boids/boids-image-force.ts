@@ -9,7 +9,6 @@ export class BoidsImageForce {
   private device!: GPUDevice;
   private processor!: ImageProcessor;
   private dummyTexture!: GPUTexture;
-  private sampler!: GPUSampler;
 
   private _strength   = 0.5;
   private _forceMode: ImageForceMode = ProcessingMode.LuminanceAttract;
@@ -19,10 +18,6 @@ export class BoidsImageForce {
   init(device: GPUDevice, processor: ImageProcessor): void {
     this.device    = device;
     this.processor = processor;
-    this.sampler   = device.createSampler({
-      magFilter: 'linear', minFilter: 'linear',
-      addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge',
-    });
     // 1×1 black texture for when no image is loaded
     this.dummyTexture = device.createTexture({
       size: [1, 1, 1],
