@@ -151,7 +151,7 @@ ${percCode}
     for (var hi4 = 0u; hi4 < HIDDEN_4; hi4++) {
       d += dot(h[hi4], weights[W2_OFF4 + c * HIDDEN_4 + hi4]);
     }
-    stateOut[base + c] = clamp(stateIn[base + c] + u.dt * d, 0.0, 1.0);
+    stateOut[base + c] = stateIn[base + c] + u.dt * d;
   }
 }
 `;
@@ -184,7 +184,9 @@ fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   var r = state[cell * CHANNELS + u.channelR];
   var g = state[cell * CHANNELS + u.channelG];
   var b = state[cell * CHANNELS + u.channelB];
-  return vec4f(r, g, b, 1.0);
+  // normalizeDisplay: add 0.5 offset for models trained with Python's to_rgb (state + 0.5)
+  if (u.normalizeDisplay != 0u) { r += 0.5; g += 0.5; b += 0.5; }
+  return vec4f(clamp(r, 0.0, 1.0), clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0), 1.0);
 }
 `;
 }

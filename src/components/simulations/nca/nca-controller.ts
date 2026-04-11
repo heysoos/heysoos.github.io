@@ -92,19 +92,13 @@ export class NCAController {
     const { gridWidth: W, gridHeight: H, channels, seedMode } = this.config;
     const data = new Float32Array(W * H * channels);
     if (seedMode === 'random') {
-      for (let i = 0; i < data.length; i++) data[i] = Math.random();
+      // Match Python's initGrid: uniform [-1, 1]
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     } else if (seedMode === 'center') {
+      // Match Python's seed(): zeros everywhere, channels [3..] = 1 at center pixel
       const cx = Math.floor(W / 2), cy = Math.floor(H / 2);
-      const r = Math.min(W, H) / 16;
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-          const d = Math.hypot(x - cx, y - cy);
-          if (d < r) {
-            const base = (y * W + x) * channels;
-            for (let c = 0; c < channels; c++) data[base + c] = Math.random();
-          }
-        }
-      }
+      const base = (cy * W + cx) * channels;
+      for (let c = 3; c < channels; c++) data[base + c] = 1.0;
     }
     // 'blank' → all zeros (already)
     device.queue.writeBuffer(this.stateA, 0, data);

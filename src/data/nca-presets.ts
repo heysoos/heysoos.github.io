@@ -20,8 +20,8 @@ const BASE_CONFIG = {
   channelR: 0,
   channelG: 1,
   channelB: 2,
-  normalizeDisplay: false,
-  seedMode: 'random' as const,
+  normalizeDisplay: true,
+  seedMode: 'center' as const,
 };
 
 export const NCA_PRESETS: NCAPreset[] = [
