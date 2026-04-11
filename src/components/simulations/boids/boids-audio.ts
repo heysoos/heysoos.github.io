@@ -82,7 +82,7 @@ export class AudioReactor {
   activeSourceKind: AudioSourceKind | null = null;
 
   constructor() {
-    this.loadMappings();
+    try { this.loadMappings(); } catch { /* mappings stay empty until implemented */ }
   }
 
   isActive(): boolean {
