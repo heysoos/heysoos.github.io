@@ -36,6 +36,7 @@ const sim = project.data.simulation;
           <div class="shader-errors" id="shader-errors" style="display:none;"></div>
         </div>
       </div>
+      <div id="fps-display" class="fps-display"></div>
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -406,6 +407,19 @@ const sim = project.data.simulation;
     width: 100%;
   }
 
+  .fps-display {
+    position: absolute;
+    bottom: 0.6rem;
+    left: 0.75rem;
+    font-family: monospace;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.6;
+  }
+
   h1 {
     margin-bottom: 1.5rem;
   }
@@ -466,6 +480,22 @@ const sim = project.data.simulation;
       const ok = await controller.init(canvas);
       if (ok) {
         controller.start();
+
+        // ── FPS counter ────────────────────────────────────────────────────
+        const fpsEl = document.getElementById('fps-display') as HTMLElement;
+        let fpsFrames = 0;
+        let fpsLast = performance.now();
+        const trackFps = () => {
+          fpsFrames++;
+          const now = performance.now();
+          if (now - fpsLast >= 500) {
+            fpsEl.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsLast))} fps`;
+            fpsFrames = 0;
+            fpsLast = now;
+          }
+          requestAnimationFrame(trackFps);
+        };
+        requestAnimationFrame(trackFps);
 
         if (sim === 'boids') {
           const boidsCtrl = controller as BoidsController;
