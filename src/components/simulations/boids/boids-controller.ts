@@ -423,6 +423,7 @@ export class BoidsController {
     if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
+      this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
