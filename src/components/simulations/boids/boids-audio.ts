@@ -90,8 +90,57 @@ export class AudioReactor {
   }
 
   // ── Implemented in later tasks ────────────────────────────────────────────
-  async start(_sourceKind: AudioSourceKind): Promise<void> { throw new Error('Not implemented'); }
-  stop(): void { throw new Error('Not implemented'); }
+  async start(sourceKind: AudioSourceKind): Promise<void> {
+    this.stop(); // clean up any previous session
+    try {
+      let stream: MediaStream;
+      if (sourceKind === 'microphone') {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } else {
+        // getDisplayMedia captures system audio; video: false is ignored on some browsers
+        // but required in the constraints object by the spec.
+        const display = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+        // Drop any video tracks — we only want audio
+        display.getVideoTracks().forEach(t => t.stop());
+        const audioTracks = display.getAudioTracks();
+        if (audioTracks.length === 0) {
+          display.getTracks().forEach(t => t.stop());
+          throw new Error('No audio track in system capture. Select "Share system audio" in the dialog.');
+        }
+        stream = new MediaStream(audioTracks);
+      }
+      this.stream = stream;
+      this.ctx = new AudioContext();
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = FFT_SIZE;
+      this.analyser.smoothingTimeConstant = 0.8;
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      this.source = this.ctx.createMediaStreamSource(stream);
+      this.source.connect(this.analyser);
+      this.activeSourceKind = sourceKind;
+      this.status = 'active';
+      this.lastError = '';
+    } catch (e) {
+      this.status = 'error';
+      this.lastError = e instanceof Error ? e.message : String(e);
+      this.stop();
+      throw e;
+    }
+  }
+
+  stop(): void {
+    this.source?.disconnect();
+    this.stream?.getTracks().forEach(t => t.stop());
+    if (this.ctx && this.ctx.state !== 'closed') {
+      void this.ctx.close();
+    }
+    this.source  = null;
+    this.stream  = null;
+    this.ctx     = null;
+    this.analyser = null;
+    this.activeSourceKind = null;
+    if (this.status === 'active') this.status = 'idle';
+  }
   analyze(): BandSnapshot { throw new Error('Not implemented'); }
   getFrequencyData(): Uint8Array { throw new Error('Not implemented'); }
   applyMappings(_params: BoidsParams, _snapshot: BandSnapshot): void { throw new Error('Not implemented'); }
