@@ -97,7 +97,7 @@ fn readState(xi: i32, yi: i32, c: u32) -> f32 {
   return stateIn[(y * u.gridW + x) * CHANNELS + c];
 }
 
-@compute @workgroup_size(8, 8)
+@compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= u.gridW || id.y >= u.gridH) { return; }
   let xi   = i32(id.x);

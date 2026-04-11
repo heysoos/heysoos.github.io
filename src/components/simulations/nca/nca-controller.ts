@@ -197,7 +197,7 @@ export class NCAController {
       const pass = encoder.beginComputePass();
       pass.setPipeline(this.computePipeline);
       pass.setBindGroup(0, this.computeBindGroups[this.pingPong]);
-      pass.dispatchWorkgroups(Math.ceil(W / 8), Math.ceil(H / 8));
+      pass.dispatchWorkgroups(Math.ceil(W / 16), Math.ceil(H / 16));
       pass.end();
 
       this.pingPong ^= 1;
