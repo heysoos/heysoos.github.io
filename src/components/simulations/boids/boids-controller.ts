@@ -97,6 +97,9 @@ export class BoidsController {
   private frame = 0;
   private running = false;
   private animId = 0;
+  private usingRaf = true;
+  maxFps = Infinity;
+  tickCount = 0;
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
@@ -376,7 +379,8 @@ export class BoidsController {
 
   stop() {
     this.running = false;
-    cancelAnimationFrame(this.animId);
+    if (this.usingRaf) cancelAnimationFrame(this.animId);
+    else clearTimeout(this.animId);
   }
 
   reset() {
@@ -407,6 +411,7 @@ export class BoidsController {
 
   private tick = () => {
     if (!this.running || !this.gpu) return;
+    const frameStart = performance.now();
     const { device, context, canvas } = this.gpu;
 
     const resized = resizeCanvasToDisplaySize(canvas);
@@ -510,6 +515,17 @@ export class BoidsController {
     );
 
     this.frame++;
-    this.animId = requestAnimationFrame(this.tick);
+    void device.queue.onSubmittedWorkDone().then(() => {
+      if (!this.running) return;
+      this.tickCount++;
+      if (Number.isFinite(this.maxFps)) {
+        this.usingRaf = false;
+        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
+        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
+      } else {
+        this.usingRaf = true;
+        this.animId = requestAnimationFrame(this.tick);
+      }
+    });
   };
 }

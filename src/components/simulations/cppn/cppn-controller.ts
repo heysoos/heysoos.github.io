@@ -107,6 +107,9 @@ export class CPPNController {
   private layout!:        WeightLayout;
   private running   = false;
   private animId    = 0;
+  private usingRaf  = true;
+  maxFps    = Infinity;
+  tickCount = 0;
   private animate   = true;
   private startTime = performance.now();
   private dimOffsets    = new Float32Array(Z_DIM);
@@ -239,7 +242,11 @@ export class CPPNController {
     this.tick();
   }
 
-  stop(): void { this.running = false; cancelAnimationFrame(this.animId); }
+  stop(): void {
+    this.running = false;
+    if (this.usingRaf) cancelAnimationFrame(this.animId);
+    else clearTimeout(this.animId);
+  }
 
   reset(): void {
     this.randomizeDimOffsets();
@@ -264,6 +271,7 @@ export class CPPNController {
 
   private tick = (): void => {
     if (!this.running || !this.gpu || !this.pipeline) return;
+    const frameStart = performance.now();
     const { device, context, canvas } = this.gpu;
     resizeCanvasToDisplaySize(canvas);
     if (this.maxResolution > 0) {
@@ -300,6 +308,17 @@ export class CPPNController {
     pass.draw(6);
     pass.end();
     device.queue.submit([encoder.finish()]);
-    this.animId = requestAnimationFrame(this.tick);
+    void device.queue.onSubmittedWorkDone().then(() => {
+      if (!this.running) return;
+      this.tickCount++;
+      if (Number.isFinite(this.maxFps)) {
+        this.usingRaf = false;
+        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
+        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
+      } else {
+        this.usingRaf = true;
+        this.animId = requestAnimationFrame(this.tick);
+      }
+    });
   };
 }

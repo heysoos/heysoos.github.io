@@ -36,6 +36,20 @@ const sim = project.data.simulation;
           <div class="shader-errors" id="shader-errors" style="display:none;"></div>
         </div>
       </div>
+      <div id="fps-display" class="fps-display">
+        <span id="fps-value">-- fps</span>
+        <div class="fps-popup" id="fps-popup">
+          <label class="fps-row">
+            <input type="checkbox" id="fps-unlimited" checked>
+            <span>Display rate</span>
+          </label>
+          <div class="fps-slider-row" id="fps-slider-row">
+            <span id="fps-slider-label">60</span>
+            <input type="range" id="fps-slider" min="10" max="360" step="5" value="60">
+            <span style="color:var(--text-muted);font-size:0.6rem">fps cap</span>
+          </div>
+        </div>
+      </div>
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -406,6 +420,95 @@ const sim = project.data.simulation;
     width: 100%;
   }
 
+  .fps-display {
+    position: absolute;
+    bottom: 0.6rem;
+    left: 0.75rem;
+    /* Extra padding enlarges the hover target on all sides */
+    padding: 4px 8px;
+    font-family: monospace;
+    font-size: 0.68rem;
+    color: var(--text-primary);
+    letter-spacing: 0.03em;
+    z-index: 10;
+    opacity: 0.55;
+    cursor: default;
+    transition: opacity 0.15s;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
+  }
+
+  .fps-display:hover {
+    opacity: 1;
+  }
+
+  /* Invisible bridge fills the gap so the popup doesn't vanish mid-move */
+  .fps-display::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 12px;
+  }
+
+  .fps-popup {
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    background: var(--bg-nav);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: var(--border-radius);
+    backdrop-filter: blur(8px);
+    padding: 0.5rem 0.65rem;
+    min-width: 140px;
+    white-space: nowrap;
+  }
+
+  .fps-display:hover .fps-popup {
+    display: flex;
+  }
+
+  .fps-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: var(--text-body);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .fps-row input[type=checkbox] {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .fps-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: var(--text-body);
+  }
+
+  .fps-slider-row input[type=range] {
+    width: 80px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  #fps-slider-label {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.2rem;
+    text-align: right;
+  }
+
   h1 {
     margin-bottom: 1.5rem;
   }
@@ -440,6 +543,8 @@ const sim = project.data.simulation;
   import { BOIDS_PRESETS } from '../../data/boids-presets';
   import { buildCPPNPanel } from '../../components/simulations/cppn/cppn-panel';
   import { CPPN_PRESETS } from '../../data/cppn-presets';
+  import { buildNCAPanel } from '../../components/simulations/nca/nca-panel';
+  import { NCA_PRESETS } from '../../data/nca-presets';
 
   const viewport = document.getElementById('sim-viewport') as HTMLElement;
   const sim = viewport.dataset.sim!;
@@ -464,6 +569,46 @@ const sim = project.data.simulation;
       const ok = await controller.init(canvas);
       if (ok) {
         controller.start();
+
+        // ── FPS counter + throttle UI ──────────────────────────────────────
+        const fpsValue    = document.getElementById('fps-value') as HTMLElement;
+        const fpsUnlimited = document.getElementById('fps-unlimited') as HTMLInputElement;
+        const fpsSlider   = document.getElementById('fps-slider') as HTMLInputElement;
+        const fpsSliderLabel = document.getElementById('fps-slider-label') as HTMLElement;
+        const fpsSliderRow = document.getElementById('fps-slider-row') as HTMLElement;
+        const ctrl = controller as unknown as { maxFps: number; tickCount: number };
+
+        // Measure FPS by sampling tickCount every 500 ms (accurate in unlimited mode)
+        let lastTick = ctrl.tickCount;
+        let lastMs   = performance.now();
+        setInterval(() => {
+          const now   = performance.now();
+          const ticks = ctrl.tickCount - lastTick;
+          const fps   = Math.round(ticks * 1000 / (now - lastMs));
+          fpsValue.textContent = `${fps} fps`;
+          lastTick = ctrl.tickCount;
+          lastMs   = now;
+        }, 500);
+
+        // Apply throttle setting to the controller
+        function applyMaxFps(): void {
+          if (fpsUnlimited.checked) {
+            ctrl.maxFps = Infinity;
+            fpsSliderRow.style.opacity = '0.35';
+            fpsSliderRow.style.pointerEvents = 'none';
+          } else {
+            ctrl.maxFps = parseInt(fpsSlider.value);
+            fpsSliderRow.style.opacity = '';
+            fpsSliderRow.style.pointerEvents = '';
+          }
+        }
+
+        fpsUnlimited.addEventListener('change', applyMaxFps);
+        fpsSlider.addEventListener('input', () => {
+          fpsSliderLabel.textContent = fpsSlider.value;
+          applyMaxFps();
+        });
+        applyMaxFps(); // apply default (unlimited)
 
         if (sim === 'boids') {
           const boidsCtrl = controller as BoidsController;
@@ -586,6 +731,28 @@ const sim = project.data.simulation;
           buildPanel(activeCPPNId);
         }
 
+        if (sim === 'nca') {
+          const ncaCtrl = controller as NCAController;
+
+          const defaultPreset = NCA_PRESETS.find(p => p.isDefault) ?? NCA_PRESETS[0];
+          if (defaultPreset) ncaCtrl.loadPreset(defaultPreset);
+
+          let activeNCAId = defaultPreset?.id;
+
+          function buildPanel(activeId?: string): void {
+            panel.innerHTML = '';
+            buildNCAPanel(panel, ncaCtrl, {
+              presets: NCA_PRESETS,
+              activePresetId: activeId,
+              onClose: () => { panel.style.display = 'none'; panelOpen = false; },
+              onPresetLoad: (preset) => {
+                activeNCAId = preset.id;
+              },
+            });
+          }
+          buildPanel(activeNCAId);
+        }
+
         // ── Controls bar ───────────────────────────────────────────────────
 
         const controls = document.getElementById(`controls-${sim}`);
@@ -605,7 +772,7 @@ const sim = project.data.simulation;
             controller.reset();
           } else if (action === 'fullscreen') {
             document.getElementById('sim-viewport')?.requestFullscreen();
-          } else if (action === 'settings' && (sim === 'boids' || sim === 'cppn')) {
+          } else if (action === 'settings' && (sim === 'boids' || sim === 'cppn' || sim === 'nca')) {
             panelOpen = !panelOpen;
             panel.style.display = panelOpen ? 'flex' : 'none';
           }
