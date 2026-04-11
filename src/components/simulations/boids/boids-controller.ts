@@ -105,6 +105,7 @@ export class BoidsController {
   private trailRenderer = new TrailRenderer();
   readonly imageProcessor = new ImageProcessor();
   readonly imageForce     = new BoidsImageForce();
+  private overlayPipeline: GPURenderPipeline | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
 
@@ -231,6 +232,7 @@ export class BoidsController {
       // ── Image processor + force must be ready before bind groups ─────
       this.imageProcessor.init(device);
       this.imageForce.init(device, this.imageProcessor);
+      this._buildOverlayPipeline(this.gpu.format);
 
       // ── Boids update + render pipelines ──────────────────────────────
       const boidsModule = device.createShaderModule({ code: shaderCode });
@@ -528,9 +530,66 @@ export class BoidsController {
       },
     );
 
+    // ── Image overlay ─────────────────────────────────────────────────
+    if (this.imageForce.isActive() && this.overlayPipeline) {
+      const bg = device.createBindGroup({
+        layout: this.overlayPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.imageProcessor.getOutputSampler() },
+          { binding: 1, resource: this.imageProcessor.getCompositedTexture().createView() },
+        ],
+      });
+      const enc  = device.createCommandEncoder();
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{
+          view:    context.getCurrentTexture().createView(),
+          loadOp:  'load',
+          storeOp: 'store',
+        }],
+      });
+      pass.setPipeline(this.overlayPipeline);
+      pass.setBindGroup(0, bg);
+      pass.draw(6);
+      pass.end();
+      device.queue.submit([enc.finish()]);
+    }
+
     this.frame++;
     this.animId = requestAnimationFrame(this.tick);
   };
+
+  private _buildOverlayPipeline(format: GPUTextureFormat): void {
+    const { device } = this.gpu!;
+    const wgsl = /* wgsl */`
+      @group(0) @binding(0) var s: sampler;
+      @group(0) @binding(1) var t: texture_2d<f32>;
+      struct V { @builtin(position) p: vec4f, @location(0) uv: vec2f }
+      @vertex fn vs(@builtin(vertex_index) i: u32) -> V {
+        var pos = array<vec2f,6>(
+          vec2f(-1,-1),vec2f(1,-1),vec2f(-1,1),
+          vec2f(-1,1),vec2f(1,-1),vec2f(1,1));
+        let p = pos[i];
+        return V(vec4f(p,0,1), p * vec2f(0.5,-0.5) + vec2f(0.5));
+      }
+      @fragment fn fs(v: V) -> @location(0) vec4f {
+        let c = textureSample(t, s, v.uv);
+        return vec4f(c.rgb, c.a * 0.45);
+      }
+    `;
+    const mod = device.createShaderModule({ code: wgsl });
+    this.overlayPipeline = device.createRenderPipeline({
+      layout: 'auto',
+      vertex:   { module: mod, entryPoint: 'vs' },
+      fragment: { module: mod, entryPoint: 'fs', targets: [{
+        format,
+        blend: {
+          color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+          alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        },
+      }]},
+      primitive: { topology: 'triangle-list' },
+    });
+  }
 
   rebuildBoidsBindGroups(): void {
     if (!this.gpu) return;

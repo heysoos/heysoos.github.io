@@ -214,8 +214,9 @@ export class ImageProcessor {
     this._triggerReprocess();
   }
 
-  getOutputTexture(): GPUTexture  { return this.processedTexture; }
-  getOutputSampler(): GPUSampler  { return this.sampler; }
+  getOutputTexture(): GPUTexture    { return this.processedTexture; }
+  getCompositedTexture(): GPUTexture { return this.compositedTexture; }
+  getOutputSampler(): GPUSampler    { return this.sampler; }
 
   setThumbnailContext(ctx: GPUCanvasContext): void {
     this.thumbnailContext = ctx;
