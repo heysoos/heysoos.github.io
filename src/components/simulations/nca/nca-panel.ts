@@ -184,10 +184,13 @@ export function buildNCAPanel(
 
   // ── Grid section ──────────────────────────────────────────────
   const gridBody = section(container, 'Grid', false);
-  gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Resolution'));
+  gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin-bottom:0.2rem;', 'Width'));
   segmented(gridBody, ['128', '256', '512'], String(ctrl.config.gridWidth), (v) => {
-    const s = parseInt(v) as NCAGridSize;
-    ctrl.setParams({ gridWidth: s, gridHeight: s });
+    ctrl.setParams({ gridWidth: parseInt(v) as NCAGridSize });
+  });
+  gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Height'));
+  segmented(gridBody, ['128', '256', '512'], String(ctrl.config.gridHeight), (v) => {
+    ctrl.setParams({ gridHeight: parseInt(v) as NCAGridSize });
   });
   gridBody.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);display:block;margin:0.3rem 0 0.2rem;', 'Seed mode'));
   segmented(gridBody, ['random', 'center', 'blank'], ctrl.config.seedMode, (v) => {

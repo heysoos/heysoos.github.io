@@ -12,6 +12,11 @@ import {
 const UNIFORMS_COUNT = 12;
 const UNIFORMS_BYTES = UNIFORMS_COUNT * 4;
 
+// Preallocated staging buffer — reused every frame, no GC pressure
+const uniformStaging = new ArrayBuffer(UNIFORMS_BYTES);
+const uniformF32 = new Float32Array(uniformStaging);
+const uniformU32 = new Uint32Array(uniformStaging);
+
 export class NCAController {
   private gpu: WebGPUContext | null = null;
   private computePipeline!: GPUComputePipeline;
@@ -55,6 +60,7 @@ export class NCAController {
       this.gpu.device.queue.writeBuffer(this.weightBuffer, 0, weights);
       await this.buildPipelines();
       this.updateUniforms();
+      this.applyCanvasStyle();
       this.setupBrushEvents();
       return true;
     } catch (e) {
@@ -154,19 +160,30 @@ export class NCAController {
 
   private updateUniforms(): void {
     const { fireRate, dt, gridWidth, gridHeight, channelR, channelG, channelB, normalizeDisplay } = this.config;
-    const u = new ArrayBuffer(UNIFORMS_BYTES);
-    const f = new Float32Array(u);
-    const i = new Uint32Array(u);
-    f[0] = fireRate;
-    f[1] = dt;
-    i[2] = this.frameIndex;
-    i[3] = gridWidth;
-    i[4] = gridHeight;
-    i[5] = channelR;
-    i[6] = channelG;
-    i[7] = channelB;
-    i[8] = normalizeDisplay ? 1 : 0;
-    this.gpu!.device.queue.writeBuffer(this.uniformBuffer, 0, u);
+    uniformF32[0] = fireRate;
+    uniformF32[1] = dt;
+    uniformU32[2] = this.frameIndex;
+    uniformU32[3] = gridWidth;
+    uniformU32[4] = gridHeight;
+    uniformU32[5] = channelR;
+    uniformU32[6] = channelG;
+    uniformU32[7] = channelB;
+    uniformU32[8] = normalizeDisplay ? 1 : 0;
+    this.gpu!.device.queue.writeBuffer(this.uniformBuffer, 0, uniformStaging);
+  }
+
+  private applyCanvasStyle(): void {
+    const { gridWidth: W, gridHeight: H } = this.config;
+    // Override the gallery page's width:100%;height:100% — display at exact pixel size, centered
+    this.canvas.style.width = `${W}px`;
+    this.canvas.style.height = `${H}px`;
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '50%';
+    this.canvas.style.left = '50%';
+    this.canvas.style.transform = 'translate(-50%, -50%)';
+    this.canvas.style.imageRendering = 'pixelated';
+    this.canvas.style.maxWidth = 'none';
+    this.canvas.style.maxHeight = 'none';
   }
 
   // ── Public API ────────────────────────────────────────────────────
@@ -180,32 +197,30 @@ export class NCAController {
     const { device, context } = this.gpu;
     const { gridWidth: W, gridHeight: H } = this.config;
 
-    // Resize canvas to grid size (pixelated CSS scaling handles display)
+    // Set canvas to exact grid size and override CSS stretching
     if (this.canvas.width !== W || this.canvas.height !== H) {
       this.canvas.width  = W;
       this.canvas.height = H;
+      this.applyCanvasStyle();
     }
+
+    // Write uniforms ONCE per frame (not per step) — avoids CPU→GPU sync inside the loop
+    this.updateUniforms();
 
     const encoder = device.createCommandEncoder();
 
-    // Run stepsPerFrame compute passes (ping-pong)
+    // Encode all stepsPerFrame compute passes in one go — no intermediate submits
     for (let s = 0; s < this.config.stepsPerFrame; s++) {
-      // Update frameIndex uniform before each step
-      const iu = new Uint32Array([this.frameIndex]);
-      device.queue.writeBuffer(this.uniformBuffer, 8, iu); // offset 8 = frameIndex (u32 at index 2)
-
       const pass = encoder.beginComputePass();
       pass.setPipeline(this.computePipeline);
       pass.setBindGroup(0, this.computeBindGroups[this.pingPong]);
       pass.dispatchWorkgroups(Math.ceil(W / 16), Math.ceil(H / 16));
       pass.end();
-
       this.pingPong ^= 1;
-      this.frameIndex++;
     }
+    this.frameIndex += this.config.stepsPerFrame;
 
     // Render pass — read from the most recently written buffer
-    const readBuf = this.pingPong; // after ping-pong flips, pingPong points to the last output
     const renderPass = encoder.beginRenderPass({
       colorAttachments: [{
         view: context.getCurrentTexture().createView(),
@@ -214,7 +229,7 @@ export class NCAController {
       }],
     });
     renderPass.setPipeline(this.renderPipeline);
-    renderPass.setBindGroup(0, this.renderBindGroups[readBuf]);
+    renderPass.setBindGroup(0, this.renderBindGroups[this.pingPong]);
     renderPass.draw(6);
     renderPass.end();
 
