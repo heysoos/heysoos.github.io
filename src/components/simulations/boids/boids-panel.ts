@@ -626,7 +626,7 @@ function buildAudioTab(
     ].join('');
   }
 
-  function buildMappingRow(mapping: AudioMapping, index: number): HTMLDivElement {
+  function buildMappingRow(mapping: AudioMapping): HTMLDivElement {
     const row = document.createElement('div');
     row.style.cssText = 'padding:5px 8px;border-top:1px solid var(--bg-surface-border);display:flex;flex-direction:column;gap:4px;';
 
@@ -798,8 +798,8 @@ function buildAudioTab(
 
   function rebuildMappingsList(): void {
     mappingsList.innerHTML = '';
-    reactor.mappings.forEach((m, i) => {
-      mappingsList.appendChild(buildMappingRow(m, i));
+    reactor.mappings.forEach((m) => {
+      mappingsList.appendChild(buildMappingRow(m));
     });
   }
 

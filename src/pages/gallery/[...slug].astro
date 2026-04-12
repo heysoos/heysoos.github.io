@@ -654,7 +654,7 @@ const sim = project.data.simulation;
               presets: BOIDS_PRESETS,
               activePresetId: activeId,
               reactor,
-              onClose: () => { panel.style.display = 'none'; panelOpen = false; },
+              onClose: () => { panelControls?.teardown(); panel.style.display = 'none'; panelOpen = false; },
               onShaderEdit: () => {
                 shaderEditorOpen = !shaderEditorOpen;
                 shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
