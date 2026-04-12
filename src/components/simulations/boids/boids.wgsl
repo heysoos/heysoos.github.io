@@ -27,11 +27,11 @@ struct Params {
   opacity:      f32,  // 80 — global opacity multiplier
   opacityMode:  u32,  // 84 — 0=velocity-based, 1=uniform
   gridDim:      u32,  // 88 — active grid dimension (4–64)
-  _pad3:        f32,  // 92
+  tick:         u32,  // 92 — frame counter for noise seed
   imageStrength:  f32,  // 96 — 0.0 = feature disabled
   imageForceMode: u32,  // 100
   imageInvert:    u32,  // 104
-  _pad4:          f32,  // 108 — total 112 bytes
+  noise:          f32,  // 108 — random velocity perturbation magnitude per frame
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -51,6 +51,20 @@ struct Obstacles {
 @group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(7) var imageTexture: texture_2d<f32>;
 @group(0) @binding(8) var imageSampler: sampler;
+
+// PCG hash (well-distributed, GPU-safe integer arithmetic)
+fn pcg(n: u32) -> u32 {
+  var x = n * 747796405u + 2891336453u;
+  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+
+// Random vec2f in [-1,1]² from particle index + frame tick
+fn rand2(index: u32, tick: u32) -> vec2f {
+  let s1 = pcg(index ^ (tick * 2654435761u));
+  let s2 = pcg(s1 + 1u);
+  return vec2f(f32(s1), f32(s2)) / f32(0xffffffffu) * 2.0 - vec2f(1.0);
+}
 
 fn obstacleForce(pos: vec2f) -> vec2f {
   var force = vec2f(0.0);
@@ -216,6 +230,15 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     if (params.imageInvert == 1u) { imgForce = -imgForce; }
     // Convert canvas-space force (y-down) back to clip-space (y-up)
     vel += vec2f(imgForce.x, -imgForce.y) * params.imageStrength;
+  }
+
+  // Random noise perturbation (applied last so it doesn't interfere with steering)
+  if (params.noise > 0.0) {
+    vel += rand2(index, params.tick) * params.noise;
+    let nsp = length(vel);
+    if (nsp > params.maxSpeed && nsp > 0.0001) {
+      vel = vel * (params.maxSpeed / nsp);
+    }
   }
 
   // Integrate position

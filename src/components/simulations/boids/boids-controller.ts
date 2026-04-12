@@ -40,6 +40,7 @@ export interface BoidsParams {
   colorB: number;
   opacity: number;
   opacityMode: number;
+  noise?: number;
 }
 
 const DEFAULT_PARAMS: BoidsParams = {
@@ -61,6 +62,7 @@ const DEFAULT_PARAMS: BoidsParams = {
   colorB: 0.25,
   opacity: 1.0,
   opacityMode: 0,
+  noise: 0.0,
 };
 
 export class BoidsController {
@@ -467,12 +469,12 @@ export class BoidsController {
     // byte 88: gridDim — adaptive grid dimension based on attractionRadius
     const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
     v.setUint32 (88, gridDim,                          true);
-    // byte 92: _pad3 (zero-initialized by ArrayBuffer)
+    v.setUint32 (92, this.frame,                       true);  // tick — noise seed
     const imgParams = this.imageForce.getExtraParams();
     v.setFloat32(96, imgParams.imageStrength,  true);
     v.setUint32 (100, imgParams.imageForceMode, true);
     v.setUint32 (104, imgParams.imageInvert,    true);
-    // byte 108: _pad4 — zero from ArrayBuffer init
+    v.setFloat32(108, this.params.noise ?? 0.0, true);
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const N = this.params.numParticles;

@@ -341,8 +341,9 @@ export function buildBoidsPanel(
   addSlider(container, 'Attraction',        0,    2.0,  0.01,  () => controller.params.attraction,       v => { controller.params.attraction = v; });
   addSlider(container, 'Repulsion',         0,    5.0,  0.05,  () => controller.params.repulsion,        v => { controller.params.repulsion = v; });
   addSlider(container, 'Alignment',         0,    1.0,  0.01,  () => controller.params.alignment,        v => { controller.params.alignment = v; });
-  addSlider(container, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,         v => { controller.params.friction = v; });
-  addSlider(container, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,         v => { controller.params.maxSpeed = v; });
+  addSlider(container, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,              v => { controller.params.friction = v; });
+  addSlider(container, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,              v => { controller.params.maxSpeed = v; });
+  addSlider(container, 'Noise',             0,    0.5,  0.005, () => controller.params.noise ?? 0,            v => { controller.params.noise = v; });
 
   // ── Perception ────────────────────────────────────────────────────
   addSection(container, 'Perception');
