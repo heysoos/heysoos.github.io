@@ -606,7 +606,7 @@ function buildAudioTab(
 
   // ── Mappings section ──────────────────────────────────────────────
   const mappingsSection = document.createElement('div');
-  mappingsSection.style.cssText = 'padding:0 0 4px;';
+  mappingsSection.style.cssText = 'padding:0 0 4px;border-bottom:1px solid var(--bg-surface-border);';
 
   const mappingsLabel = document.createElement('div');
   mappingsLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);padding:6px 8px 3px;';
@@ -664,7 +664,8 @@ function buildAudioTab(
       'cursor:pointer;font-size:0.9rem;padding:0 2px;line-height:1;',
     ].join('');
     removeBtn.addEventListener('click', () => {
-      reactor.mappings.splice(index, 1);
+      const idx = reactor.mappings.indexOf(mapping);
+      if (idx !== -1) reactor.mappings.splice(idx, 1);
       reactor.saveMappings();
       rebuildMappingsList();
     });
