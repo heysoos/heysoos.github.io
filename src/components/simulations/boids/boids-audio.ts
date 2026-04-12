@@ -209,6 +209,86 @@ export class AudioReactor {
     }
   }
 
-  saveMappings(): void { throw new Error('Not implemented'); }
-  loadMappings(): void { throw new Error('Not implemented'); }
+  saveMappings(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.mappings));
+    } catch {
+      // localStorage unavailable (e.g. private browsing quota) — silently ignore
+    }
+  }
+
+  loadMappings(): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as AudioMapping[];
+      // Validate each entry has required fields and param is still valid
+      this.mappings = parsed.filter(
+        m => typeof m.param === 'string'
+          && m.param in PARAM_META
+          && typeof m.band === 'string'
+          && typeof m.depth === 'number'
+          && typeof m.min === 'number'
+          && typeof m.max === 'number'
+          && typeof m.enabled === 'boolean'
+      );
+    } catch {
+      this.mappings = [];
+    }
+  }
+}
+
+// ── Factory: create a new mapping with sensible defaults ─────────────────────
+
+export function defaultMapping(usedParams: (keyof BoidsParams)[] = []): AudioMapping {
+  // Pick the first param not already in use; fall back to the first param
+  const param = MAPPABLE_PARAMS.find(p => !usedParams.includes(p)) ?? MAPPABLE_PARAMS[0];
+  const meta  = PARAM_META[param as string];
+  return {
+    param,
+    band:    'bass',
+    mode:    'add',
+    depth:   0.5,
+    min:     meta.min,
+    max:     meta.max,
+    enabled: true,
+  };
+}
+
+// ── Spectrum visualiser helper ───────────────────────────────────────────────
+// Call from a rAF loop when the Audio tab is visible.
+
+export function drawAudioViz(canvas: HTMLCanvasElement, reactor: AudioReactor): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const { width, height } = canvas;
+  ctx.clearRect(0, 0, width, height);
+
+  const data = reactor.getFrequencyData();
+  const numBars = 64; // display 64 bars across the full spectrum
+  const binStep = Math.floor(data.length / numBars);
+  const barW    = width / numBars;
+
+  // Determine band colour for each bar by Hz range
+  const sampleRate  = 44100; // fallback; real rate used during active analysis
+  const hzPerBin    = sampleRate / (data.length * 2);
+
+  for (let i = 0; i < numBars; i++) {
+    const binIdx = i * binStep;
+    const hz     = binIdx * hzPerBin;
+    const val    = data[binIdx] / 255;
+
+    let color: string;
+    if      (hz < 250)  color = BAND_COLORS.bass;
+    else if (hz < 2000) color = BAND_COLORS.mid;
+    else if (hz < 6000) color = BAND_COLORS.presence;
+    else                color = BAND_COLORS.hi;
+
+    const barH = val * height;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(i * barW, height - barH, barW - 1, barH);
+  }
+  ctx.globalAlpha = 1;
 }
