@@ -559,9 +559,82 @@ function buildAudioTab(
   // Sync UI to current reactor state (reactor may already be active from a prior panel build)
   updateStatus();
 
-  // ── Spectrum canvas + band meters (Task 8) ── placeholder ─────────
+  // ── Spectrum canvas ───────────────────────────────────────────────
+  const canvasSection = document.createElement('div');
+  canvasSection.style.cssText = 'padding:6px 8px 4px;border-bottom:1px solid var(--bg-surface-border);';
+
+  const vizCanvas = document.createElement('canvas');
+  vizCanvas.width  = 184;
+  vizCanvas.height = 40;
+  vizCanvas.style.cssText = 'width:100%;height:40px;display:block;border-radius:2px;background:#06050a;';
+  canvasSection.appendChild(vizCanvas);
+
+  // Band meters
+  const metersRow = document.createElement('div');
+  metersRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:5px;';
+
+  const BAND_KEYS: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
+  const BAND_LABELS: Record<BandKey, string> = {
+    bass: 'bass', mid: 'mid', presence: 'pres', hi: 'hi', volume: 'vol',
+  };
+
+  const meterBars: Partial<Record<BandKey, HTMLDivElement>> = {};
+
+  for (const band of BAND_KEYS) {
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;';
+
+    const barWrap = document.createElement('div');
+    barWrap.style.cssText = 'width:100%;height:16px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;display:flex;align-items:flex-end;';
+
+    const bar = document.createElement('div');
+    bar.style.cssText = `width:100%;height:0%;background:${BAND_COLORS[band]};transition:height 0.05s;`;
+    barWrap.appendChild(bar);
+    meterBars[band] = bar;
+
+    const label = document.createElement('div');
+    label.style.cssText = `font-size:0.55rem;color:${BAND_COLORS[band]};letter-spacing:0.04em;`;
+    label.textContent = BAND_LABELS[band];
+
+    col.appendChild(barWrap);
+    col.appendChild(label);
+    metersRow.appendChild(col);
+  }
+
+  canvasSection.appendChild(metersRow);
+  container.appendChild(canvasSection);
+
   // ── Mapping rows (Task 9) ── placeholder ──────────────────────────
 
-  // Return start/stop controls (no rAF yet — added in Task 8)
-  return { start: () => {}, stop: () => {} };
+  // ── Visualiser rAF loop (runs only when Audio tab is visible) ─────
+  let vizRafId = 0;
+
+  function startViz(): void {
+    cancelAnimationFrame(vizRafId);
+    function loop(): void {
+      if (reactor.isActive()) {
+        const snapshot = reactor.analyze();
+        drawAudioViz(vizCanvas, reactor);
+        for (const band of BAND_KEYS) {
+          const bar = meterBars[band];
+          if (bar) bar.style.height = `${Math.round(snapshot[band] * 100)}%`;
+        }
+      } else {
+        // Clear visualiser when not active
+        const ctx2d = vizCanvas.getContext('2d');
+        if (ctx2d) ctx2d.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
+        for (const bar of Object.values(meterBars)) {
+          if (bar) bar.style.height = '0%';
+        }
+      }
+      vizRafId = requestAnimationFrame(loop);
+    }
+    vizRafId = requestAnimationFrame(loop);
+  }
+
+  function stopViz(): void {
+    cancelAnimationFrame(vizRafId);
+  }
+
+  return { start: startViz, stop: stopViz };
 }
