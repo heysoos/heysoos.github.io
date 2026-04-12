@@ -604,7 +604,225 @@ function buildAudioTab(
   canvasSection.appendChild(metersRow);
   container.appendChild(canvasSection);
 
-  // ── Mapping rows (Task 9) ── placeholder ──────────────────────────
+  // ── Mappings section ──────────────────────────────────────────────
+  const mappingsSection = document.createElement('div');
+  mappingsSection.style.cssText = 'padding:0 0 4px;';
+
+  const mappingsLabel = document.createElement('div');
+  mappingsLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);padding:6px 8px 3px;';
+  mappingsLabel.textContent = 'Mappings';
+  mappingsSection.appendChild(mappingsLabel);
+
+  const mappingsList = document.createElement('div');
+  mappingsSection.appendChild(mappingsList);
+
+  function buildBandBtnStyle(band: BandKey, activeBand: BandKey): string {
+    const isActive = band === activeBand;
+    return [
+      'width:18px;height:18px;border-radius:3px;font-size:0.6rem;cursor:pointer;',
+      'border:1px solid ' + (isActive ? BAND_COLORS[band] : 'var(--bg-surface-border)') + ';',
+      'background:' + (isActive ? BAND_COLORS[band] + '33' : 'transparent') + ';',
+      'color:' + (isActive ? BAND_COLORS[band] : 'var(--text-muted)') + ';',
+    ].join('');
+  }
+
+  function buildMappingRow(mapping: AudioMapping, index: number): HTMLDivElement {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:5px 8px;border-top:1px solid var(--bg-surface-border);display:flex;flex-direction:column;gap:4px;';
+
+    // Row 1: param dropdown + remove button
+    const row1 = document.createElement('div');
+    row1.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+    const paramSel = document.createElement('select');
+    paramSel.style.cssText = [
+      'flex:1;background:var(--bg-surface);color:var(--text-body);',
+      'border:1px solid var(--bg-surface-border);border-radius:3px;',
+      'font-size:0.65rem;padding:2px 4px;cursor:pointer;',
+    ].join('');
+    for (const p of MAPPABLE_PARAMS) {
+      const opt = document.createElement('option');
+      opt.value = String(p);
+      opt.textContent = PARAM_META[String(p)].label;
+      opt.selected = p === mapping.param;
+      paramSel.appendChild(opt);
+    }
+    paramSel.addEventListener('change', () => {
+      mapping.param = paramSel.value as typeof mapping.param;
+      const meta = PARAM_META[paramSel.value];
+      minInput.value = String(meta.min);
+      maxInput.value = String(meta.max);
+      mapping.min = meta.min;
+      mapping.max = meta.max;
+      reactor.saveMappings();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '×';
+    removeBtn.style.cssText = [
+      'background:none;border:none;color:var(--text-muted);',
+      'cursor:pointer;font-size:0.9rem;padding:0 2px;line-height:1;',
+    ].join('');
+    removeBtn.addEventListener('click', () => {
+      reactor.mappings.splice(index, 1);
+      reactor.saveMappings();
+      rebuildMappingsList();
+    });
+
+    row1.appendChild(paramSel);
+    row1.appendChild(removeBtn);
+    row.appendChild(row1);
+
+    // Row 2: band selector + mode toggle
+    const row2 = document.createElement('div');
+    row2.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+    const BAND_ABBR: Record<BandKey, string> = {
+      bass: 'B', mid: 'M', presence: 'P', hi: 'H', volume: 'V',
+    };
+
+    const bandBtns: HTMLButtonElement[] = [];
+    for (const band of ['bass', 'mid', 'presence', 'hi', 'volume'] as BandKey[]) {
+      const b = document.createElement('button');
+      b.textContent = BAND_ABBR[band];
+      b.title = band;
+      b.style.cssText = buildBandBtnStyle(band, mapping.band);
+      b.addEventListener('click', () => {
+        mapping.band = band;
+        for (const bb of bandBtns) {
+          bb.style.cssText = buildBandBtnStyle(
+            (bb as HTMLButtonElement & { _band: BandKey })._band,
+            mapping.band,
+          );
+        }
+        reactor.saveMappings();
+      });
+      (b as HTMLButtonElement & { _band: BandKey })._band = band;
+      bandBtns.push(b);
+      row2.appendChild(b);
+    }
+
+    // Mode toggle
+    const modeBtn = document.createElement('button');
+    modeBtn.style.cssText = [
+      'margin-left:auto;padding:1px 6px;border-radius:3px;font-size:0.65rem;cursor:pointer;',
+      'border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-muted);',
+    ].join('');
+    modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+    modeBtn.addEventListener('click', () => {
+      mapping.mode = mapping.mode === 'add' ? 'multiply' : 'add';
+      modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+      reactor.saveMappings();
+    });
+    row2.appendChild(modeBtn);
+    row.appendChild(row2);
+
+    // Row 3: depth slider
+    const row3 = document.createElement('div');
+    row3.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+    const depthLabel = document.createElement('span');
+    depthLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:30px;';
+    depthLabel.textContent = 'Depth';
+
+    const depthSlider = document.createElement('input');
+    depthSlider.type = 'range';
+    depthSlider.min  = '0';
+    depthSlider.max  = '1';
+    depthSlider.step = '0.01';
+    depthSlider.value = String(mapping.depth);
+    depthSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
+
+    const depthVal = document.createElement('span');
+    depthVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:28px;text-align:right;font-variant-numeric:tabular-nums;';
+    depthVal.textContent = mapping.depth.toFixed(2);
+
+    depthSlider.addEventListener('input', () => {
+      mapping.depth = parseFloat(depthSlider.value);
+      depthVal.textContent = mapping.depth.toFixed(2);
+      reactor.saveMappings();
+    });
+
+    row3.appendChild(depthLabel);
+    row3.appendChild(depthSlider);
+    row3.appendChild(depthVal);
+    row.appendChild(row3);
+
+    // Row 4: min / max clamp inputs
+    const row4 = document.createElement('div');
+    row4.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+    const inputStyle = [
+      'width:48px;background:var(--bg-surface);color:var(--text-body);',
+      'border:1px solid var(--bg-surface-border);border-radius:3px;',
+      'font-size:0.62rem;padding:1px 3px;text-align:right;',
+    ].join('');
+
+    const minLabel = document.createElement('span');
+    minLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
+    minLabel.textContent = 'Min';
+
+    const minInput = document.createElement('input');
+    minInput.type  = 'text';
+    minInput.value = String(mapping.min);
+    minInput.style.cssText = inputStyle;
+    minInput.addEventListener('blur', () => {
+      const v = parseFloat(minInput.value);
+      if (!isNaN(v) && v < mapping.max) { mapping.min = v; reactor.saveMappings(); }
+      else minInput.value = String(mapping.min);
+    });
+
+    const maxLabel = document.createElement('span');
+    maxLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);margin-left:4px;';
+    maxLabel.textContent = 'Max';
+
+    const maxInput = document.createElement('input');
+    maxInput.type  = 'text';
+    maxInput.value = String(mapping.max);
+    maxInput.style.cssText = inputStyle;
+    maxInput.addEventListener('blur', () => {
+      const v = parseFloat(maxInput.value);
+      if (!isNaN(v) && v > mapping.min) { mapping.max = v; reactor.saveMappings(); }
+      else maxInput.value = String(mapping.max);
+    });
+
+    row4.appendChild(minLabel);
+    row4.appendChild(minInput);
+    row4.appendChild(maxLabel);
+    row4.appendChild(maxInput);
+    row.appendChild(row4);
+
+    return row;
+  }
+
+  function rebuildMappingsList(): void {
+    mappingsList.innerHTML = '';
+    reactor.mappings.forEach((m, i) => {
+      mappingsList.appendChild(buildMappingRow(m, i));
+    });
+  }
+
+  rebuildMappingsList();
+
+  // "+ Add Mapping" button
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '+ Add Mapping';
+  addBtn.style.cssText = [
+    'display:block;width:calc(100% - 16px);margin:6px 8px 4px;',
+    'padding:4px 0;border-radius:4px;font-size:0.68rem;cursor:pointer;',
+    'border:1px solid var(--bg-surface-border);background:transparent;',
+    'color:var(--text-muted);transition:border-color 0.15s,color 0.15s;',
+  ].join('');
+  addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--accent)'; addBtn.style.color = 'var(--accent)'; });
+  addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor = 'var(--bg-surface-border)'; addBtn.style.color = 'var(--text-muted)'; });
+  addBtn.addEventListener('click', () => {
+    const used = reactor.mappings.map(m => m.param);
+    reactor.mappings.push(defaultMapping(used));
+    reactor.saveMappings();
+    rebuildMappingsList();
+  });
+  mappingsSection.appendChild(addBtn);
+  container.appendChild(mappingsSection);
 
   // ── Visualiser rAF loop (runs only when Audio tab is visible) ─────
   let vizRafId = 0;
