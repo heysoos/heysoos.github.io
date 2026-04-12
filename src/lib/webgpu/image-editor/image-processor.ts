@@ -26,7 +26,8 @@ export class ImageProcessor {
   private compositedTexture!:  GPUTexture;
   private blurTempTexture!:    GPUTexture;
   private processedTexture!:   GPUTexture;
-  private sdfPingTexture!:     GPUTexture;  // rgba32float for JFA
+  private sdfPingTexture!:     GPUTexture;  // rgba16float ping for JFA
+  private sdfPongTexture!:     GPUTexture;  // rgba16float pong for JFA
 
   // Pipelines
   private compositePipeline!:     GPUComputePipeline;
@@ -108,6 +109,7 @@ export class ImageProcessor {
     this.blurTempTexture?.destroy();
     this.processedTexture?.destroy();
     this.sdfPingTexture?.destroy();
+    this.sdfPongTexture?.destroy();
 
     this.sourceTexture      = make(TEX_USAGE_COMPUTE_IN);
     this.imageMaskTexture   = make(TEX_USAGE_RENDER_TGT);
@@ -115,10 +117,11 @@ export class ImageProcessor {
     this.compositedTexture  = make(TEX_USAGE_COMPUTE_OUT);
     this.blurTempTexture    = make(TEX_USAGE_COMPUTE_OUT);
     this.processedTexture   = make(TEX_USAGE_COMPUTE_OUT);
-    this.sdfPingTexture     = make(
-      GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      'rgba32float',
-    );
+    // rgba16float: filterable (sampleType:'float'), supports TEXTURE_BINDING for
+    // textureLoad and STORAGE_BINDING for write — no extensions needed.
+    const sdfUsage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
+    this.sdfPingTexture = make(sdfUsage, 'rgba16float');
+    this.sdfPongTexture = make(sdfUsage, 'rgba16float');
     this.width  = w;
     this.height = h;
   }
@@ -417,52 +420,78 @@ export class ImageProcessor {
       const buf = new ArrayBuffer(16);
       const dv  = new DataView(buf);
       dv.setUint32(0, step, true);
-      // threshold_bits: store float bit-pattern as uint
       const tmp = new Float32Array([this.params.threshold]);
       dv.setUint32(4, new Uint32Array(tmp.buffer)[0], true);
       device.queue.writeBuffer(this.sdfUniform, 0, buf);
     };
 
-    const makeSDFBG = (pipeline: GPUComputePipeline) => device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
+    // Each pipeline has a different auto-layout (only the bindings it actually uses).
+    // sdfSeed:     uses bindings 0, 1, 3        (no srcTex/2, no outTex/4)
+    // sdfJump:     uses bindings 0, 2, 3        (no inTex/1, no outTex/4)
+    // sdfFinalize: uses bindings 0, 1, 2, 4     (no dstTex/3)
+
+    const makeSeedBG = (dst: GPUTexture) => device.createBindGroup({
+      layout: this.sdfSeedPipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.sdfUniform } },
         { binding: 1, resource: this.compositedTexture.createView() },
-        { binding: 2, resource: this.sdfPingTexture.createView() },
-        { binding: 3, resource: this.processedTexture.createView() },
+        { binding: 3, resource: dst.createView() },
       ],
     });
 
-    // Seed pass
+    const makeJumpBG = (src: GPUTexture, dst: GPUTexture) => device.createBindGroup({
+      layout: this.sdfJumpPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.sdfUniform } },
+        { binding: 2, resource: src.createView() },
+        { binding: 3, resource: dst.createView() },
+      ],
+    });
+
+    const makeFinalizeBG = (src: GPUTexture) => device.createBindGroup({
+      layout: this.sdfFinalizePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.sdfUniform } },
+        { binding: 1, resource: this.compositedTexture.createView() },
+        { binding: 2, resource: src.createView() },
+        { binding: 4, resource: this.processedTexture.createView() },
+      ],
+    });
+
+    // Pass 1: seed — write into ping
     writeStep(0);
     const e1 = device.createCommandEncoder();
     const p1 = e1.beginComputePass();
     p1.setPipeline(this.sdfSeedPipeline);
-    p1.setBindGroup(0, makeSDFBG(this.sdfSeedPipeline));
+    p1.setBindGroup(0, makeSeedBG(this.sdfPingTexture));
     p1.dispatchWorkgroups(wg(w), wg(h));
     p1.end();
     device.queue.submit([e1.finish()]);
 
-    // JFA passes
+    // Pass 2 (repeated): JFA — alternate ping/pong as src/dst
     const maxDim = Math.max(w, h);
     let step = Math.pow(2, Math.ceil(Math.log2(maxDim)));
+    let src = this.sdfPingTexture;
+    let dst = this.sdfPongTexture;
     while (step >= 1) {
       writeStep(Math.round(step));
       const e = device.createCommandEncoder();
       const p = e.beginComputePass();
       p.setPipeline(this.sdfJumpPipeline);
-      p.setBindGroup(0, makeSDFBG(this.sdfJumpPipeline));
+      p.setBindGroup(0, makeJumpBG(src, dst));
       p.dispatchWorkgroups(wg(w), wg(h));
       p.end();
       device.queue.submit([e.finish()]);
+      [src, dst] = [dst, src];  // swap: last dst becomes new src
       step /= 2;
     }
+    // src now points to the texture last written by the final JFA pass
 
-    // Finalize pass
+    // Pass 3: finalize — read from src (last JFA output), write to processedTexture
     const e3 = device.createCommandEncoder();
     const p3 = e3.beginComputePass();
     p3.setPipeline(this.sdfFinalizePipeline);
-    p3.setBindGroup(0, makeSDFBG(this.sdfFinalizePipeline));
+    p3.setBindGroup(0, makeFinalizeBG(src));
     p3.dispatchWorkgroups(wg(w), wg(h));
     p3.end();
     device.queue.submit([e3.finish()]);
@@ -476,7 +505,8 @@ export class ImageProcessor {
     this.sdfUniform.destroy();
     for (const t of [
       this.sourceTexture, this.imageMaskTexture, this.paintCanvasTexture,
-      this.compositedTexture, this.blurTempTexture, this.processedTexture, this.sdfPingTexture,
+      this.compositedTexture, this.blurTempTexture, this.processedTexture,
+      this.sdfPingTexture, this.sdfPongTexture,
     ]) t?.destroy();
   }
 }

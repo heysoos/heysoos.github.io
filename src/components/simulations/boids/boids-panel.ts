@@ -27,7 +27,11 @@ export function buildBoidsPanel(
   container: HTMLElement,
   controller: BoidsController,
   opts: BoidsPanelOpts = {},
-): { teardown: () => void } {
+): { teardown: () => void; updateAudioViz: () => void } {
+  // ── Audio visualisation state — declared first so buildAudioTab can capture them ──
+  const paramIndicators = new Map<string, { wrap: HTMLElement; fill: HTMLElement }>();
+  const mappingRowUpdaters = new Map<AudioMapping, (fraction: number | null) => void>();
+
   // ── Tab bar (replaces old plain header) ──────────────────────────
   const tabBar = document.createElement('div');
   tabBar.style.cssText = [
@@ -116,7 +120,7 @@ export function buildBoidsPanel(
 
   // Audio tab placeholder — replaced in Tasks 7–9
   if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab);
+    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, mappingRowUpdaters);
     // Start immediately stopped since Params tab is shown first
     audioVizControls.stop();
   } else {
@@ -166,6 +170,7 @@ export function buildBoidsPanel(
     get: () => number,
     set: (v: number) => void,
     scale: 'linear' | 'log' = 'linear',
+    paramKey?: string,
   ): void {
     const row = document.createElement('div');
     row.className = 'param-row';
@@ -240,6 +245,17 @@ export function buildBoidsPanel(
 
     row.appendChild(labelEl);
     row.appendChild(input);
+    // Audio modulation indicator — thin colored bar below the slider track,
+    // shown only when an active mapping targets this param.
+    if (paramKey) {
+      const indWrap = document.createElement('div');
+      indWrap.style.cssText = 'height:2px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;margin-top:2px;display:none;';
+      const indFill = document.createElement('div');
+      indFill.style.cssText = 'height:100%;width:0%;border-radius:1px;';
+      indWrap.appendChild(indFill);
+      row.appendChild(indWrap);
+      paramIndicators.set(paramKey, { wrap: indWrap, fill: indFill });
+    }
     parent.appendChild(row);
   }
 
@@ -411,23 +427,23 @@ export function buildBoidsPanel(
 
   // ── Simulation ────────────────────────────────────────────────────
   addSection(paramsBody, 'Simulation');
-  addSlider(paramsBody, 'Time Step', 0.001, 0.1,  0.001, () => controller.params.dt,           v => { controller.params.dt = v; });
+  addSlider(paramsBody, 'Time Step', 0.001, 0.1,  0.001, () => controller.params.dt,           v => { controller.params.dt = v; }, 'linear', 'dt');
   addSlider(paramsBody, 'Particles', 10,    10000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; }, 'log');
 
   // ── Forces ────────────────────────────────────────────────────────
   addSection(paramsBody, 'Forces');
-  addSlider(paramsBody, 'Attraction Radius', 0.02, 0.6,  0.01,  () => controller.params.attractionRadius, v => { controller.params.attractionRadius = v; });
-  addSlider(paramsBody, 'Repulsion Radius',  0.01, 0.3,  0.005, () => controller.params.repulsionRadius,  v => { controller.params.repulsionRadius = v; });
-  addSlider(paramsBody, 'Attraction',        0,    2.0,  0.01,  () => controller.params.attraction,       v => { controller.params.attraction = v; });
-  addSlider(paramsBody, 'Repulsion',         0,    5.0,  0.05,  () => controller.params.repulsion,        v => { controller.params.repulsion = v; });
-  addSlider(paramsBody, 'Alignment',         0,    1.0,  0.01,  () => controller.params.alignment,        v => { controller.params.alignment = v; });
-  addSlider(paramsBody, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,              v => { controller.params.friction = v; });
-  addSlider(paramsBody, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,              v => { controller.params.maxSpeed = v; });
+  addSlider(paramsBody, 'Attraction Radius', 0.02, 0.6,  0.01,  () => controller.params.attractionRadius, v => { controller.params.attractionRadius = v; }, 'linear', 'attractionRadius');
+  addSlider(paramsBody, 'Repulsion Radius',  0.01, 0.3,  0.005, () => controller.params.repulsionRadius,  v => { controller.params.repulsionRadius = v; }, 'linear', 'repulsionRadius');
+  addSlider(paramsBody, 'Attraction',        0,    2.0,  0.01,  () => controller.params.attraction,       v => { controller.params.attraction = v; }, 'linear', 'attraction');
+  addSlider(paramsBody, 'Repulsion',         0,    5.0,  0.05,  () => controller.params.repulsion,        v => { controller.params.repulsion = v; }, 'linear', 'repulsion');
+  addSlider(paramsBody, 'Alignment',         0,    1.0,  0.01,  () => controller.params.alignment,        v => { controller.params.alignment = v; }, 'linear', 'alignment');
+  addSlider(paramsBody, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,         v => { controller.params.friction = v; }, 'linear', 'friction');
+  addSlider(paramsBody, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,         v => { controller.params.maxSpeed = v; }, 'linear', 'maxSpeed');
   addSlider(paramsBody, 'Noise',             0,    0.5,  0.005, () => controller.params.noise ?? 0,            v => { controller.params.noise = v; });
 
   // ── Perception ────────────────────────────────────────────────────
   addSection(paramsBody, 'Perception');
-  addSlider(paramsBody, 'Vision Cone',  -1.0, 0.99, 0.05, () => controller.params.coneAngle,   v => { controller.params.coneAngle = v; });
+  addSlider(paramsBody, 'Vision Cone',  -1.0, 0.99, 0.05, () => controller.params.coneAngle,   v => { controller.params.coneAngle = v; }, 'linear', 'coneAngle');
   addSlider(paramsBody, 'Mouse Radius', 0.05, 0.5,  0.01, () => controller.params.mouseRadius, v => { controller.params.mouseRadius = v; });
 
   // ── Image Force Field ─────────────────────────────────────────────
@@ -444,10 +460,56 @@ export function buildBoidsPanel(
     imageForce: controller.imageForce,
   });
 
+  // Called from the mapping loop in slug.astro every rAF.
+  // Reads controller.params (already audio-modulated at this point) to update
+  // the indicator bars in the Params tab and amplitude bars + traces in the Audio tab.
+  function updateAudioViz(): void {
+    const reactor = opts.reactor;
+    if (!reactor) return;
+
+    // Reset all param indicators to hidden first
+    for (const [, ind] of paramIndicators) {
+      ind.wrap.style.display = 'none';
+    }
+
+    if (!reactor.isActive()) {
+      for (const [, u] of mappingRowUpdaters) u(null);
+      return;
+    }
+
+    // Track which params have at least one enabled mapping (for showing indicators)
+    for (const m of reactor.mappings) {
+      if (!m.enabled) continue;
+      const currentVal = (controller.params as Record<string, number>)[m.param as string] ?? 0;
+      const range = m.max - m.min;
+      const fraction = range > 0 ? Math.max(0, Math.min(1, (currentVal - m.min) / range)) : 0;
+
+      // Params tab: show indicator bar colored with this mapping's band
+      const ind = paramIndicators.get(m.param as string);
+      if (ind) {
+        ind.wrap.style.display = 'block';
+        ind.fill.style.width = `${fraction * 100}%`;
+        ind.fill.style.background = BAND_COLORS[m.band];
+      }
+
+      // Audio tab: update amplitude bar + trace for this mapping row
+      const u = mappingRowUpdaters.get(m);
+      if (u) u(fraction);
+    }
+
+    // Ensure disabled mapping rows are cleared
+    for (const m of reactor.mappings) {
+      if (m.enabled) continue;
+      const u = mappingRowUpdaters.get(m);
+      if (u) u(null);
+    }
+  }
+
   return {
     teardown: () => {
       audioVizControls?.stop();
     },
+    updateAudioViz,
   };
 }
 
@@ -457,6 +519,7 @@ function buildAudioTab(
   container: HTMLElement,
   reactor: AudioReactor,
   switchTab: (name: string) => void,
+  mappingRowUpdaters: Map<AudioMapping, (fraction: number | null) => void>,
 ): { start: () => void; stop: () => void } {
 
   container.style.cssText = 'display:flex;flex-direction:column;gap:0;';
@@ -626,7 +689,7 @@ function buildAudioTab(
     ].join('');
   }
 
-  function buildMappingRow(mapping: AudioMapping): HTMLDivElement {
+  function buildMappingRow(mapping: AudioMapping): { element: HTMLDivElement; update: (fraction: number | null) => void } {
     const row = document.createElement('div');
     row.style.cssText = 'padding:5px 8px;border-top:1px solid var(--bg-surface-border);display:flex;flex-direction:column;gap:4px;';
 
@@ -793,13 +856,99 @@ function buildAudioTab(
     row4.appendChild(maxInput);
     row.appendChild(row4);
 
-    return row;
+    // Row 5: amplitude bar + trace toggle button
+    const row5 = document.createElement('div');
+    row5.style.cssText = 'display:flex;align-items:center;gap:5px;padding-top:2px;';
+
+    const ampWrap = document.createElement('div');
+    ampWrap.style.cssText = 'flex:1;height:3px;background:var(--bg-surface-border);border-radius:2px;overflow:hidden;';
+    const ampFill = document.createElement('div');
+    ampFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[mapping.band]};border-radius:2px;`;
+    ampWrap.appendChild(ampFill);
+
+    const traceToggle = document.createElement('button');
+    traceToggle.textContent = '∿';
+    traceToggle.title = 'Toggle trace';
+    traceToggle.style.cssText = [
+      'background:none;border:none;cursor:pointer;',
+      'font-size:0.75rem;padding:0;line-height:1;',
+      'color:var(--text-muted);',
+    ].join('');
+
+    row5.appendChild(ampWrap);
+    row5.appendChild(traceToggle);
+    row.appendChild(row5);
+
+    // Trace sparkline canvas (hidden until toggled)
+    const TRACE_LEN = 200;
+    const traceData = new Float32Array(TRACE_LEN);
+    let tracePtr = 0;
+    let traceVisible = false;
+
+    const traceCanvas = document.createElement('canvas');
+    traceCanvas.width  = 184;
+    traceCanvas.height = 28;
+    traceCanvas.style.cssText = 'width:100%;height:28px;display:none;border-radius:2px;background:#06050a;margin-top:2px;';
+    row.appendChild(traceCanvas);
+
+    traceToggle.addEventListener('click', () => {
+      traceVisible = !traceVisible;
+      traceCanvas.style.display = traceVisible ? 'block' : 'none';
+      traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
+    });
+
+    function drawTrace(): void {
+      const ctx = traceCanvas.getContext('2d');
+      if (!ctx) return;
+      const { width, height } = traceCanvas;
+      ctx.clearRect(0, 0, width, height);
+      // Min/max clamp lines
+      ctx.strokeStyle = 'var(--bg-surface-border)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 1); ctx.lineTo(width, 1);        // max
+      ctx.moveTo(0, height - 1); ctx.lineTo(width, height - 1); // min
+      ctx.stroke();
+      // Trace line
+      ctx.strokeStyle = BAND_COLORS[mapping.band];
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (let i = 0; i < TRACE_LEN; i++) {
+        const idx = (tracePtr + i) % TRACE_LEN;
+        const x = (i / (TRACE_LEN - 1)) * width;
+        const y = height - traceData[idx] * (height - 2) - 1;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function update(fraction: number | null): void {
+      // Sync amp bar color in case band changed since last frame
+      ampFill.style.background = BAND_COLORS[mapping.band];
+      if (fraction === null) {
+        ampFill.style.width = '0%';
+        return;
+      }
+      ampFill.style.width = `${fraction * 100}%`;
+      if (traceVisible) {
+        traceData[tracePtr] = fraction;
+        tracePtr = (tracePtr + 1) % TRACE_LEN;
+        drawTrace();
+      }
+    }
+
+    return { element: row, update };
   }
 
   function rebuildMappingsList(): void {
     mappingsList.innerHTML = '';
+    mappingRowUpdaters.clear();
     reactor.mappings.forEach((m) => {
-      mappingsList.appendChild(buildMappingRow(m));
+      const { element, update } = buildMappingRow(m);
+      mappingsList.appendChild(element);
+      mappingRowUpdaters.set(m, update);
     });
   }
 

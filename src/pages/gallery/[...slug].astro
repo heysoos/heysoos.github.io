@@ -616,14 +616,49 @@ const sim = project.data.simulation;
 
           const reactor = new AudioReactor();
 
-          // Mapping application loop — runs every frame when reactor is active,
-          // regardless of which panel tab is visible.
+          // Declared early so the mapping loop IIFE (below) can reference it without TDZ issues.
+          // Assigned by buildPanel() after the default preset loads.
+          let panelControls: { teardown: () => void; updateAudioViz: () => void } | null = null;
+
+          // ── baseParams: tracks the user's slider intent, separate from audio modulation ──
+          // We proxy boidsCtrl.params so slider/preset writes (isApplyingAudio=false)
+          // update both the live params AND baseParams. Audio-modulation writes
+          // (isApplyingAudio=true) update only the live params, leaving baseParams
+          // as the unmodulated user intent that each frame restores from.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const baseParams: Record<string, number> = { ...(boidsCtrl.params as any) };
+          let isApplyingAudio = false;
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const trackedParams = new Proxy(boidsCtrl.params as any, {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            set(target: any, prop: string, value: any): boolean {
+              target[prop] = value;
+              if (!isApplyingAudio) {
+                baseParams[prop] = value;
+              }
+              return true;
+            },
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (boidsCtrl as any).params = trackedParams;
+
+          // Mapping loop — runs every rAF when reactor is active.
+          // Each frame: restore to user's baseParams first (stateless modulation),
+          // then apply audio modulation on top. This prevents inter-frame accumulation
+          // that would ratchet params to their maximum clamp.
+          // After apply: call updateAudioViz so the Params-tab indicators and
+          // Audio-tab amplitude bars/traces reflect the current modulated values.
           let mappingRafId = 0;
           (function mappingLoop() {
             if (reactor.isActive()) {
+              isApplyingAudio = true;
+              Object.assign(boidsCtrl.params, baseParams);   // restore user intent
               const snapshot = reactor.analyze();
-              reactor.applyMappings(boidsCtrl.params, snapshot);
+              reactor.applyMappings(boidsCtrl.params, snapshot); // modulate on top
+              isApplyingAudio = false;
             }
+            panelControls?.updateAudioViz();
             mappingRafId = requestAnimationFrame(mappingLoop);
           })();
 
@@ -645,8 +680,6 @@ const sim = project.data.simulation;
           }
 
           // Rebuild panel helper (re-syncs sliders + active pill after preset load)
-          let panelControls: { teardown: () => void } | null = null;
-
           function buildPanel(activeId?: string): void {
             panelControls?.teardown();
             panel.innerHTML = '';
