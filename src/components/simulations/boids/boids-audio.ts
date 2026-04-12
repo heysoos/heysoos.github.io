@@ -141,8 +141,47 @@ export class AudioReactor {
     this.freqData = new Uint8Array(FFT_SIZE / 2);
     this.status = 'idle';
   }
-  analyze(): BandSnapshot { throw new Error('Not implemented'); }
-  getFrequencyData(): Uint8Array { throw new Error('Not implemented'); }
+
+  private _hzToBin(hz: number): number {
+    if (!this.ctx || !this.analyser) return 0;
+    return Math.round(hz / (this.ctx.sampleRate / FFT_SIZE));
+  }
+
+  private _bandAverage(lo: number, hi: number): number {
+    const loB = Math.max(0, this._hzToBin(lo));
+    const hiB = Math.min(this.freqData.length - 1, this._hzToBin(hi));
+    if (hiB <= loB) return 0;
+    let sum = 0;
+    for (let i = loB; i <= hiB; i++) sum += this.freqData[i];
+    return sum / ((hiB - loB + 1) * 255);  // normalise to 0–1
+  }
+
+  analyze(): BandSnapshot {
+    if (!this.analyser) {
+      return { bass: 0, mid: 0, presence: 0, hi: 0, volume: 0 };
+    }
+    // @ts-ignore: Uint8Array buffer type compat
+    this.analyser.getByteFrequencyData(this.freqData);
+
+    // Volume = RMS of full spectrum, normalised
+    let rms = 0;
+    for (let i = 0; i < this.freqData.length; i++) rms += (this.freqData[i] / 255) ** 2;
+    const volume = Math.sqrt(rms / this.freqData.length);
+
+    return {
+      bass:     this._bandAverage(...BAND_HZ.bass),
+      mid:      this._bandAverage(...BAND_HZ.mid),
+      presence: this._bandAverage(...BAND_HZ.presence),
+      hi:       this._bandAverage(...BAND_HZ.hi),
+      volume,
+    };
+  }
+
+  getFrequencyData(): Uint8Array {
+    // @ts-ignore: Uint8Array buffer type compat
+    if (this.analyser) this.analyser.getByteFrequencyData(this.freqData);
+    return this.freqData;
+  }
   applyMappings(_params: BoidsParams, _snapshot: BandSnapshot): void { throw new Error('Not implemented'); }
   saveMappings(): void { throw new Error('Not implemented'); }
   loadMappings(): void { throw new Error('Not implemented'); }
