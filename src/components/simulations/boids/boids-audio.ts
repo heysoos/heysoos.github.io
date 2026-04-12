@@ -89,7 +89,6 @@ export class AudioReactor {
     return this.status === 'active';
   }
 
-  // ── Implemented in later tasks ────────────────────────────────────────────
   async start(sourceKind: AudioSourceKind): Promise<void> {
     this.stop(); // clean up any previous session
     try {
@@ -121,9 +120,9 @@ export class AudioReactor {
       this.status = 'active';
       this.lastError = '';
     } catch (e) {
-      this.status = 'error';
       this.lastError = e instanceof Error ? e.message : String(e);
-      this.stop();
+      this.stop();           // clears resources, resets status to 'idle'
+      this.status = 'error'; // override to 'error' so caller sees the problem
       throw e;
     }
   }
@@ -139,7 +138,8 @@ export class AudioReactor {
     this.ctx     = null;
     this.analyser = null;
     this.activeSourceKind = null;
-    if (this.status === 'active') this.status = 'idle';
+    this.freqData = new Uint8Array(FFT_SIZE / 2);
+    this.status = 'idle';
   }
   analyze(): BandSnapshot { throw new Error('Not implemented'); }
   getFrequencyData(): Uint8Array { throw new Error('Not implemented'); }
