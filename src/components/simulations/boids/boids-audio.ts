@@ -150,7 +150,7 @@ export class AudioReactor {
   private _bandAverage(lo: number, hi: number): number {
     const loB = Math.max(0, this._hzToBin(lo));
     const hiB = Math.min(this.freqData.length - 1, this._hzToBin(hi));
-    if (hiB <= loB) return 0;
+    if (hiB < loB) return 0;
     let sum = 0;
     for (let i = loB; i <= hiB; i++) sum += this.freqData[i];
     return sum / ((hiB - loB + 1) * 255);  // normalise to 0–1
@@ -178,8 +178,6 @@ export class AudioReactor {
   }
 
   getFrequencyData(): Uint8Array {
-    // @ts-ignore: Uint8Array buffer type compat
-    if (this.analyser) this.analyser.getByteFrequencyData(this.freqData);
     return this.freqData;
   }
   applyMappings(_params: BoidsParams, _snapshot: BandSnapshot): void { throw new Error('Not implemented'); }
