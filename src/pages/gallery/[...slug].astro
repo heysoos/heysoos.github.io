@@ -618,13 +618,20 @@ const sim = project.data.simulation;
 
           // Mapping application loop — runs every frame when reactor is active,
           // regardless of which panel tab is visible.
+          let mappingRafId = 0;
           (function mappingLoop() {
             if (reactor.isActive()) {
               const snapshot = reactor.analyze();
               reactor.applyMappings(boidsCtrl.params, snapshot);
             }
-            requestAnimationFrame(mappingLoop);
+            mappingRafId = requestAnimationFrame(mappingLoop);
           })();
+
+          // Clean up on navigation: cancel the mapping loop and release audio capture
+          document.addEventListener('pagehide', () => {
+            cancelAnimationFrame(mappingRafId);
+            reactor.stop();
+          }, { once: true });
 
           // Apply default preset before starting
           const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
