@@ -82,11 +82,15 @@ export class AudioReactor {
   activeSourceKind: AudioSourceKind | null = null;
 
   constructor() {
-    try { this.loadMappings(); } catch { /* mappings stay empty until implemented */ }
+    this.loadMappings();
   }
 
   isActive(): boolean {
     return this.status === 'active';
+  }
+
+  getSampleRate(): number {
+    return this.ctx?.sampleRate ?? 44100;
   }
 
   async start(sourceKind: AudioSourceKind): Promise<void> {
@@ -223,10 +227,15 @@ export class AudioReactor {
       if (!raw) return;
       const parsed = JSON.parse(raw) as AudioMapping[];
       // Validate each entry has required fields and param is still valid
+      const VALID_BANDS = new Set<string>(['bass', 'mid', 'presence', 'hi', 'volume']);
+      const VALID_MODES = new Set<string>(['add', 'multiply']);
       this.mappings = parsed.filter(
         m => typeof m.param === 'string'
           && m.param in PARAM_META
           && typeof m.band === 'string'
+          && VALID_BANDS.has(m.band)
+          && typeof m.mode === 'string'
+          && VALID_MODES.has(m.mode)
           && typeof m.depth === 'number'
           && typeof m.min === 'number'
           && typeof m.max === 'number'
@@ -271,9 +280,10 @@ export function drawAudioViz(canvas: HTMLCanvasElement, reactor: AudioReactor): 
   const barW    = width / numBars;
 
   // Determine band colour for each bar by Hz range
-  const sampleRate  = 44100; // fallback; real rate used during active analysis
+  const sampleRate  = reactor.getSampleRate();
   const hzPerBin    = sampleRate / (data.length * 2);
 
+  ctx.globalAlpha = 0.85;
   for (let i = 0; i < numBars; i++) {
     const binIdx = i * binStep;
     const hz     = binIdx * hzPerBin;
@@ -287,7 +297,6 @@ export function drawAudioViz(canvas: HTMLCanvasElement, reactor: AudioReactor): 
 
     const barH = val * height;
     ctx.fillStyle = color;
-    ctx.globalAlpha = 0.85;
     ctx.fillRect(i * barW, height - barH, barW - 1, barH);
   }
   ctx.globalAlpha = 1;
