@@ -540,6 +540,7 @@ const sim = project.data.simulation;
   import { StreamLanguage } from '@codemirror/language';
   import { cpp } from '@codemirror/legacy-modes/mode/clike';
   import { buildBoidsPanel } from '../../components/simulations/boids/boids-panel';
+  import { AudioReactor } from '../../components/simulations/boids/boids-audio';
   import { BOIDS_PRESETS } from '../../data/boids-presets';
   import { buildCPPNPanel } from '../../components/simulations/cppn/cppn-panel';
   import { CPPN_PRESETS } from '../../data/cppn-presets';
@@ -613,6 +614,18 @@ const sim = project.data.simulation;
         if (sim === 'boids') {
           const boidsCtrl = controller as BoidsController;
 
+          const reactor = new AudioReactor();
+
+          // Mapping application loop — runs every frame when reactor is active,
+          // regardless of which panel tab is visible.
+          (function mappingLoop() {
+            if (reactor.isActive()) {
+              const snapshot = reactor.analyze();
+              reactor.applyMappings(boidsCtrl.params, snapshot);
+            }
+            requestAnimationFrame(mappingLoop);
+          })();
+
           // Apply default preset before starting
           const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
           if (defaultPreset) {
@@ -625,11 +638,15 @@ const sim = project.data.simulation;
           }
 
           // Rebuild panel helper (re-syncs sliders + active pill after preset load)
+          let panelControls: { teardown: () => void } | null = null;
+
           function buildPanel(activeId?: string): void {
+            panelControls?.teardown();
             panel.innerHTML = '';
-            buildBoidsPanel(panel, boidsCtrl, {
+            panelControls = buildBoidsPanel(panel, boidsCtrl, {
               presets: BOIDS_PRESETS,
               activePresetId: activeId,
+              reactor,
               onClose: () => { panel.style.display = 'none'; panelOpen = false; },
               onShaderEdit: () => {
                 shaderEditorOpen = !shaderEditorOpen;
