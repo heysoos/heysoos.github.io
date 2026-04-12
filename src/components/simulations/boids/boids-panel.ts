@@ -506,13 +506,13 @@ function buildAudioTab(
 
   function updateStatus(): void {
     if (reactor.status === 'active') {
-      statusDot.style.background = '#e05060';
-      statusDot.style.boxShadow  = '0 0 4px #e05060';
+      statusDot.style.background = 'var(--accent)';
+      statusDot.style.boxShadow  = '0 0 4px var(--accent)';
       micBtn.style.cssText = pillStyle(reactor.activeSourceKind === 'microphone');
       sysBtn.style.cssText = pillStyle(reactor.activeSourceKind === 'system');
       errorMsg.style.display = 'none';
     } else if (reactor.status === 'error') {
-      statusDot.style.background = '#e09020';
+      statusDot.style.background = '#e05060';
       statusDot.style.boxShadow  = 'none';
       errorMsg.textContent = reactor.lastError;
       errorMsg.style.display = 'block';
@@ -529,9 +529,14 @@ function buildAudioTab(
 
   async function startSource(kind: 'microphone' | 'system'): Promise<void> {
     if (reactor.isActive()) {
+      if (reactor.activeSourceKind === kind) {
+        // Clicking the already-active source toggles it off
+        reactor.stop();
+        updateStatus();
+        return;
+      }
+      // Clicking a different source: stop current and switch
       reactor.stop();
-      updateStatus();
-      return; // toggle off
     }
     try {
       await reactor.start(kind);
@@ -550,6 +555,9 @@ function buildAudioTab(
   sourceSection.appendChild(sourceBtnRow);
   sourceSection.appendChild(errorMsg);
   container.appendChild(sourceSection);
+
+  // Sync UI to current reactor state (reactor may already be active from a prior panel build)
+  updateStatus();
 
   // ── Spectrum canvas + band meters (Task 8) ── placeholder ─────────
   // ── Mapping rows (Task 9) ── placeholder ──────────────────────────
