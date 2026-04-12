@@ -70,6 +70,7 @@ export function buildBoidsPanel(
   let audioVizControls: { start: () => void; stop: () => void } | null = null;
 
   function switchTab(name: string): void {
+    if (name === activeTab) return;
     if (activeTab === 'Audio') audioVizControls?.stop();
     activeTab = name;
     for (const t of tabNames) {
