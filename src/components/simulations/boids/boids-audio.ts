@@ -180,7 +180,35 @@ export class AudioReactor {
   getFrequencyData(): Uint8Array {
     return this.freqData;
   }
-  applyMappings(_params: BoidsParams, _snapshot: BandSnapshot): void { throw new Error('Not implemented'); }
+
+  applyMappings(params: BoidsParams, snapshot: BandSnapshot): void {
+    // Take a base snapshot BEFORE any mapping mutates params,
+    // so all modulations are relative to the user's slider intent.
+    const base = { ...params } as Record<string, number>;
+
+    for (const m of this.mappings) {
+      if (!m.enabled) continue;
+      const meta = PARAM_META[m.param as string];
+      if (!meta) continue;
+
+      const bandVal = snapshot[m.band];
+      const range   = m.max - m.min;
+      const baseVal = base[m.param as string] as number;
+
+      let next: number;
+      if (m.mode === 'add') {
+        next = baseVal + bandVal * m.depth * range;
+      } else {
+        // multiply: scale up from base, capped by depth
+        next = baseVal * (1 + bandVal * m.depth);
+      }
+
+      // Clamp to user-defined range
+      (params as unknown as Record<string, number>)[m.param as string] =
+        Math.max(m.min, Math.min(m.max, next));
+    }
+  }
+
   saveMappings(): void { throw new Error('Not implemented'); }
   loadMappings(): void { throw new Error('Not implemented'); }
 }
