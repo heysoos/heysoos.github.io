@@ -3,7 +3,16 @@ import type { BoidsController } from './boids-controller';
 import type { BoidsPreset } from '../../../data/boids-presets';
 import { buildImagePanelSection } from '../../../lib/webgpu/image-editor/image-panel-section';
 import { openImageEditorOverlay  } from '../../../lib/webgpu/image-editor/image-editor-overlay';
-import type { AudioReactor } from './boids-audio';
+import {
+  type AudioReactor,
+  type BandKey,
+  type AudioMapping,
+  BAND_COLORS,
+  PARAM_META,
+  MAPPABLE_PARAMS,
+  defaultMapping,
+  drawAudioViz,
+} from './boids-audio';
 
 export interface BoidsPanelOpts {
   onShaderEdit?: () => void;
@@ -18,7 +27,7 @@ export function buildBoidsPanel(
   container: HTMLElement,
   controller: BoidsController,
   opts: BoidsPanelOpts = {},
-): void {
+): { teardown: () => void } {
   // ── Tab bar (replaces old plain header) ──────────────────────────
   const tabBar = document.createElement('div');
   tabBar.style.cssText = [
@@ -434,13 +443,117 @@ export function buildBoidsPanel(
     onRebindGroups: () => controller.rebuildBoidsBindGroups(),
     imageForce: controller.imageForce,
   });
+
+  return {
+    teardown: () => {
+      audioVizControls?.stop();
+    },
+  };
 }
 
-// ── Audio tab builder stub (replaced in Task 7) ───────────────────────────────
+// ── Audio tab builder ─────────────────────────────────────────────────────────
+
 function buildAudioTab(
-  _container: HTMLElement,
-  _reactor: AudioReactor,
-  _switchTab: (name: string) => void,
+  container: HTMLElement,
+  reactor: AudioReactor,
+  switchTab: (name: string) => void,
 ): { start: () => void; stop: () => void } {
+
+  container.style.cssText = 'display:flex;flex-direction:column;gap:0;';
+
+  // ── Source row ────────────────────────────────────────────────────
+  const sourceSection = document.createElement('div');
+  sourceSection.style.cssText = 'padding:8px 8px 6px;border-bottom:1px solid var(--bg-surface-border);';
+
+  const sourceLabel = document.createElement('div');
+  sourceLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:5px;';
+  sourceLabel.textContent = 'Audio Source';
+
+  const sourceBtnRow = document.createElement('div');
+  sourceBtnRow.style.cssText = 'display:flex;align-items:center;gap:5px;';
+
+  function pillStyle(active: boolean): string {
+    return [
+      'padding:2px 8px',
+      'border-radius:12px',
+      'font-size:0.68rem',
+      'cursor:pointer',
+      'transition:background 0.15s,color 0.15s',
+      active
+        ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
+        : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);',
+    ].join(';');
+  }
+
+  const micBtn = document.createElement('button');
+  micBtn.textContent = 'Microphone';
+  micBtn.style.cssText = pillStyle(false);
+
+  const sysBtn = document.createElement('button');
+  sysBtn.textContent = 'System Audio';
+  sysBtn.style.cssText = pillStyle(false);
+
+  // Status dot
+  const statusDot = document.createElement('span');
+  statusDot.style.cssText = [
+    'width:7px;height:7px;border-radius:50%;',
+    'display:inline-block;margin-left:auto;',
+    'background:var(--text-muted);transition:background 0.2s;',
+  ].join('');
+
+  const errorMsg = document.createElement('div');
+  errorMsg.style.cssText = 'font-size:0.62rem;color:#e05060;margin-top:4px;display:none;word-break:break-word;';
+
+  function updateStatus(): void {
+    if (reactor.status === 'active') {
+      statusDot.style.background = '#e05060';
+      statusDot.style.boxShadow  = '0 0 4px #e05060';
+      micBtn.style.cssText = pillStyle(reactor.activeSourceKind === 'microphone');
+      sysBtn.style.cssText = pillStyle(reactor.activeSourceKind === 'system');
+      errorMsg.style.display = 'none';
+    } else if (reactor.status === 'error') {
+      statusDot.style.background = '#e09020';
+      statusDot.style.boxShadow  = 'none';
+      errorMsg.textContent = reactor.lastError;
+      errorMsg.style.display = 'block';
+      micBtn.style.cssText = pillStyle(false);
+      sysBtn.style.cssText = pillStyle(false);
+    } else {
+      statusDot.style.background = 'var(--text-muted)';
+      statusDot.style.boxShadow  = 'none';
+      micBtn.style.cssText = pillStyle(false);
+      sysBtn.style.cssText = pillStyle(false);
+      errorMsg.style.display = 'none';
+    }
+  }
+
+  async function startSource(kind: 'microphone' | 'system'): Promise<void> {
+    if (reactor.isActive()) {
+      reactor.stop();
+      updateStatus();
+      return; // toggle off
+    }
+    try {
+      await reactor.start(kind);
+    } catch { /* error already stored in reactor.lastError */ }
+    updateStatus();
+  }
+
+  micBtn.addEventListener('click', () => void startSource('microphone'));
+  sysBtn.addEventListener('click', () => void startSource('system'));
+
+  sourceBtnRow.appendChild(micBtn);
+  sourceBtnRow.appendChild(sysBtn);
+  sourceBtnRow.appendChild(statusDot);
+
+  sourceSection.appendChild(sourceLabel);
+  sourceSection.appendChild(sourceBtnRow);
+  sourceSection.appendChild(errorMsg);
+  container.appendChild(sourceSection);
+
+  // ── Spectrum canvas + band meters (Task 8) ── placeholder ─────────
+  // ── Mapping rows (Task 9) ── placeholder ──────────────────────────
+
+  // Return start/stop controls (no rAF yet — added in Task 8)
   return { start: () => {}, stop: () => {} };
 }
