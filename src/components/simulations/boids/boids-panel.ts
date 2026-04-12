@@ -588,7 +588,7 @@ function buildAudioTab(
     barWrap.style.cssText = 'width:100%;height:16px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;display:flex;align-items:flex-end;';
 
     const bar = document.createElement('div');
-    bar.style.cssText = `width:100%;height:0%;background:${BAND_COLORS[band]};transition:height 0.05s;`;
+    bar.style.cssText = `width:100%;height:0%;background:${BAND_COLORS[band]};`;
     barWrap.appendChild(bar);
     meterBars[band] = bar;
 
@@ -611,16 +611,20 @@ function buildAudioTab(
 
   function startViz(): void {
     cancelAnimationFrame(vizRafId);
+    let wasActive = false;
     function loop(): void {
       if (reactor.isActive()) {
+        wasActive = true;
         const snapshot = reactor.analyze();
+        // analyze() must be called first — it populates freqData that drawAudioViz reads
         drawAudioViz(vizCanvas, reactor);
         for (const band of BAND_KEYS) {
           const bar = meterBars[band];
           if (bar) bar.style.height = `${Math.round(snapshot[band] * 100)}%`;
         }
-      } else {
-        // Clear visualiser when not active
+      } else if (wasActive) {
+        // Only clear once after going inactive — skip redundant work on subsequent idle frames
+        wasActive = false;
         const ctx2d = vizCanvas.getContext('2d');
         if (ctx2d) ctx2d.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
         for (const bar of Object.values(meterBars)) {
