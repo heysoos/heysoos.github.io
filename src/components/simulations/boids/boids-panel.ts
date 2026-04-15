@@ -490,6 +490,16 @@ export function buildBoidsPanel(
       u(effectiveSignal);
     }
 
+    // Traces for open drawer band tabs
+    for (const m of reactor.mappings) {
+      if (!m.enabled) continue;
+      const key = `${String(m.param)}::${m.band}`;
+      const push = traceUpdaters.get(key);
+      if (!push) continue;
+      const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
+      push(effectiveSignal);
+    }
+
     // Total-tab live updates
     for (const [param, u] of totalUpdaters) {
       const baseVal      = baseParams?.[param] ?? (controller.params as Record<string, number>)[param] ?? 0;
@@ -723,11 +733,13 @@ function buildAudioTab(
   let openParam: string | null = null;
   let drawerRow: HTMLTableRowElement | null = null;
   const dotUpdaters = new Map<string, (depth: number) => void>();
+  const traceUpdaters = new Map<string, (amplitude: number) => void>();
 
   function rebuildMatrix(): void {
     cellUpdaters.clear();
     totalUpdaters.clear();
     dotUpdaters.clear();
+    traceUpdaters.clear();
     tbody.innerHTML = '';
     openParam = null;
     drawerRow = null;
@@ -1042,13 +1054,9 @@ function buildAudioTab(
     const { canvas: traceCanvas, push: pushTrace } = makeTraceCanvas(color);
     body.appendChild(traceCanvas);
 
-    // Register updater for this cell's trace
+    // Register trace updater — bar updater lives in cellUpdaters (registered by rebuildMatrix)
     const key = `${String(mapping.param)}::${mapping.band}`;
-    const existingUpdater = cellUpdaters.get(key);
-    cellUpdaters.set(key, (amplitude: number) => {
-      existingUpdater?.(amplitude); // keep the live bar updater alive
-      pushTrace(amplitude);
-    });
+    traceUpdaters.set(key, pushTrace);
 
     // meta is already declared above (used for minInput/maxInput), suppress unused warning
     void meta;
@@ -1405,6 +1413,9 @@ function buildAudioTab(
     }
     if (openParam) {
       totalUpdaters.delete(openParam);
+      reactor.mappings
+        .filter(m => String(m.param) === openParam)
+        .forEach(m => traceUpdaters.delete(`${openParam}::${m.band}`));
       const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
       const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === openParam);
       const paramTr  = rows[paramIdx];
