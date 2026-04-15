@@ -7,6 +7,7 @@ import {
   type AudioReactor,
   type BandKey,
   type AudioMapping,
+  type BandSnapshot,
   BAND_COLORS,
   PARAM_META,
   MAPPABLE_PARAMS,
@@ -27,10 +28,11 @@ export function buildBoidsPanel(
   container: HTMLElement,
   controller: BoidsController,
   opts: BoidsPanelOpts = {},
-): { teardown: () => void; updateAudioViz: () => void } {
+): { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } {
   // ── Audio visualisation state — declared first so buildAudioTab can capture them ──
   const paramIndicators = new Map<string, { wrap: HTMLElement; fill: HTMLElement }>();
-  const mappingRowUpdaters = new Map<AudioMapping, (fraction: number | null) => void>();
+  const cellUpdaters  = new Map<string, (amplitude: number) => void>();
+  const totalUpdaters = new Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>();
 
   // ── Tab bar (replaces old plain header) ──────────────────────────
   const tabBar = document.createElement('div');
@@ -121,7 +123,7 @@ export function buildBoidsPanel(
 
   // Audio tab placeholder — replaced in Tasks 7–9
   if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, mappingRowUpdaters);
+    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, cellUpdaters, totalUpdaters);
     // Start immediately stopped since Params tab is shown first
     audioVizControls.stop();
   } else {
@@ -464,7 +466,7 @@ export function buildBoidsPanel(
   // Called from the mapping loop in slug.astro every rAF.
   // Reads controller.params (already audio-modulated at this point) to update
   // the indicator bars in the Params tab and amplitude bars + traces in the Audio tab.
-  function updateAudioViz(): void {
+  function updateAudioViz(baseParams?: Record<string, number>): void {
     const reactor = opts.reactor;
     if (!reactor) return;
 
@@ -472,24 +474,30 @@ export function buildBoidsPanel(
     for (const [, ind] of paramIndicators) ind.wrap.style.display = 'none';
 
     if (!reactor.isActive()) {
-      for (const [, u] of mappingRowUpdaters) u(null);
+      for (const [, u] of cellUpdaters) u(0);
       return;
     }
 
-    // Get current band snapshot to drive amplitude bars and traces
     const snapshot = reactor.analyze();
 
-    // Amplitude bars: show effective signal strength (band × gain) for each mapping row
+    // Cell amplitude bars + traces
     for (const m of reactor.mappings) {
-      const u = mappingRowUpdaters.get(m);
+      if (!m.enabled) continue;
+      const key = `${String(m.param)}::${m.band}`;
+      const u = cellUpdaters.get(key);
       if (!u) continue;
-      if (!m.enabled) { u(null); continue; }
       const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
       u(effectiveSignal);
     }
 
-    // Param indicators: show where the final modulated value sits within PARAM_META range.
-    // Multiple mappings may target the same param — last one's color wins.
+    // Total-tab live updates
+    for (const [param, u] of totalUpdaters) {
+      const baseVal      = baseParams?.[param] ?? (controller.params as Record<string, number>)[param] ?? 0;
+      const modulatedVal = (controller.params as Record<string, number>)[param] ?? 0;
+      u(snapshot, baseVal, modulatedVal);
+    }
+
+    // Param indicators in the Params tab
     for (const m of reactor.mappings) {
       if (!m.enabled) continue;
       const meta = PARAM_META[m.param as string];
@@ -500,7 +508,7 @@ export function buildBoidsPanel(
       const ind = paramIndicators.get(m.param as string);
       if (ind) {
         ind.wrap.style.display = 'block';
-        ind.fill.style.width = `${fraction * 100}%`;
+        ind.fill.style.width   = `${fraction * 100}%`;
         ind.fill.style.background = BAND_COLORS[m.band];
       }
     }
@@ -520,7 +528,8 @@ function buildAudioTab(
   container: HTMLElement,
   reactor: AudioReactor,
   switchTab: (name: string) => void,
-  mappingRowUpdaters: Map<AudioMapping, (fraction: number | null) => void>,
+  cellUpdaters: Map<string, (amplitude: number) => void>,
+  totalUpdaters: Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>,
 ): { start: () => void; stop: () => void } {
 
   // Do NOT touch display here — it's managed by switchTab (setting display:flex
@@ -675,6 +684,8 @@ function buildAudioTab(
   const mappingsSection = document.createElement('div');
   mappingsSection.style.cssText = 'padding:0 0 4px;border-bottom:1px solid var(--bg-surface-border);';
 
+  // Per-row updaters (fraction → amp bar + trace) — local to buildAudioTab
+  const mappingRowUpdaters = new Map<AudioMapping, (fraction: number | null) => void>();
   // Per-row trace visibility setters — used by the toggle-all button
   const traceSetters = new Map<AudioMapping, (visible: boolean) => void>();
   let allTracesVisible = true;

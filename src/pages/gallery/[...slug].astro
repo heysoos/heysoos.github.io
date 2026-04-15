@@ -682,7 +682,7 @@ const sim = project.data.simulation;
               reactor.applyMappings(boidsCtrl.params, snapshot); // modulate on top
               isApplyingAudio = false;
             }
-            panelControls?.updateAudioViz();
+            panelControls?.updateAudioViz(baseParams as Record<string, number>);
             mappingRafId = requestAnimationFrame(mappingLoop);
           })();
 
