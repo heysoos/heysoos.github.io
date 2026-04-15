@@ -1060,6 +1060,8 @@ function buildAudioTab(
     body: HTMLDivElement;
     registerUpdater: () => void;
   } {
+    const resolvedTextBody = getComputedStyle(document.documentElement)
+      .getPropertyValue('--text-body').trim() || 'rgba(232,224,208,0.9)';
     const meta     = PARAM_META[param];
     const mappings = reactor.mappings.filter(m => String(m.param) === param);
 
@@ -1193,7 +1195,7 @@ function buildAudioTab(
         ctx.stroke();
       });
       // Combined trace (bright)
-      ctx.strokeStyle = 'var(--text-body)';
+      ctx.strokeStyle = resolvedTextBody;
       ctx.lineWidth   = 2;
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
@@ -1402,6 +1404,7 @@ function buildAudioTab(
       drawerRow = null;
     }
     if (openParam) {
+      totalUpdaters.delete(openParam);
       const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
       const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === openParam);
       const paramTr  = rows[paramIdx];
