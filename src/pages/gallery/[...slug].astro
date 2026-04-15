@@ -95,9 +95,15 @@ const sim = project.data.simulation;
     position: absolute;
     top: 1rem;
     right: 1rem;
-    width: 220px;
+    width: 250px;
     max-height: calc(70vh - 2rem);
     overflow-y: auto;
+    overflow-x: hidden;
+    /* Reserve gutter so the scrollbar never overlaps content */
+    scrollbar-gutter: stable;
+    /* Firefox thin scrollbar styled to match theme */
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-surface-border) transparent;
     background: var(--bg-nav);
     border: 1px solid var(--bg-surface-border);
     border-radius: var(--border-radius);
@@ -107,6 +113,24 @@ const sim = project.data.simulation;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  /* Chrome/Edge/Safari: thin themed scrollbar */
+  .params-panel::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .params-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .params-panel::-webkit-scrollbar-thumb {
+    background: var(--bg-surface-border);
+    border-radius: 2px;
+  }
+
+  .params-panel::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
   }
 
   .params-panel :global(.panel-title) {

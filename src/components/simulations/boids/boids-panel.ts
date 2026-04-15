@@ -67,7 +67,7 @@ export function buildBoidsPanel(
 
   function buildTabStyle(active: boolean): string {
     return [
-      'padding:5px 10px',
+      'padding:5px 8px',
       'font-size:0.62rem',
       'text-transform:uppercase',
       'letter-spacing:0.07em',
@@ -523,7 +523,10 @@ function buildAudioTab(
   mappingRowUpdaters: Map<AudioMapping, (fraction: number | null) => void>,
 ): { start: () => void; stop: () => void } {
 
-  container.style.cssText = 'display:flex;flex-direction:column;gap:0;overflow-x:hidden;';
+  // Do NOT touch display here — it's managed by switchTab (setting display:flex
+  // would overwrite the display:none set during tab body creation, causing Audio
+  // content to bleed into the Params tab on initial render).
+  container.style.overflowX = 'hidden';
 
   // ── Source row ────────────────────────────────────────────────────
   const sourceSection = document.createElement('div');
