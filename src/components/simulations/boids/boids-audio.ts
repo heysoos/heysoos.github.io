@@ -22,7 +22,8 @@ export interface AudioMapping {
   param: keyof BoidsParams;
   band: BandKey;
   mode: AudioMode;
-  depth: number;   // 0–1
+  depth: number;   // 0–1  modulation depth relative to range
+  gain: number;    // 0–4  pre-amplifier on the band signal (>1 = boost)
   min: number;
   max: number;
   enabled: boolean;
@@ -190,26 +191,46 @@ export class AudioReactor {
     // so all modulations are relative to the user's slider intent.
     const base = { ...params } as Record<string, number>;
 
+    // Group enabled mappings by param, separated by mode.
+    // Multiple mappings may target the same param with different bands.
+    const addsByParam = new Map<string, AudioMapping[]>();
+    const mulsByParam = new Map<string, AudioMapping[]>();
+
     for (const m of this.mappings) {
       if (!m.enabled) continue;
-      const meta = PARAM_META[m.param as string];
-      if (!meta) continue;
-
-      const bandVal = snapshot[m.band];
-      const range   = m.max - m.min;
-      const baseVal = base[m.param as string] as number;
-
-      let next: number;
+      const key = m.param as string;
+      if (!PARAM_META[key]) continue;
       if (m.mode === 'add') {
-        next = baseVal + bandVal * m.depth * range;
+        if (!addsByParam.has(key)) addsByParam.set(key, []);
+        addsByParam.get(key)!.push(m);
       } else {
-        // multiply: scale up from base, capped by depth
-        next = baseVal * (1 + bandVal * m.depth);
+        if (!mulsByParam.has(key)) mulsByParam.set(key, []);
+        mulsByParam.get(key)!.push(m);
+      }
+    }
+
+    const allParams = new Set([...addsByParam.keys(), ...mulsByParam.keys()]);
+
+    for (const param of allParams) {
+      const meta = PARAM_META[param];
+      if (!meta) continue;
+      let val = base[param] as number;
+
+      // Apply all additive mappings first
+      for (const m of (addsByParam.get(param) ?? [])) {
+        const signal = snapshot[m.band] * (m.gain ?? 1);
+        val += signal * m.depth * (m.max - m.min);
       }
 
-      // Clamp to user-defined range
-      (params as unknown as Record<string, number>)[m.param as string] =
-        Math.max(m.min, Math.min(m.max, next));
+      // Then apply all multiplicative mappings
+      for (const m of (mulsByParam.get(param) ?? [])) {
+        const signal = snapshot[m.band] * (m.gain ?? 1);
+        val *= (1 + signal * m.depth);
+      }
+
+      // Clamp to param's natural range
+      (params as unknown as Record<string, number>)[param] =
+        Math.max(meta.min, Math.min(meta.max, val));
     }
   }
 
@@ -240,7 +261,8 @@ export class AudioReactor {
           && typeof m.min === 'number'
           && typeof m.max === 'number'
           && typeof m.enabled === 'boolean'
-      );
+      // gain is optional for backward compat with saved mappings that predate this field
+      ).map(m => ({ ...m, gain: typeof m.gain === 'number' ? m.gain : 1.0 }));
     } catch {
       this.mappings = [];
     }
@@ -258,6 +280,7 @@ export function defaultMapping(usedParams: (keyof BoidsParams)[] = []): AudioMap
     band:    'bass',
     mode:    'add',
     depth:   0.5,
+    gain:    1.0,
     min:     meta.min,
     max:     meta.max,
     enabled: true,

@@ -104,6 +104,7 @@ export function buildBoidsPanel(
 
     const body = document.createElement('div');
     body.style.display = name === 'Params' ? 'block' : 'none';
+    body.style.overflowX = 'hidden';
     tabBodies[name] = body;
   }
 
@@ -468,40 +469,40 @@ export function buildBoidsPanel(
     if (!reactor) return;
 
     // Reset all param indicators to hidden first
-    for (const [, ind] of paramIndicators) {
-      ind.wrap.style.display = 'none';
-    }
+    for (const [, ind] of paramIndicators) ind.wrap.style.display = 'none';
 
     if (!reactor.isActive()) {
       for (const [, u] of mappingRowUpdaters) u(null);
       return;
     }
 
-    // Track which params have at least one enabled mapping (for showing indicators)
+    // Get current band snapshot to drive amplitude bars and traces
+    const snapshot = reactor.analyze();
+
+    // Amplitude bars: show effective signal strength (band × gain) for each mapping row
+    for (const m of reactor.mappings) {
+      const u = mappingRowUpdaters.get(m);
+      if (!u) continue;
+      if (!m.enabled) { u(null); continue; }
+      const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
+      u(effectiveSignal);
+    }
+
+    // Param indicators: show where the final modulated value sits within PARAM_META range.
+    // Multiple mappings may target the same param — last one's color wins.
     for (const m of reactor.mappings) {
       if (!m.enabled) continue;
+      const meta = PARAM_META[m.param as string];
+      if (!meta) continue;
       const currentVal = (controller.params as Record<string, number>)[m.param as string] ?? 0;
-      const range = m.max - m.min;
-      const fraction = range > 0 ? Math.max(0, Math.min(1, (currentVal - m.min) / range)) : 0;
-
-      // Params tab: show indicator bar colored with this mapping's band
+      const range = meta.max - meta.min;
+      const fraction = range > 0 ? Math.max(0, Math.min(1, (currentVal - meta.min) / range)) : 0;
       const ind = paramIndicators.get(m.param as string);
       if (ind) {
         ind.wrap.style.display = 'block';
         ind.fill.style.width = `${fraction * 100}%`;
         ind.fill.style.background = BAND_COLORS[m.band];
       }
-
-      // Audio tab: update amplitude bar + trace for this mapping row
-      const u = mappingRowUpdaters.get(m);
-      if (u) u(fraction);
-    }
-
-    // Ensure disabled mapping rows are cleared
-    for (const m of reactor.mappings) {
-      if (m.enabled) continue;
-      const u = mappingRowUpdaters.get(m);
-      if (u) u(null);
     }
   }
 
@@ -522,7 +523,7 @@ function buildAudioTab(
   mappingRowUpdaters: Map<AudioMapping, (fraction: number | null) => void>,
 ): { start: () => void; stop: () => void } {
 
-  container.style.cssText = 'display:flex;flex-direction:column;gap:0;';
+  container.style.cssText = 'display:flex;flex-direction:column;gap:0;overflow-x:hidden;';
 
   // ── Source row ────────────────────────────────────────────────────
   const sourceSection = document.createElement('div');
@@ -671,10 +672,33 @@ function buildAudioTab(
   const mappingsSection = document.createElement('div');
   mappingsSection.style.cssText = 'padding:0 0 4px;border-bottom:1px solid var(--bg-surface-border);';
 
+  // Per-row trace visibility setters — used by the toggle-all button
+  const traceSetters = new Map<AudioMapping, (visible: boolean) => void>();
+  let allTracesVisible = true;
+
+  const mappingsHeader = document.createElement('div');
+  mappingsHeader.style.cssText = 'display:flex;align-items:center;padding:6px 8px 3px;';
+
   const mappingsLabel = document.createElement('div');
-  mappingsLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);padding:6px 8px 3px;';
+  mappingsLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);flex:1;';
   mappingsLabel.textContent = 'Mappings';
-  mappingsSection.appendChild(mappingsLabel);
+
+  const collapseAllBtn = document.createElement('button');
+  collapseAllBtn.title = 'Toggle all traces';
+  collapseAllBtn.style.cssText = [
+    'background:none;border:none;cursor:pointer;font-size:0.75rem;padding:0;line-height:1;',
+    'color:var(--accent);',
+  ].join('');
+  collapseAllBtn.textContent = '∿';
+  collapseAllBtn.addEventListener('click', () => {
+    allTracesVisible = !allTracesVisible;
+    collapseAllBtn.style.color = allTracesVisible ? 'var(--accent)' : 'var(--text-muted)';
+    for (const [, setTrace] of traceSetters) setTrace(allTracesVisible);
+  });
+
+  mappingsHeader.appendChild(mappingsLabel);
+  mappingsHeader.appendChild(collapseAllBtn);
+  mappingsSection.appendChild(mappingsHeader);
 
   const mappingsList = document.createElement('div');
   mappingsSection.appendChild(mappingsList);
@@ -689,7 +713,7 @@ function buildAudioTab(
     ].join('');
   }
 
-  function buildMappingRow(mapping: AudioMapping): { element: HTMLDivElement; update: (fraction: number | null) => void } {
+  function buildMappingRow(mapping: AudioMapping): { element: HTMLDivElement; update: (fraction: number | null) => void; setTrace: (visible: boolean) => void } {
     const row = document.createElement('div');
     row.style.cssText = 'padding:5px 8px;border-top:1px solid var(--bg-surface-border);display:flex;flex-direction:column;gap:4px;';
 
@@ -812,6 +836,37 @@ function buildAudioTab(
     row3.appendChild(depthVal);
     row.appendChild(row3);
 
+    // Row 3b: gain slider
+    const row3b = document.createElement('div');
+    row3b.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+    const gainLabel = document.createElement('span');
+    gainLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:30px;';
+    gainLabel.textContent = 'Gain';
+
+    const gainSlider = document.createElement('input');
+    gainSlider.type  = 'range';
+    gainSlider.min   = '0';
+    gainSlider.max   = '4';
+    gainSlider.step  = '0.05';
+    gainSlider.value = String(mapping.gain ?? 1.0);
+    gainSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
+
+    const gainVal = document.createElement('span');
+    gainVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:28px;text-align:right;font-variant-numeric:tabular-nums;';
+    gainVal.textContent = (mapping.gain ?? 1.0).toFixed(2);
+
+    gainSlider.addEventListener('input', () => {
+      mapping.gain = parseFloat(gainSlider.value);
+      gainVal.textContent = mapping.gain.toFixed(2);
+      reactor.saveMappings();
+    });
+
+    row3b.appendChild(gainLabel);
+    row3b.appendChild(gainSlider);
+    row3b.appendChild(gainVal);
+    row.appendChild(row3b);
+
     // Row 4: min / max clamp inputs
     const row4 = document.createElement('div');
     row4.style.cssText = 'display:flex;align-items:center;gap:4px;';
@@ -879,22 +934,28 @@ function buildAudioTab(
     row5.appendChild(traceToggle);
     row.appendChild(row5);
 
-    // Trace sparkline canvas (hidden until toggled)
+    // Trace sparkline canvas (shown by default)
     const TRACE_LEN = 200;
     const traceData = new Float32Array(TRACE_LEN);
     let tracePtr = 0;
-    let traceVisible = false;
+    let traceVisible = allTracesVisible;
 
     const traceCanvas = document.createElement('canvas');
     traceCanvas.width  = 184;
     traceCanvas.height = 28;
-    traceCanvas.style.cssText = 'width:100%;height:28px;display:none;border-radius:2px;background:#06050a;margin-top:2px;';
+    traceCanvas.style.cssText = `width:100%;height:28px;display:${traceVisible ? 'block' : 'none'};border-radius:2px;background:#06050a;margin-top:2px;`;
     row.appendChild(traceCanvas);
 
-    traceToggle.addEventListener('click', () => {
-      traceVisible = !traceVisible;
+    traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
+
+    function setTrace(visible: boolean): void {
+      traceVisible = visible;
       traceCanvas.style.display = traceVisible ? 'block' : 'none';
       traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
+    }
+
+    traceToggle.addEventListener('click', () => {
+      setTrace(!traceVisible);
     });
 
     function drawTrace(): void {
@@ -939,16 +1000,18 @@ function buildAudioTab(
       }
     }
 
-    return { element: row, update };
+    return { element: row, update, setTrace };
   }
 
   function rebuildMappingsList(): void {
     mappingsList.innerHTML = '';
     mappingRowUpdaters.clear();
+    traceSetters.clear();
     reactor.mappings.forEach((m) => {
-      const { element, update } = buildMappingRow(m);
+      const { element, update, setTrace } = buildMappingRow(m);
       mappingsList.appendChild(element);
       mappingRowUpdaters.set(m, update);
+      traceSetters.set(m, setTrace);
     });
   }
 
