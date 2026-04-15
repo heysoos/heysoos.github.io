@@ -1088,6 +1088,7 @@ function buildAudioTab(
         const bColor   = btn.dataset['bandcolor'] ?? 'var(--text-body)';
         btn.style.borderBottomColor = isActive ? bColor : 'transparent';
         btn.style.color = isActive ? bColor : 'var(--text-muted)';
+        btn.classList.toggle('active-tab', isActive);
       });
     }
 
