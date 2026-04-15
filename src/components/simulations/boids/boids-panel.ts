@@ -458,7 +458,8 @@ export function buildBoidsPanel(
       }, viewport);
     },
     onRebindGroups: () => controller.rebuildBoidsBindGroups(),
-    imageForce: controller.imageForce,
+    webcam:         controller.webcam,
+    imageForce:     controller.imageForce,
   });
 
   // Called from the mapping loop in slug.astro every rAF.
