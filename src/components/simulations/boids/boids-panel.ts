@@ -1056,6 +1056,206 @@ function buildAudioTab(
     return body;
   }
 
+  function buildTotalTab(param: string): {
+    body: HTMLDivElement;
+    registerUpdater: () => void;
+  } {
+    const meta     = PARAM_META[param];
+    const mappings = reactor.mappings.filter(m => String(m.param) === param);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:6px 8px;';
+
+    // ── Live value header ─────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:baseline;gap:6px;margin-bottom:4px;';
+    const liveVal  = document.createElement('span');
+    liveVal.style.cssText = 'font-size:0.75rem;font-variant-numeric:tabular-nums;color:var(--text-body);font-weight:600;min-width:32px;';
+    liveVal.textContent = '—';
+    const baseValEl = document.createElement('span');
+    baseValEl.style.cssText = 'font-size:0.58rem;color:var(--text-muted);';
+    baseValEl.textContent = 'base —';
+    const deltaEl = document.createElement('span');
+    deltaEl.style.cssText = 'font-size:0.58rem;margin-left:auto;font-variant-numeric:tabular-nums;';
+    deltaEl.textContent = '';
+    header.appendChild(liveVal);
+    header.appendChild(baseValEl);
+    header.appendChild(deltaEl);
+    body.appendChild(header);
+
+    // ── Range bar ──────────────────────────────────────────────────────
+    const rangeRow = document.createElement('div');
+    rangeRow.style.cssText = 'display:flex;align-items:center;gap:5px;margin-bottom:4px;';
+    const rangeLbl = document.createElement('span');
+    rangeLbl.style.cssText = 'font-size:0.52rem;color:var(--text-muted);min-width:28px;';
+    rangeLbl.textContent = 'range';
+    const rangeWrap = document.createElement('div');
+    rangeWrap.style.cssText = 'flex:1;position:relative;';
+    const rangeTrack = document.createElement('div');
+    rangeTrack.style.cssText = 'height:5px;background:var(--bg-surface-border);border-radius:3px;overflow:hidden;';
+    const rangeFill = document.createElement('div');
+    rangeFill.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--text-body));opacity:0.5;border-radius:3px;';
+    rangeTrack.appendChild(rangeFill);
+    const rangeCursor = document.createElement('div');
+    rangeCursor.style.cssText = 'position:absolute;top:-1px;width:2px;height:7px;background:var(--text-body);border-radius:1px;box-shadow:0 0 3px var(--text-body);transform:translateX(-1px);left:0%;';
+    const rangeMinMax = document.createElement('div');
+    rangeMinMax.style.cssText = 'display:flex;justify-content:space-between;font-size:0.5rem;color:var(--text-muted);margin-top:1px;font-variant-numeric:tabular-nums;';
+    rangeMinMax.innerHTML = `<span>${meta.min}</span><span class="range-cur-lbl" style="color:var(--text-body);">—</span><span>${meta.max}</span>`;
+    const rangeCurLbl = rangeMinMax.querySelector<HTMLSpanElement>('.range-cur-lbl')!;
+    rangeWrap.appendChild(rangeTrack);
+    rangeWrap.appendChild(rangeCursor);
+    rangeWrap.appendChild(rangeMinMax);
+    rangeRow.appendChild(rangeLbl);
+    rangeRow.appendChild(rangeWrap);
+    body.appendChild(rangeRow);
+
+    // ── Stacked trace canvas ──────────────────────────────────────────
+    const STACKED_H = 40;
+    const stackCanvas = document.createElement('canvas');
+    stackCanvas.width  = TRACE_W * dpr;
+    stackCanvas.height = STACKED_H * dpr;
+    stackCanvas.style.cssText = `width:100%;height:${STACKED_H}px;display:block;border-radius:2px;background:#06050a;margin-bottom:3px;`;
+    body.appendChild(stackCanvas);
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;font-size:0.5rem;margin-bottom:5px;';
+    for (const m of mappings) {
+      const s = document.createElement('span');
+      s.style.color = BAND_COLORS[m.band];
+      s.textContent = `— ${m.band}`;
+      legend.appendChild(s);
+    }
+    const combSpan = document.createElement('span');
+    combSpan.style.cssText = 'color:var(--text-body);font-weight:600;';
+    combSpan.textContent = '— combined';
+    legend.appendChild(combSpan);
+    body.appendChild(legend);
+
+    // ── Contributions breakdown ───────────────────────────────────────
+    const contribSection = document.createElement('div');
+    contribSection.style.cssText = 'border-top:1px solid var(--bg-surface-border);padding-top:5px;';
+    const contribLbl = document.createElement('div');
+    contribLbl.style.cssText = 'font-size:0.5rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:3px;';
+    contribLbl.textContent = 'contributions';
+    contribSection.appendChild(contribLbl);
+    const contribRows: { fill: HTMLElement; valEl: HTMLElement }[] = [];
+    for (const m of mappings) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:3px;';
+      const swatch = document.createElement('div');
+      swatch.style.cssText = `width:6px;height:6px;border-radius:50%;background:${BAND_COLORS[m.band]};flex-shrink:0;`;
+      const name = document.createElement('span');
+      name.style.cssText = `font-size:0.52rem;color:${BAND_COLORS[m.band]};min-width:30px;`;
+      name.textContent = m.band;
+      const modeEl = document.createElement('span');
+      modeEl.style.cssText = 'font-size:0.5rem;color:var(--text-muted);min-width:22px;';
+      modeEl.textContent = m.mode === 'add' ? '+add' : '×mul';
+      const barWrap = document.createElement('div');
+      barWrap.style.cssText = 'flex:1;height:3px;background:var(--bg-surface-border);border-radius:2px;';
+      const barFill = document.createElement('div');
+      barFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[m.band]};border-radius:2px;`;
+      barWrap.appendChild(barFill);
+      const valEl = document.createElement('span');
+      valEl.style.cssText = `font-size:0.5rem;color:${BAND_COLORS[m.band]};min-width:32px;text-align:right;font-variant-numeric:tabular-nums;`;
+      valEl.textContent = '—';
+      row.appendChild(swatch); row.appendChild(name); row.appendChild(modeEl);
+      row.appendChild(barWrap); row.appendChild(valEl);
+      contribSection.appendChild(row);
+      contribRows.push({ fill: barFill, valEl });
+    }
+    body.appendChild(contribSection);
+
+    // Per-band ring buffers for stacked trace
+    const bandBuffers = mappings.map(() => new Float32Array(TRACE_LEN));
+    const combinedBuffer = new Float32Array(TRACE_LEN);
+    let tracePtr = 0;
+
+    function drawStackedTrace(): void {
+      const ctx = stackCanvas.getContext('2d');
+      if (!ctx) return;
+      const W = TRACE_W, H = STACKED_H;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const innerH = H - 2;
+      // Individual band traces (faint)
+      mappings.forEach((m, i) => {
+        ctx.strokeStyle = BAND_COLORS[m.band];
+        ctx.lineWidth   = 1;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        for (let j = 0; j < TRACE_LEN; j++) {
+          const idx = (tracePtr + j) % TRACE_LEN;
+          const x = (j / (TRACE_LEN - 1)) * W;
+          const y = H - bandBuffers[i][idx] * innerH - 1;
+          if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+      // Combined trace (bright)
+      ctx.strokeStyle = 'var(--text-body)';
+      ctx.lineWidth   = 2;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (let j = 0; j < TRACE_LEN; j++) {
+        const idx = (tracePtr + j) % TRACE_LEN;
+        const x = (j / (TRACE_LEN - 1)) * W;
+        const y = H - Math.min(1, Math.max(0, combinedBuffer[idx])) * innerH - 1;
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function registerUpdater(): void {
+      totalUpdaters.set(param, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => {
+        // Update live value header
+        const delta = modulatedVal - baseVal;
+        liveVal.textContent    = modulatedVal.toFixed(3);
+        baseValEl.textContent  = `base ${baseVal.toFixed(3)}`;
+        deltaEl.textContent    = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+        deltaEl.style.color    = delta >= 0 ? '#80d060' : '#e05060';
+
+        // Range bar
+        const rangeSpan = meta.max - meta.min;
+        const fraction  = rangeSpan > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / rangeSpan)) : 0;
+        rangeFill.style.width         = `${fraction * 100}%`;
+        rangeCursor.style.left        = `${fraction * 100}%`;
+        rangeCurLbl.textContent       = modulatedVal.toFixed(3);
+
+        // Per-band contributions
+        mappings.forEach((m, i) => {
+          const signal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
+          const mappingMeta = PARAM_META[String(m.param)];
+          let contribution: number;
+          let barFraction: number;
+          if (m.mode === 'add') {
+            contribution = signal * m.depth * (m.max - m.min);
+            barFraction  = Math.min(1, Math.abs(contribution) / Math.max(0.001, mappingMeta.max - mappingMeta.min));
+            contribRows[i].valEl.textContent = (contribution >= 0 ? '+' : '') + contribution.toFixed(3);
+          } else {
+            contribution = 1 + signal * m.depth;
+            barFraction  = Math.min(1, (contribution - 1) / 2);
+            contribRows[i].valEl.textContent = `×${contribution.toFixed(3)}`;
+          }
+          (contribRows[i].fill as HTMLElement).style.width = `${barFraction * 100}%`;
+
+          // Push to per-band ring buffer (normalised amplitude)
+          bandBuffers[i][tracePtr] = signal;
+        });
+
+        // Combined: normalise modulated value to 0–1 within param range
+        const normModulated = rangeSpan > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / rangeSpan)) : 0;
+        combinedBuffer[tracePtr] = normModulated;
+        tracePtr = (tracePtr + 1) % TRACE_LEN;
+
+        drawStackedTrace();
+      });
+    }
+
+    return { body, registerUpdater };
+  }
+
   function openDrawer(param: string, activeBand: BandKey): void {
     // Remove existing drawer if any
     drawerRow?.remove();
@@ -1153,10 +1353,10 @@ function buildAudioTab(
     if (multiMapping) {
       const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)');
       tabs.insertBefore(totalBtn, removeBtn);
-      const totalBody = document.createElement('div');
+      const { body: totalBody, registerUpdater } = buildTotalTab(param);
       totalBody.style.display = 'none';
-      totalBody.dataset['placeholder'] = 'total'; // replaced in Task 4
       tabBodies['∑'] = totalBody;
+      registerUpdater();
     }
 
     td.appendChild(tabs);
