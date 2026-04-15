@@ -682,421 +682,124 @@ function buildAudioTab(
 
   // ── Mappings section ──────────────────────────────────────────────
   const mappingsSection = document.createElement('div');
-  mappingsSection.style.cssText = 'padding:0 0 4px;border-bottom:1px solid var(--bg-surface-border);';
-
-  // Per-row updaters (fraction → amp bar + trace) — local to buildAudioTab
-  const mappingRowUpdaters = new Map<AudioMapping, (fraction: number | null) => void>();
-  // Per-row trace visibility setters — used by the toggle-all button
-  const traceSetters = new Map<AudioMapping, (visible: boolean) => void>();
-  let allTracesVisible = true;
+  mappingsSection.style.cssText = 'padding:0;';
 
   const mappingsHeader = document.createElement('div');
-  mappingsHeader.style.cssText = 'display:flex;align-items:center;padding:6px 8px 3px;';
-
+  mappingsHeader.style.cssText = 'display:flex;align-items:center;padding:5px 8px 3px;';
   const mappingsLabel = document.createElement('div');
-  mappingsLabel.style.cssText = 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);flex:1;';
+  mappingsLabel.style.cssText = 'font-size:0.55rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);flex:1;';
   mappingsLabel.textContent = 'Mappings';
-
-  const collapseAllBtn = document.createElement('button');
-  collapseAllBtn.title = 'Toggle all traces';
-  collapseAllBtn.style.cssText = [
-    'background:none;border:none;cursor:pointer;font-size:0.75rem;padding:0;line-height:1;',
-    'color:var(--accent);',
-  ].join('');
-  collapseAllBtn.textContent = '∿';
-  collapseAllBtn.addEventListener('click', () => {
-    allTracesVisible = !allTracesVisible;
-    collapseAllBtn.style.color = allTracesVisible ? 'var(--accent)' : 'var(--text-muted)';
-    for (const [, setTrace] of traceSetters) setTrace(allTracesVisible);
-  });
-
   mappingsHeader.appendChild(mappingsLabel);
-  mappingsHeader.appendChild(collapseAllBtn);
   mappingsSection.appendChild(mappingsHeader);
 
-  const mappingsList = document.createElement('div');
-  mappingsSection.appendChild(mappingsList);
+  // Matrix table
+  const matrixTable = document.createElement('table');
+  matrixTable.style.cssText = 'width:100%;border-collapse:collapse;';
 
-  function buildBandBtnStyle(band: BandKey, activeBand: BandKey): string {
-    const isActive = band === activeBand;
-    return [
-      'width:18px;height:18px;border-radius:3px;font-size:0.6rem;cursor:pointer;',
-      'border:1px solid ' + (isActive ? BAND_COLORS[band] : 'var(--bg-surface-border)') + ';',
-      'background:' + (isActive ? BAND_COLORS[band] + '33' : 'transparent') + ';',
-      'color:' + (isActive ? BAND_COLORS[band] : 'var(--text-muted)') + ';',
-    ].join('');
+  // thead — band column headers
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  const paramTh = document.createElement('th');
+  paramTh.style.cssText = 'text-align:left;padding-left:8px;font-size:0.5rem;color:transparent;user-select:none;';
+  paramTh.textContent = '-';
+  headerRow.appendChild(paramTh);
+  const BAND_KEYS_ORDER: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
+  const BAND_ABBR: Record<BandKey, string> = { bass: 'B', mid: 'M', presence: 'P', hi: 'H', volume: 'V' };
+  for (const band of BAND_KEYS_ORDER) {
+    const th = document.createElement('th');
+    th.style.cssText = `font-size:0.5rem;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0;text-align:center;color:${BAND_COLORS[band]};`;
+    th.textContent = BAND_ABBR[band];
+    headerRow.appendChild(th);
   }
+  thead.appendChild(headerRow);
+  matrixTable.appendChild(thead);
 
-  function buildMappingRow(mapping: AudioMapping): { element: HTMLDivElement; update: (fraction: number | null) => void; setTrace: (visible: boolean) => void } {
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:5px 8px;border-top:1px solid var(--bg-surface-border);display:flex;flex-direction:column;gap:4px;';
-
-    // Row 1: param dropdown + remove button
-    const row1 = document.createElement('div');
-    row1.style.cssText = 'display:flex;align-items:center;gap:4px;';
-
-    const paramSel = document.createElement('select');
-    paramSel.style.cssText = [
-      'flex:1;background:var(--bg-surface);color:var(--text-body);',
-      'border:1px solid var(--bg-surface-border);border-radius:3px;',
-      'font-size:0.65rem;padding:2px 4px;cursor:pointer;',
-    ].join('');
-    for (const p of MAPPABLE_PARAMS) {
-      const opt = document.createElement('option');
-      opt.value = String(p);
-      opt.textContent = PARAM_META[String(p)].label;
-      opt.selected = p === mapping.param;
-      paramSel.appendChild(opt);
-    }
-    paramSel.addEventListener('change', () => {
-      mapping.param = paramSel.value as typeof mapping.param;
-      const meta = PARAM_META[paramSel.value];
-      minInput.value = String(meta.min);
-      maxInput.value = String(meta.max);
-      mapping.min = meta.min;
-      mapping.max = meta.max;
-      reactor.saveMappings();
-    });
-
-    const removeBtn = document.createElement('button');
-    removeBtn.textContent = '×';
-    removeBtn.style.cssText = [
-      'background:none;border:none;color:var(--text-muted);',
-      'cursor:pointer;font-size:0.9rem;padding:0 2px;line-height:1;',
-    ].join('');
-    removeBtn.addEventListener('click', () => {
-      const idx = reactor.mappings.indexOf(mapping);
-      if (idx !== -1) reactor.mappings.splice(idx, 1);
-      reactor.saveMappings();
-      rebuildMappingsList();
-    });
-
-    row1.appendChild(paramSel);
-    row1.appendChild(removeBtn);
-    row.appendChild(row1);
-
-    // Row 2: band selector + mode toggle
-    const row2 = document.createElement('div');
-    row2.style.cssText = 'display:flex;align-items:center;gap:4px;';
-
-    const BAND_ABBR: Record<BandKey, string> = {
-      bass: 'B', mid: 'M', presence: 'P', hi: 'H', volume: 'V',
-    };
-
-    const bandBtns: HTMLButtonElement[] = [];
-    for (const band of ['bass', 'mid', 'presence', 'hi', 'volume'] as BandKey[]) {
-      const b = document.createElement('button');
-      b.textContent = BAND_ABBR[band];
-      b.title = band;
-      b.style.cssText = buildBandBtnStyle(band, mapping.band);
-      b.addEventListener('click', () => {
-        mapping.band = band;
-        for (const bb of bandBtns) {
-          bb.style.cssText = buildBandBtnStyle(
-            (bb as HTMLButtonElement & { _band: BandKey })._band,
-            mapping.band,
-          );
-        }
-        reactor.saveMappings();
-      });
-      (b as HTMLButtonElement & { _band: BandKey })._band = band;
-      bandBtns.push(b);
-      row2.appendChild(b);
-    }
-
-    // Mode toggle
-    const modeBtn = document.createElement('button');
-    modeBtn.style.cssText = [
-      'margin-left:auto;padding:1px 6px;border-radius:3px;font-size:0.65rem;cursor:pointer;',
-      'border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-muted);',
-    ].join('');
-    modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
-    modeBtn.addEventListener('click', () => {
-      mapping.mode = mapping.mode === 'add' ? 'multiply' : 'add';
-      modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
-      reactor.saveMappings();
-    });
-    row2.appendChild(modeBtn);
-    row.appendChild(row2);
-
-    // Row 3: depth slider
-    const row3 = document.createElement('div');
-    row3.style.cssText = 'display:flex;align-items:center;gap:6px;';
-
-    const depthLabel = document.createElement('span');
-    depthLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:30px;';
-    depthLabel.textContent = 'Depth';
-
-    const depthSlider = document.createElement('input');
-    depthSlider.type = 'range';
-    depthSlider.min  = '0';
-    depthSlider.max  = '1';
-    depthSlider.step = '0.01';
-    depthSlider.value = String(mapping.depth);
-    depthSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
-
-    const depthVal = document.createElement('span');
-    depthVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:28px;text-align:right;font-variant-numeric:tabular-nums;';
-    depthVal.textContent = mapping.depth.toFixed(2);
-
-    depthSlider.addEventListener('input', () => {
-      mapping.depth = parseFloat(depthSlider.value);
-      depthVal.textContent = mapping.depth.toFixed(2);
-      reactor.saveMappings();
-    });
-
-    row3.appendChild(depthLabel);
-    row3.appendChild(depthSlider);
-    row3.appendChild(depthVal);
-    row.appendChild(row3);
-
-    // Row 3b: gain slider
-    const row3b = document.createElement('div');
-    row3b.style.cssText = 'display:flex;align-items:center;gap:6px;';
-
-    const gainLabel = document.createElement('span');
-    gainLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:30px;';
-    gainLabel.textContent = 'Gain';
-
-    const gainSlider = document.createElement('input');
-    gainSlider.type  = 'range';
-    gainSlider.min   = '0';
-    gainSlider.max   = '4';
-    gainSlider.step  = '0.05';
-    gainSlider.value = String(mapping.gain ?? 1.0);
-    gainSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
-
-    const gainVal = document.createElement('span');
-    gainVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:28px;text-align:right;font-variant-numeric:tabular-nums;';
-    gainVal.textContent = (mapping.gain ?? 1.0).toFixed(2);
-
-    gainSlider.addEventListener('input', () => {
-      mapping.gain = parseFloat(gainSlider.value);
-      gainVal.textContent = mapping.gain.toFixed(2);
-      reactor.saveMappings();
-    });
-
-    row3b.appendChild(gainLabel);
-    row3b.appendChild(gainSlider);
-    row3b.appendChild(gainVal);
-    row.appendChild(row3b);
-
-    // Row 4: min / max clamp inputs
-    const row4 = document.createElement('div');
-    row4.style.cssText = 'display:flex;align-items:center;gap:4px;';
-
-    const inputStyle = [
-      'width:48px;background:var(--bg-surface);color:var(--text-body);',
-      'border:1px solid var(--bg-surface-border);border-radius:3px;',
-      'font-size:0.62rem;padding:1px 3px;text-align:right;',
-    ].join('');
-
-    const minLabel = document.createElement('span');
-    minLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
-    minLabel.textContent = 'Min';
-
-    const minInput = document.createElement('input');
-    minInput.type  = 'text';
-    minInput.value = String(mapping.min);
-    minInput.style.cssText = inputStyle;
-    minInput.addEventListener('blur', () => {
-      const v = parseFloat(minInput.value);
-      if (!isNaN(v) && v < mapping.max) { mapping.min = v; reactor.saveMappings(); }
-      else minInput.value = String(mapping.min);
-    });
-
-    const maxLabel = document.createElement('span');
-    maxLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);margin-left:4px;';
-    maxLabel.textContent = 'Max';
-
-    const maxInput = document.createElement('input');
-    maxInput.type  = 'text';
-    maxInput.value = String(mapping.max);
-    maxInput.style.cssText = inputStyle;
-    maxInput.addEventListener('blur', () => {
-      const v = parseFloat(maxInput.value);
-      if (!isNaN(v) && v > mapping.min) { mapping.max = v; reactor.saveMappings(); }
-      else maxInput.value = String(mapping.max);
-    });
-
-    row4.appendChild(minLabel);
-    row4.appendChild(minInput);
-    row4.appendChild(maxLabel);
-    row4.appendChild(maxInput);
-    row.appendChild(row4);
-
-    // Row 5: amplitude bar + trace toggle button
-    const row5 = document.createElement('div');
-    row5.style.cssText = 'display:flex;align-items:center;gap:5px;padding-top:2px;';
-
-    const ampWrap = document.createElement('div');
-    ampWrap.style.cssText = 'flex:1;height:3px;background:var(--bg-surface-border);border-radius:2px;overflow:hidden;';
-    const ampFill = document.createElement('div');
-    ampFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[mapping.band]};border-radius:2px;`;
-    ampWrap.appendChild(ampFill);
-
-    const traceToggle = document.createElement('button');
-    traceToggle.textContent = '∿';
-    traceToggle.title = 'Toggle trace';
-    traceToggle.style.cssText = [
-      'background:none;border:none;cursor:pointer;',
-      'font-size:0.75rem;padding:0;line-height:1;',
-      'color:var(--text-muted);',
-    ].join('');
-
-    row5.appendChild(ampWrap);
-    row5.appendChild(traceToggle);
-    row.appendChild(row5);
-
-    // Trace sparkline canvas (shown by default)
-    const TRACE_LEN = 200;
-    const traceData = new Float32Array(TRACE_LEN);
-    let tracePtr = 0;
-    let traceVisible = allTracesVisible;
-
-    // Logical canvas dimensions (CSS pixels). Buffer is scaled by devicePixelRatio
-    // so text and lines render crisp on HiDPI displays.
-    const TRACE_W = 184;
-    const TRACE_H = 32;
-    const dpr = window.devicePixelRatio || 1;
-    const traceCanvas = document.createElement('canvas');
-    traceCanvas.width  = TRACE_W * dpr;
-    traceCanvas.height = TRACE_H * dpr;
-    traceCanvas.style.cssText = `width:100%;height:${TRACE_H}px;display:${traceVisible ? 'block' : 'none'};border-radius:2px;background:#06050a;margin-top:2px;`;
-    row.appendChild(traceCanvas);
-
-    traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
-
-    function setTrace(visible: boolean): void {
-      traceVisible = visible;
-      traceCanvas.style.display = traceVisible ? 'block' : 'none';
-      traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
-    }
-
-    traceToggle.addEventListener('click', () => {
-      setTrace(!traceVisible);
-    });
-
-    function drawTrace(): void {
-      const ctx = traceCanvas.getContext('2d');
-      if (!ctx) return;
-      // Work in logical pixels — context is pre-scaled by dpr for HiDPI sharpness
-      const W = TRACE_W;
-      const H = TRACE_H;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-
-      // Compute observed min/max and current value from ring buffer
-      let trMin = Infinity, trMax = -Infinity;
-      for (let i = 0; i < TRACE_LEN; i++) {
-        if (traceData[i] < trMin) trMin = traceData[i];
-        if (traceData[i] > trMax) trMax = traceData[i];
-      }
-      if (!isFinite(trMin)) trMin = 0;
-      if (!isFinite(trMax)) trMax = 0;
-      const currentVal = traceData[(tracePtr - 1 + TRACE_LEN) % TRACE_LEN];
-
-      // Full-range boundary lines (faint)
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      ctx.moveTo(0, 1);      ctx.lineTo(W, 1);      // top  = 1.0
-      ctx.moveTo(0, H - 1);  ctx.lineTo(W, H - 1);  // bottom = 0.0
-      ctx.stroke();
-
-      // Trace line
-      const innerH = H - 2;
-      ctx.strokeStyle = BAND_COLORS[mapping.band];
-      ctx.lineWidth = 1.5;
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      for (let i = 0; i < TRACE_LEN; i++) {
-        const idx = (tracePtr + i) % TRACE_LEN;
-        const x = (i / (TRACE_LEN - 1)) * W;
-        const y = H - traceData[idx] * innerH - 1;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      // ── Value labels ──────────────────────────────────────────────
-      // Max (top-left) and Min (bottom-left) show observed range of trace buffer.
-      // Current (right edge, vertically tracks the live trace tip) in band color.
-      const FONT = '9px monospace';
-      const LINE_H = 9;
-
-      // Max label — top-left
-      ctx.font = FONT;
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillText(trMax.toFixed(2), 2, LINE_H);
-
-      // Min label — bottom-left
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillText(trMin.toFixed(2), 2, H - 2);
-
-      // Current value — right edge, floating at the trace tip y-position
-      const tipY = H - currentVal * innerH - 1;
-      const labelY = Math.max(LINE_H, Math.min(H - 2, tipY + 3));
-      ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillStyle = BAND_COLORS[mapping.band];
-      ctx.globalAlpha = 0.85;
-      ctx.fillText(currentVal.toFixed(2), W - 2, labelY);
-      ctx.globalAlpha = 1;
-    }
-
-    function update(fraction: number | null): void {
-      // Sync amp bar color in case band changed since last frame
-      ampFill.style.background = BAND_COLORS[mapping.band];
-      if (fraction === null) {
-        ampFill.style.width = '0%';
-        return;
-      }
-      ampFill.style.width = `${fraction * 100}%`;
-      if (traceVisible) {
-        traceData[tracePtr] = fraction;
-        tracePtr = (tracePtr + 1) % TRACE_LEN;
-        drawTrace();
-      }
-    }
-
-    return { element: row, update, setTrace };
-  }
-
-  function rebuildMappingsList(): void {
-    mappingsList.innerHTML = '';
-    mappingRowUpdaters.clear();
-    traceSetters.clear();
-    reactor.mappings.forEach((m) => {
-      const { element, update, setTrace } = buildMappingRow(m);
-      mappingsList.appendChild(element);
-      mappingRowUpdaters.set(m, update);
-      traceSetters.set(m, setTrace);
-    });
-  }
-
-  rebuildMappingsList();
-
-  // "+ Add Mapping" button
-  const addBtn = document.createElement('button');
-  addBtn.textContent = '+ Add Mapping';
-  addBtn.style.cssText = [
-    'display:block;width:calc(100% - 16px);margin:6px 8px 4px;',
-    'padding:4px 0;border-radius:4px;font-size:0.68rem;cursor:pointer;',
-    'border:1px solid var(--bg-surface-border);background:transparent;',
-    'color:var(--text-muted);transition:border-color 0.15s,color 0.15s;',
-  ].join('');
-  addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--accent)'; addBtn.style.color = 'var(--accent)'; });
-  addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor = 'var(--bg-surface-border)'; addBtn.style.color = 'var(--text-muted)'; });
-  addBtn.addEventListener('click', () => {
-    const used = reactor.mappings.map(m => m.param);
-    reactor.mappings.push(defaultMapping(used));
-    reactor.saveMappings();
-    rebuildMappingsList();
-  });
-  mappingsSection.appendChild(addBtn);
+  const tbody = document.createElement('tbody');
+  matrixTable.appendChild(tbody);
+  mappingsSection.appendChild(matrixTable);
   container.appendChild(mappingsSection);
+
+  // Track which param row's drawer is currently open (null = none)
+  let openParam: string | null = null;
+  let drawerRow: HTMLTableRowElement | null = null;
+
+  function rebuildMatrix(): void {
+    cellUpdaters.clear();
+    totalUpdaters.clear();
+    tbody.innerHTML = '';
+    openParam = null;
+    drawerRow = null;
+
+    for (const paramKey of MAPPABLE_PARAMS) {
+      const param = String(paramKey);
+      const meta  = PARAM_META[param];
+      if (!meta) continue;
+
+      const activeMappings = reactor.mappings.filter(m => String(m.param) === param);
+      const hasAny = activeMappings.length > 0;
+
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'cursor:pointer;transition:background 0.1s;';
+      tr.addEventListener('mouseenter', () => { if (openParam !== param) tr.style.background = 'rgba(255,255,255,0.03)'; });
+      tr.addEventListener('mouseleave', () => { if (openParam !== param) tr.style.background = ''; });
+
+      // Param label cell
+      const nameTd = document.createElement('td');
+      nameTd.style.cssText = `font-size:0.57rem;padding:3px 4px 3px 8px;white-space:nowrap;color:${hasAny ? 'var(--text-body)' : 'var(--text-muted)'};opacity:${hasAny ? '1' : '0.4'};`;
+      nameTd.textContent = meta.label;
+      tr.appendChild(nameTd);
+
+      // Band cells
+      for (const band of BAND_KEYS_ORDER) {
+        const td  = document.createElement('td');
+        td.style.cssText = 'text-align:center;padding:3px 0;';
+
+        const mapping = activeMappings.find(m => m.band === band) ?? null;
+        const cellDiv = document.createElement('div');
+        cellDiv.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px;border-radius:3px;transition:background 0.1s;';
+        cellDiv.addEventListener('mouseenter', () => { cellDiv.style.background = 'rgba(255,255,255,0.06)'; });
+        cellDiv.addEventListener('mouseleave', () => { cellDiv.style.background = ''; });
+
+        const dot = document.createElement('div');
+        dot.style.cssText = `border-radius:50%;border:1px solid var(--bg-surface-border);background:transparent;display:block;`;
+        if (mapping) {
+          const sz = mapping.depth < 0.33 ? 6 : mapping.depth < 0.67 ? 9 : 11;
+          dot.style.width  = `${sz}px`;
+          dot.style.height = `${sz}px`;
+          dot.style.background  = BAND_COLORS[band];
+          dot.style.borderColor = BAND_COLORS[band];
+          dot.style.boxShadow   = `0 0 4px ${BAND_COLORS[band]}aa`;
+        } else {
+          dot.style.width   = '8px';
+          dot.style.height  = '8px';
+          dot.style.opacity = '0.2';
+        }
+        cellDiv.appendChild(dot);
+
+        // Live amplitude bar beneath dot (only for mapped cells)
+        const liveBar = document.createElement('div');
+        liveBar.style.cssText = `width:${mapping ? '12px' : '0'};height:2px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;`;
+        const liveFill = document.createElement('div');
+        liveFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[band]};border-radius:1px;`;
+        liveBar.appendChild(liveFill);
+        cellDiv.appendChild(liveBar);
+
+        if (mapping) {
+          const key = `${param}::${band}`;
+          cellUpdaters.set(key, (amplitude: number) => {
+            liveFill.style.width = `${Math.round(amplitude * 100)}%`;
+          });
+        }
+
+        td.appendChild(cellDiv);
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  rebuildMatrix();
 
   // ── Visualiser rAF loop (runs only when Audio tab is visible) ─────
   let vizRafId = 0;
