@@ -1,20 +1,12 @@
 // src/components/simulations/boids/boids-webcam.ts
 
 import type { ImageProcessor } from '../../../lib/webgpu/image-editor/image-processor';
-import { ProcessingMode, type ProcessingParams } from '../../../lib/webgpu/image-editor/image-editor-types';
 
 export class BoidsWebcam {
   status: 'idle' | 'active' | 'error' = 'idle';
   lastError = '';
   targetFps = 30;
   mirrored  = true;
-
-  params: ProcessingParams = {
-    mode:       ProcessingMode.GradientAttract,
-    blurRadius: 0,
-    threshold:  0.5,
-    invert:     false,
-  };
 
   availableCameras: MediaDeviceInfo[] = [];
   activeCameraId: string | null = null;
