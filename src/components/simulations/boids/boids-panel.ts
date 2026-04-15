@@ -722,10 +722,12 @@ function buildAudioTab(
   // Track which param row's drawer is currently open (null = none)
   let openParam: string | null = null;
   let drawerRow: HTMLTableRowElement | null = null;
+  const dotUpdaters = new Map<string, (depth: number) => void>();
 
   function rebuildMatrix(): void {
     cellUpdaters.clear();
     totalUpdaters.clear();
+    dotUpdaters.clear();
     tbody.innerHTML = '';
     openParam = null;
     drawerRow = null;
@@ -830,6 +832,11 @@ function buildAudioTab(
           const key = `${param}::${band}`;
           cellUpdaters.set(key, (amplitude: number) => {
             liveFill.style.width = `${Math.round(amplitude * 100)}%`;
+          });
+          dotUpdaters.set(key, (depth: number) => {
+            const sz = depth < 0.33 ? 6 : depth < 0.67 ? 9 : 11;
+            dot.style.width  = `${sz}px`;
+            dot.style.height = `${sz}px`;
           });
         }
 
@@ -956,8 +963,9 @@ function buildAudioTab(
       mapping.depth = parseFloat(depthSlider.value);
       depthVal.textContent = mapping.depth.toFixed(2);
       reactor.saveMappings();
-      rebuildMatrix(); // dot size updates
-      openDrawer(String(mapping.param), mapping.band);
+      // Update dot size in-place without full rebuild
+      const dotKey = `${String(mapping.param)}::${mapping.band}`;
+      dotUpdaters.get(dotKey)?.(mapping.depth);
     });
     const depthWrap = document.createElement('div');
     depthWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
@@ -1012,6 +1020,7 @@ function buildAudioTab(
       if (!isNaN(v) && v < mapping.max) { mapping.min = v; reactor.saveMappings(); }
       else minInput.value = String(mapping.min);
     });
+    minInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') minInput.blur(); });
 
     const maxLabel = document.createElement('span');
     maxLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);margin-left:4px;';
@@ -1023,6 +1032,7 @@ function buildAudioTab(
       if (!isNaN(v) && v > mapping.min) { mapping.max = v; reactor.saveMappings(); }
       else maxInput.value = String(mapping.max);
     });
+    maxInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') maxInput.blur(); });
 
     minMaxRow.appendChild(minLabel); minMaxRow.appendChild(minInput);
     minMaxRow.appendChild(maxLabel); minMaxRow.appendChild(maxInput);
@@ -1054,8 +1064,8 @@ function buildAudioTab(
     const activeMappings = reactor.mappings.filter(m => String(m.param) === param);
     const multiMapping   = activeMappings.length >= 2;
 
-    // Find the param <tr> in tbody
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+    // Find the param <tr> in tbody (exclude drawer rows to prevent index desync)
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
     const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === param);
     const paramTr  = rows[paramIdx];
     if (!paramTr) return;
@@ -1125,6 +1135,7 @@ function buildAudioTab(
     removeBtn.addEventListener('mouseenter', () => { removeBtn.style.color = '#e05060'; });
     removeBtn.addEventListener('mouseleave', () => { removeBtn.style.color = 'var(--text-muted)'; });
     removeBtn.addEventListener('click', () => {
+      if (activeTabKey === '∑') return; // ∑ tab has no single band to remove
       const idx = reactor.mappings.findIndex(m => String(m.param) === param && m.band === activeTabKey);
       if (idx !== -1) reactor.mappings.splice(idx, 1);
       reactor.saveMappings();
@@ -1191,7 +1202,7 @@ function buildAudioTab(
       drawerRow = null;
     }
     if (openParam) {
-      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
       const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === openParam);
       const paramTr  = rows[paramIdx];
       if (paramTr) paramTr.style.background = '';
