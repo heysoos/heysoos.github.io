@@ -943,10 +943,15 @@ function buildAudioTab(
     let tracePtr = 0;
     let traceVisible = allTracesVisible;
 
+    // Logical canvas dimensions (CSS pixels). Buffer is scaled by devicePixelRatio
+    // so text and lines render crisp on HiDPI displays.
+    const TRACE_W = 184;
+    const TRACE_H = 32;
+    const dpr = window.devicePixelRatio || 1;
     const traceCanvas = document.createElement('canvas');
-    traceCanvas.width  = 184;
-    traceCanvas.height = 28;
-    traceCanvas.style.cssText = `width:100%;height:28px;display:${traceVisible ? 'block' : 'none'};border-radius:2px;background:#06050a;margin-top:2px;`;
+    traceCanvas.width  = TRACE_W * dpr;
+    traceCanvas.height = TRACE_H * dpr;
+    traceCanvas.style.cssText = `width:100%;height:${TRACE_H}px;display:${traceVisible ? 'block' : 'none'};border-radius:2px;background:#06050a;margin-top:2px;`;
     row.appendChild(traceCanvas);
 
     traceToggle.style.color = traceVisible ? BAND_COLORS[mapping.band] : 'var(--text-muted)';
@@ -964,27 +969,69 @@ function buildAudioTab(
     function drawTrace(): void {
       const ctx = traceCanvas.getContext('2d');
       if (!ctx) return;
-      const { width, height } = traceCanvas;
-      ctx.clearRect(0, 0, width, height);
-      // Min/max clamp lines
-      ctx.strokeStyle = 'var(--bg-surface-border)';
+      // Work in logical pixels — context is pre-scaled by dpr for HiDPI sharpness
+      const W = TRACE_W;
+      const H = TRACE_H;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      // Compute observed min/max and current value from ring buffer
+      let trMin = Infinity, trMax = -Infinity;
+      for (let i = 0; i < TRACE_LEN; i++) {
+        if (traceData[i] < trMin) trMin = traceData[i];
+        if (traceData[i] > trMax) trMax = traceData[i];
+      }
+      if (!isFinite(trMin)) trMin = 0;
+      if (!isFinite(trMax)) trMax = 0;
+      const currentVal = traceData[(tracePtr - 1 + TRACE_LEN) % TRACE_LEN];
+
+      // Full-range boundary lines (faint)
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
-      ctx.moveTo(0, 1); ctx.lineTo(width, 1);        // max
-      ctx.moveTo(0, height - 1); ctx.lineTo(width, height - 1); // min
+      ctx.moveTo(0, 1);      ctx.lineTo(W, 1);      // top  = 1.0
+      ctx.moveTo(0, H - 1);  ctx.lineTo(W, H - 1);  // bottom = 0.0
       ctx.stroke();
+
       // Trace line
+      const innerH = H - 2;
       ctx.strokeStyle = BAND_COLORS[mapping.band];
       ctx.lineWidth = 1.5;
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
       for (let i = 0; i < TRACE_LEN; i++) {
         const idx = (tracePtr + i) % TRACE_LEN;
-        const x = (i / (TRACE_LEN - 1)) * width;
-        const y = height - traceData[idx] * (height - 2) - 1;
+        const x = (i / (TRACE_LEN - 1)) * W;
+        const y = H - traceData[idx] * innerH - 1;
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // ── Value labels ──────────────────────────────────────────────
+      // Max (top-left) and Min (bottom-left) show observed range of trace buffer.
+      // Current (right edge, vertically tracks the live trace tip) in band color.
+      const FONT = '9px monospace';
+      const LINE_H = 9;
+
+      // Max label — top-left
+      ctx.font = FONT;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillText(trMax.toFixed(2), 2, LINE_H);
+
+      // Min label — bottom-left
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(trMin.toFixed(2), 2, H - 2);
+
+      // Current value — right edge, floating at the trace tip y-position
+      const tipY = H - currentVal * innerH - 1;
+      const labelY = Math.max(LINE_H, Math.min(H - 2, tipY + 3));
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = BAND_COLORS[mapping.band];
+      ctx.globalAlpha = 0.85;
+      ctx.fillText(currentVal.toFixed(2), W - 2, labelY);
       ctx.globalAlpha = 1;
     }
 
