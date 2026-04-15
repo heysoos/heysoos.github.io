@@ -224,6 +224,43 @@ export class ImageProcessor {
   get canvasWidth():  number         { return this.width;  }
   get canvasHeight(): number         { return this.height; }
 
+  writeVideoFrame(source: HTMLVideoElement | HTMLCanvasElement): void {
+    // Skip if video not ready yet
+    if (source instanceof HTMLVideoElement && source.readyState < 2 /* HAVE_CURRENT_DATA */) return;
+
+    const { device } = this;
+    const w = source instanceof HTMLVideoElement ? source.videoWidth  : (source as HTMLCanvasElement).width;
+    const h = source instanceof HTMLVideoElement ? source.videoHeight : (source as HTMLCanvasElement).height;
+    if (w === 0 || h === 0) return;
+
+    // Reallocate sourceTexture only when dimensions change (once on start, rare after)
+    if (!this.hasImage || this.imageWidth !== w || this.imageHeight !== h) {
+      this.sourceTexture.destroy();
+      this.sourceTexture = device.createTexture({
+        size: [w, h, 1],
+        format: 'rgba8unorm',
+        usage: TEX_USAGE_COMPUTE_IN | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      this.imageWidth  = w;
+      this.imageHeight = h;
+      this.hasImage    = true;
+      this._applyContainTransform();
+    }
+
+    try {
+      device.queue.copyExternalImageToTexture(
+        { source: source as HTMLVideoElement | HTMLCanvasElement, flipY: false },
+        { texture: this.sourceTexture },
+        [w, h],
+      );
+    } catch (e) {
+      console.warn('[ImageProcessor] copyExternalImageToTexture failed, frame skipped:', e);
+      return;
+    }
+
+    this._triggerReprocess();
+  }
+
   setThumbnailContext(ctx: GPUCanvasContext): void {
     this.thumbnailContext = ctx;
     const format = navigator.gpu.getPreferredCanvasFormat();
