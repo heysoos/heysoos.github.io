@@ -747,6 +747,15 @@ function buildAudioTab(
       const nameTd = document.createElement('td');
       nameTd.style.cssText = `font-size:0.57rem;padding:3px 4px 3px 8px;white-space:nowrap;color:${hasAny ? 'var(--text-body)' : 'var(--text-muted)'};opacity:${hasAny ? '1' : '0.4'};`;
       nameTd.textContent = meta.label;
+      nameTd.style.cssText += ';cursor:pointer;';
+      nameTd.addEventListener('click', () => {
+        if (openParam === param) {
+          closeDrawer();
+        } else if (activeMappings.length > 0) {
+          const firstBand = activeMappings[0].band;
+          openDrawer(param, firstBand);
+        }
+      });
       tr.appendChild(nameTd);
 
       // Band cells
@@ -759,6 +768,39 @@ function buildAudioTab(
         cellDiv.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px;border-radius:3px;transition:background 0.1s;';
         cellDiv.addEventListener('mouseenter', () => { cellDiv.style.background = 'rgba(255,255,255,0.06)'; });
         cellDiv.addEventListener('mouseleave', () => { cellDiv.style.background = ''; });
+        cellDiv.addEventListener('click', () => {
+          if (mapping) {
+            // Filled dot: toggle drawer or switch to this band's tab
+            if (openParam === param) {
+              // Drawer already open for this param
+              const activeTab = drawerRow?.querySelector<HTMLButtonElement>('[data-tabkey].active-tab');
+              if (activeTab?.dataset['tabkey'] === band) {
+                closeDrawer(); // clicking the active band's dot closes the drawer
+              } else {
+                openDrawer(param, band); // switch to this band's tab
+              }
+            } else {
+              openDrawer(param, band);
+            }
+          } else {
+            // Empty cell: create a new mapping for this param+band and open drawer
+            const meta = PARAM_META[param];
+            reactor.mappings.push({
+              param: paramKey,
+              band,
+              mode: 'add',
+              depth: 0.5,
+              gain: 1.0,
+              min: meta.min,
+              max: meta.max,
+              enabled: true,
+            });
+            reactor.saveMappings();
+            closeDrawer();
+            rebuildMatrix();
+            openDrawer(param, band);
+          }
+        });
 
         const dot = document.createElement('div');
         dot.style.cssText = `border-radius:50%;border:1px solid var(--bg-surface-border);background:transparent;display:block;`;
@@ -800,6 +842,361 @@ function buildAudioTab(
   }
 
   rebuildMatrix();
+
+  // ── Drawer helpers ────────────────────────────────────────────────
+
+  const TRACE_LEN = 200;
+  const TRACE_W = 184;
+  const TRACE_H = 32;
+  const dpr = window.devicePixelRatio || 1;
+
+  function makeTraceCanvas(bandColor: string): {
+    canvas: HTMLCanvasElement;
+    push: (v: number) => void;
+    draw: () => void;
+  } {
+    const data = new Float32Array(TRACE_LEN);
+    let ptr = 0;
+    const canvas = document.createElement('canvas');
+    canvas.width  = TRACE_W * dpr;
+    canvas.height = TRACE_H * dpr;
+    canvas.style.cssText = `width:100%;height:${TRACE_H}px;display:block;border-radius:2px;background:#06050a;margin-top:2px;`;
+
+    function draw(): void {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const W = TRACE_W, H = TRACE_H;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      let trMin = Infinity, trMax = -Infinity;
+      for (let i = 0; i < TRACE_LEN; i++) {
+        if (data[i] < trMin) trMin = data[i];
+        if (data[i] > trMax) trMax = data[i];
+      }
+      if (!isFinite(trMin)) trMin = 0;
+      if (!isFinite(trMax)) trMax = 0;
+      const currentVal = data[(ptr - 1 + TRACE_LEN) % TRACE_LEN];
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 1);     ctx.lineTo(W, 1);
+      ctx.moveTo(0, H - 1); ctx.lineTo(W, H - 1);
+      ctx.stroke();
+
+      const innerH = H - 2;
+      ctx.strokeStyle = bandColor;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (let i = 0; i < TRACE_LEN; i++) {
+        const idx = (ptr + i) % TRACE_LEN;
+        const x = (i / (TRACE_LEN - 1)) * W;
+        const y = H - data[idx] * innerH - 1;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Labels: min (bottom-left), max (top-left), current (right, tracks tip)
+      const FONT = '9px monospace';
+      ctx.font = FONT;
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(trMax.toFixed(2), 2, 10);
+      ctx.fillText(trMin.toFixed(2), 2, H - 2);
+      const tipY = H - currentVal * innerH - 1;
+      const clampedTipY = Math.max(10, Math.min(H - 2, tipY));
+      ctx.fillStyle = bandColor;
+      ctx.fillText(currentVal.toFixed(2), W - 26, clampedTipY);
+    }
+
+    function push(v: number): void {
+      data[ptr] = v;
+      ptr = (ptr + 1) % TRACE_LEN;
+      draw();
+    }
+
+    return { canvas, push, draw };
+  }
+
+  function buildBandTab(mapping: AudioMapping): HTMLDivElement {
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:6px 8px;';
+    const color = BAND_COLORS[mapping.band];
+
+    function row(label: string, content: HTMLElement): void {
+      const r = document.createElement('div');
+      r.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:0.55rem;color:var(--text-muted);min-width:30px;';
+      lbl.textContent = label;
+      r.appendChild(lbl);
+      r.appendChild(content);
+      body.appendChild(r);
+    }
+
+    function makeSlider(min: number, max: number, step: number, value: number): { el: HTMLInputElement; valEl: HTMLSpanElement } {
+      const el = document.createElement('input');
+      el.type  = 'range';
+      el.min   = String(min);
+      el.max   = String(max);
+      el.step  = String(step);
+      el.value = String(value);
+      el.style.cssText = `flex:1;accent-color:${color};`;
+      const valEl = document.createElement('span');
+      valEl.style.cssText = `font-size:0.6rem;color:${color};min-width:28px;text-align:right;font-variant-numeric:tabular-nums;`;
+      valEl.textContent = value.toFixed(2);
+      return { el, valEl };
+    }
+
+    // Depth
+    const { el: depthSlider, valEl: depthVal } = makeSlider(0, 1, 0.01, mapping.depth);
+    depthSlider.addEventListener('input', () => {
+      mapping.depth = parseFloat(depthSlider.value);
+      depthVal.textContent = mapping.depth.toFixed(2);
+      reactor.saveMappings();
+      rebuildMatrix(); // dot size updates
+      openDrawer(String(mapping.param), mapping.band);
+    });
+    const depthWrap = document.createElement('div');
+    depthWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
+    depthWrap.appendChild(depthSlider);
+    depthWrap.appendChild(depthVal);
+    row('Depth', depthWrap);
+
+    // Gain
+    const { el: gainSlider, valEl: gainVal } = makeSlider(0, 4, 0.05, mapping.gain ?? 1.0);
+    gainSlider.addEventListener('input', () => {
+      mapping.gain = parseFloat(gainSlider.value);
+      gainVal.textContent = mapping.gain.toFixed(2);
+      reactor.saveMappings();
+    });
+    const gainWrap = document.createElement('div');
+    gainWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
+    gainWrap.appendChild(gainSlider);
+    gainWrap.appendChild(gainVal);
+    row('Gain', gainWrap);
+
+    // Mode
+    const modeBtn = document.createElement('button');
+    modeBtn.style.cssText = [
+      'padding:1px 6px;border-radius:3px;font-size:0.65rem;cursor:pointer;',
+      'border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-muted);',
+    ].join('');
+    modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+    modeBtn.addEventListener('click', () => {
+      mapping.mode = mapping.mode === 'add' ? 'multiply' : 'add';
+      modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+      reactor.saveMappings();
+    });
+    row('Mode', modeBtn);
+
+    // Min / Max
+    const minMaxRow = document.createElement('div');
+    minMaxRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:4px;';
+    const inputStyle = [
+      'width:48px;background:var(--bg-surface);color:var(--text-body);',
+      'border:1px solid var(--bg-surface-border);border-radius:3px;',
+      'font-size:0.62rem;padding:1px 3px;text-align:right;',
+    ].join('');
+    const meta = PARAM_META[String(mapping.param)];
+
+    const minLabel = document.createElement('span');
+    minLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
+    minLabel.textContent = 'Min';
+    const minInput = document.createElement('input');
+    minInput.type = 'text'; minInput.value = String(mapping.min); minInput.style.cssText = inputStyle;
+    minInput.addEventListener('blur', () => {
+      const v = parseFloat(minInput.value);
+      if (!isNaN(v) && v < mapping.max) { mapping.min = v; reactor.saveMappings(); }
+      else minInput.value = String(mapping.min);
+    });
+
+    const maxLabel = document.createElement('span');
+    maxLabel.style.cssText = 'font-size:0.6rem;color:var(--text-muted);margin-left:4px;';
+    maxLabel.textContent = 'Max';
+    const maxInput = document.createElement('input');
+    maxInput.type = 'text'; maxInput.value = String(mapping.max); maxInput.style.cssText = inputStyle;
+    maxInput.addEventListener('blur', () => {
+      const v = parseFloat(maxInput.value);
+      if (!isNaN(v) && v > mapping.min) { mapping.max = v; reactor.saveMappings(); }
+      else maxInput.value = String(mapping.max);
+    });
+
+    minMaxRow.appendChild(minLabel); minMaxRow.appendChild(minInput);
+    minMaxRow.appendChild(maxLabel); minMaxRow.appendChild(maxInput);
+    body.appendChild(minMaxRow);
+
+    // Trace
+    const { canvas: traceCanvas, push: pushTrace } = makeTraceCanvas(color);
+    body.appendChild(traceCanvas);
+
+    // Register updater for this cell's trace
+    const key = `${String(mapping.param)}::${mapping.band}`;
+    const existingUpdater = cellUpdaters.get(key);
+    cellUpdaters.set(key, (amplitude: number) => {
+      existingUpdater?.(amplitude); // keep the live bar updater alive
+      pushTrace(amplitude);
+    });
+
+    // meta is already declared above (used for minInput/maxInput), suppress unused warning
+    void meta;
+
+    return body;
+  }
+
+  function openDrawer(param: string, activeBand: BandKey): void {
+    // Remove existing drawer if any
+    drawerRow?.remove();
+    drawerRow = null;
+
+    const activeMappings = reactor.mappings.filter(m => String(m.param) === param);
+    const multiMapping   = activeMappings.length >= 2;
+
+    // Find the param <tr> in tbody
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === param);
+    const paramTr  = rows[paramIdx];
+    if (!paramTr) return;
+
+    openParam = param;
+    paramTr.style.background = 'var(--bg-surface)';
+
+    // Build the drawer <tr>
+    const tr = document.createElement('tr');
+    tr.className = 'audio-drawer-row';
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.style.cssText = 'padding:0;border-top:1px solid var(--bg-surface-border);border-bottom:1px solid var(--bg-surface-border);';
+
+    // Tab strip
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display:flex;border-bottom:1px solid var(--bg-surface-border);background:var(--bg-surface);';
+
+    const tabBodies: Record<string, HTMLDivElement> = {};
+    let activeTabKey = multiMapping ? '∑' : activeBand;
+
+    function switchDrawerTab(key: string): void {
+      activeTabKey = key;
+      for (const [k, t] of Object.entries(tabBodies)) {
+        t.style.display = k === key ? 'block' : 'none';
+      }
+      // Update tab underline styles
+      tabs.querySelectorAll<HTMLButtonElement>('[data-tabkey]').forEach(btn => {
+        const isActive = btn.dataset['tabkey'] === key;
+        const bColor   = btn.dataset['bandcolor'] ?? 'var(--text-body)';
+        btn.style.borderBottomColor = isActive ? bColor : 'transparent';
+        btn.style.color = isActive ? bColor : 'var(--text-muted)';
+      });
+    }
+
+    function makeTabBtn(label: string, key: string, color: string): HTMLButtonElement {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.dataset['tabkey']    = key;
+      btn.dataset['bandcolor'] = color;
+      btn.style.cssText = [
+        'flex:1;padding:4px 2px;font-size:0.52rem;text-align:center;',
+        'cursor:pointer;border:none;background:transparent;',
+        'border-bottom:2px solid transparent;transition:color 0.1s;',
+        `color:var(--text-muted);`,
+      ].join('');
+      btn.addEventListener('click', () => switchDrawerTab(key));
+      return btn;
+    }
+
+    // Band tabs
+    for (const m of activeMappings) {
+      const label = `● ${m.band}`;
+      const color = BAND_COLORS[m.band];
+      const btn   = makeTabBtn(label, m.band, color);
+      tabs.appendChild(btn);
+      const body = buildBandTab(m);
+      body.style.display = 'none';
+      tabBodies[m.band] = body;
+    }
+
+    // Remove button (removes current active band's mapping)
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'remove';
+    removeBtn.style.cssText = 'font-size:0.52rem;color:var(--text-muted);padding:4px 8px;background:none;border:none;cursor:pointer;white-space:nowrap;';
+    removeBtn.addEventListener('mouseenter', () => { removeBtn.style.color = '#e05060'; });
+    removeBtn.addEventListener('mouseleave', () => { removeBtn.style.color = 'var(--text-muted)'; });
+    removeBtn.addEventListener('click', () => {
+      const idx = reactor.mappings.findIndex(m => String(m.param) === param && m.band === activeTabKey);
+      if (idx !== -1) reactor.mappings.splice(idx, 1);
+      reactor.saveMappings();
+      closeDrawer();
+      rebuildMatrix();
+      // Reopen drawer on same param if mappings remain
+      if (reactor.mappings.some(m => String(m.param) === param)) {
+        const remaining = reactor.mappings.filter(m => String(m.param) === param);
+        openDrawer(param, remaining[0].band);
+      }
+    });
+    tabs.appendChild(removeBtn);
+
+    // ∑ total tab (only when 2+ mappings; built in Task 4)
+    if (multiMapping) {
+      const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)');
+      tabs.insertBefore(totalBtn, removeBtn);
+      const totalBody = document.createElement('div');
+      totalBody.style.display = 'none';
+      totalBody.dataset['placeholder'] = 'total'; // replaced in Task 4
+      tabBodies['∑'] = totalBody;
+    }
+
+    td.appendChild(tabs);
+    for (const body of Object.values(tabBodies)) td.appendChild(body);
+
+    // "+ add another band" footer
+    const addBandFooter = document.createElement('div');
+    addBandFooter.style.cssText = [
+      'padding:4px 8px;font-size:0.55rem;color:var(--text-muted);',
+      'cursor:pointer;border-top:1px dashed var(--bg-surface-border);text-align:center;',
+    ].join('');
+    addBandFooter.textContent = '+ add another band';
+    addBandFooter.addEventListener('mouseenter', () => { addBandFooter.style.color = 'var(--accent)'; });
+    addBandFooter.addEventListener('mouseleave', () => { addBandFooter.style.color = 'var(--text-muted)'; });
+    addBandFooter.addEventListener('click', () => {
+      const usedBands = reactor.mappings.filter(m => String(m.param) === param).map(m => m.band);
+      const nextBand  = (BAND_KEYS_ORDER as string[]).find(b => !usedBands.includes(b as BandKey)) as BandKey | undefined;
+      if (!nextBand) return; // all 5 bands already used
+      const meta = PARAM_META[param];
+      reactor.mappings.push({
+        param: param as keyof import('./boids-controller').BoidsParams,
+        band: nextBand, mode: 'add', depth: 0.5, gain: 1.0,
+        min: meta.min, max: meta.max, enabled: true,
+      });
+      reactor.saveMappings();
+      closeDrawer();
+      rebuildMatrix();
+      openDrawer(param, nextBand);
+    });
+    td.appendChild(addBandFooter);
+
+    tr.appendChild(td);
+    // Insert after paramTr
+    paramTr.insertAdjacentElement('afterend', tr);
+    drawerRow = tr;
+
+    switchDrawerTab(activeTabKey);
+  }
+
+  function closeDrawer(): void {
+    if (drawerRow) {
+      drawerRow.remove();
+      drawerRow = null;
+    }
+    if (openParam) {
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === openParam);
+      const paramTr  = rows[paramIdx];
+      if (paramTr) paramTr.style.background = '';
+    }
+    openParam = null;
+  }
 
   // ── Visualiser rAF loop (runs only when Audio tab is visible) ─────
   let vizRafId = 0;
