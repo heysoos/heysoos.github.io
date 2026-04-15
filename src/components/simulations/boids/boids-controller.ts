@@ -5,6 +5,7 @@ import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
 import { ImageProcessor } from '../../../lib/webgpu/image-editor/image-processor';
 import { BoidsImageForce } from './boids-image-force';
+import { BoidsWebcam } from './boids-webcam';
 
 const MAX_PARTICLES = 500000;
 
@@ -110,6 +111,7 @@ export class BoidsController {
   private trailRenderer = new TrailRenderer();
   readonly imageProcessor = new ImageProcessor();
   readonly imageForce     = new BoidsImageForce();
+  readonly webcam         = new BoidsWebcam();
   private overlayPipeline: GPURenderPipeline | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
@@ -439,6 +441,11 @@ export class BoidsController {
       this.prevCanvasHeight = canvas.height;
     }
 
+    // ── Webcam frame capture ──────────────────────────────────────────
+    if (this.webcam.status === 'active') {
+      this.webcam.tick(this.imageProcessor);
+    }
+
     const aspect = canvas.width > 0 && canvas.height > 0
       ? canvas.width / canvas.height : 1.0;
 
@@ -617,6 +624,7 @@ export class BoidsController {
   }
 
   destroy(): void {
+    this.webcam.destroy();
     this.imageProcessor.destroy();
     this.imageForce.destroy();
   }
