@@ -484,20 +484,9 @@ export function buildBoidsPanel(
     for (const m of reactor.mappings) {
       if (!m.enabled) continue;
       const key = `${String(m.param)}::${m.band}`;
-      const u = cellUpdaters.get(key);
-      if (!u) continue;
       const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
-      u(effectiveSignal);
-    }
-
-    // Traces for open drawer band tabs
-    for (const m of reactor.mappings) {
-      if (!m.enabled) continue;
-      const key = `${String(m.param)}::${m.band}`;
-      const push = traceUpdaters.get(key);
-      if (!push) continue;
-      const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
-      push(effectiveSignal);
+      cellUpdaters.get(key)?.(effectiveSignal);
+      traceUpdaters.get(key)?.(effectiveSignal);
     }
 
     // Total-tab live updates
