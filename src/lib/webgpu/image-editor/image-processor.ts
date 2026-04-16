@@ -102,7 +102,12 @@ export class ImageProcessor {
     const make = (usage: number, format: GPUTextureFormat = 'rgba8unorm') =>
       d.createTexture({ size: [w, h, 1], format, usage });
 
-    this.sourceTexture?.destroy();
+    // sourceTexture dimensions follow the image/webcam resolution, not the canvas size.
+    // Only create a 1×1 placeholder on first init; loadImage / writeVideoFrame / clearImage manage it after that.
+    if (!this.sourceTexture) {
+      this.sourceTexture = d.createTexture({ size: [1, 1, 1], format: 'rgba8unorm', usage: TEX_USAGE_COMPUTE_IN });
+    }
+
     this.imageMaskTexture?.destroy();
     this.paintCanvasTexture?.destroy();
     this.compositedTexture?.destroy();
@@ -111,7 +116,6 @@ export class ImageProcessor {
     this.sdfPingTexture?.destroy();
     this.sdfPongTexture?.destroy();
 
-    this.sourceTexture      = make(TEX_USAGE_COMPUTE_IN);
     this.imageMaskTexture   = make(TEX_USAGE_RENDER_TGT);
     this.paintCanvasTexture = make(TEX_USAGE_RENDER_TGT);
     this.compositedTexture  = make(TEX_USAGE_COMPUTE_OUT);

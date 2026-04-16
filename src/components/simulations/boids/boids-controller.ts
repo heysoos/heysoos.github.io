@@ -119,7 +119,10 @@ export class BoidsController {
   params: BoidsParams = { ...DEFAULT_PARAMS };
   trailsEnabled = false;
   trailDecay = 0.92;
-  readonly shaderSource = shaderCode;
+  /** The original boids.wgsl — immutable fallback for presets with no custom shader. */
+  readonly defaultShaderSource = shaderCode;
+  /** The shader currently loaded (or last loaded via preset). Updated by reloadShader. */
+  shaderSource = shaderCode;
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
     try {
@@ -383,6 +386,7 @@ export class BoidsController {
         this.renderParamsBindGroup = prevBindGroup;
         return { success: false, error: gpuError.message };
       }
+      this.shaderSource = code;
       return { success: true, error: '' };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -617,10 +621,41 @@ export class BoidsController {
   }
 
   rebuildBoidsBindGroups(): void {
-    if (!this.gpu) return;
+    if (!this.gpu || !this.boidsBindGroupLayout) return;
     const { device } = this.gpu;
-    const boidsModule = device.createShaderModule({ code: this.shaderSource });
-    this._createBoidsPipelines(boidsModule);
+    // Only rebuild bind groups — do NOT recreate pipelines or recompile shaders.
+    // Previously this called _createBoidsPipelines(shaderSource) which silently
+    // replaced the active preset shader with the default boids.wgsl on every
+    // canvas resize, changing physics and breaking webcam force consistency.
+    const forceEntries = this.imageForce.buildBindGroupEntries();
+    this.boidsBindGroups = [
+      device.createBindGroup({
+        layout: this.boidsBindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+          { binding: 3, resource: { buffer: this.obstacleBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...forceEntries,
+        ],
+      }),
+      device.createBindGroup({
+        layout: this.boidsBindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+          { binding: 3, resource: { buffer: this.obstacleBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          ...forceEntries,
+        ],
+      }),
+    ];
   }
 
   destroy(): void {

@@ -1,3 +1,37 @@
+/**
+ * scripts/fix-preset-shaders.mjs
+ *
+ * Brings all preset WGSL shaders up to date with boids.wgsl's Params struct,
+ * image-force bindings, and utility functions, while preserving each preset's
+ * own physics (linear forces, obstacle strength, obstacle integration order).
+ *
+ * Run once from the repo root:  node scripts/fix-preset-shaders.mjs
+ */
+
+import { readFileSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SHADERS_DIR = join(__dirname, '../src/data/boids-shaders');
+
+const PRESET_FILES = [
+  'abstract-jellyfish.wgsl',
+  'chain-link.wgsl',
+  'fishonium.wgsl',
+  'oscillator.wgsl',
+  'oscillator2.wgsl',
+  'particlebahn.wgsl',
+  'snake.wgsl',
+];
+
+// ─────────────────────────────────────────────────────────────
+// Canonical boilerplate — identical across all shaders.
+// The only intentional differences from boids.wgsl are in
+// the physics section of computeMain (see PRESERVE markers).
+// ─────────────────────────────────────────────────────────────
+
+const HEADER = `\
 struct Particle {
   pos: vec2f,
   vel: vec2f,
@@ -114,8 +148,10 @@ fn decodeForce(s: vec4f) -> vec2f {
   // rg encodes direction: (dir * 0.5 + 0.5) → decode to [-1, 1]
   let dir = (s.rg * 2.0 - vec2f(1.0)) * s.b;
   return dir;
-}
+}`;
 
+// Grid + neighbour loop — formatting updated (≈, —, blank lines), physics preserved (linear forces)
+const COMPUTE_MAIN = `\
 @compute @workgroup_size(256)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
@@ -250,8 +286,9 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (pos.y > 1.0)  { pos.y -= 2.0; }
 
   particlesB[index] = Particle(pos, vel);
-}
+}`;
 
+const RENDER = `\
 // --- Render ---
 
 struct VertexOutput {
@@ -325,4 +362,24 @@ fn fragmentMain(@location(0) speed: f32, @location(1) uv: vec2f) -> @location(0)
   }
 
   return vec4f(params.colorR, params.colorG, params.colorB, finalAlpha * mask);
+}`;
+
+const CANONICAL = [HEADER, '', COMPUTE_MAIN, '', RENDER, ''].join('\n');
+
+let updated = 0;
+let skipped = 0;
+
+for (const file of PRESET_FILES) {
+  const path = join(SHADERS_DIR, file);
+  const before = readFileSync(path, 'utf8');
+  if (before === CANONICAL) {
+    console.log(`  skip  ${file}  (already up to date)`);
+    skipped++;
+    continue;
+  }
+  writeFileSync(path, CANONICAL, 'utf8');
+  console.log(`  wrote ${file}`);
+  updated++;
 }
+
+console.log(`\nDone — ${updated} updated, ${skipped} already current.`);

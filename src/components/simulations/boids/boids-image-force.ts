@@ -28,11 +28,11 @@ export class BoidsImageForce {
   }
 
   buildBindGroupEntries(): GPUBindGroupEntry[] {
-    const tex = this.processor.hasImage || this.processor.hasPaint
-      ? this.processor.getOutputTexture()
-      : this.dummyTexture;
+    // Always bind processedTexture — the shader controls whether force is applied
+    // via imageStrength=0 when !hasImage. Using dummyTexture caused bind groups to
+    // point to the wrong resource after the first writeVideoFrame set hasImage=true.
     return [
-      { binding: 7, resource: tex.createView() },
+      { binding: 7, resource: this.processor.getOutputTexture().createView() },
       { binding: 8, resource: this.processor.getOutputSampler() },
     ];
   }
@@ -51,6 +51,11 @@ export class BoidsImageForce {
   setInvert(v: boolean):           void { this._invert       = v; }
   setEnabled(v: boolean):          void { this._enabled      = v; }
   setShowOverlay(v: boolean):      void { this._showOverlay  = v; }
+
+  getStrength():  number         { return this._strength; }
+  getForceMode(): ImageForceMode { return this._forceMode; }
+  getInvert():    boolean        { return this._invert; }
+  getEnabled():   boolean        { return this._enabled; }
 
   get showOverlay(): boolean { return this._showOverlay; }
 

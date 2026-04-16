@@ -27,6 +27,11 @@ export interface ImagePanelSectionOpts {
     setInvert:      (v: boolean) => void;
     setShowOverlay: (v: boolean) => void;
     isActive:       () => boolean;
+    getStrength:    () => number;
+    getForceMode:   () => number;
+    getInvert:      () => boolean;
+    getEnabled:     () => boolean;
+    showOverlay:    boolean;
   };
 }
 
@@ -46,14 +51,28 @@ export function buildImagePanelSection(
   section.style.cssText = 'border-top:1px solid var(--bg-surface-border);padding:0.5rem 0.6rem;';
   container.appendChild(section);
 
-  // ── Per-source saved params ──────────────────────────────────────
-  let activeSource: 'static' | 'webcam' = 'static';
-  let savedStaticParams: SourceParams = {
+  // ── Per-source saved params — initialised from live controller state ─
+  // This ensures panel rebuilds (e.g. on preset load) don't reset tuned values.
+  const isWebcamCurrentlyActive = opts.webcam.status === 'active';
+  // Start on the tab that was active when panel was built; restores tab after preset-load rebuilds.
+  let activeSource: 'static' | 'webcam' = isWebcamCurrentlyActive ? 'webcam' : 'static';
+
+  const liveParams: SourceParams = {
+    mode:       processor.params.mode,
+    blurRadius: processor.params.blurRadius,
+    threshold:  processor.params.threshold,
+    invert:     processor.params.invert,
+    strength:   opts.imageForce.getStrength(),
+  };
+  const defaultStaticParams: SourceParams = {
     mode: ProcessingMode.LuminanceAttract, blurRadius: 0, threshold: 0.5, invert: false, strength: 0.5,
   };
-  let savedWebcamParams: SourceParams = {
+  const defaultWebcamParams: SourceParams = {
     mode: ProcessingMode.GradientAttract, blurRadius: 0, threshold: 0.5, invert: false, strength: 0.5,
   };
+  // Current live state belongs to whichever source is active; the other gets defaults.
+  let savedStaticParams: SourceParams = isWebcamCurrentlyActive ? defaultStaticParams : liveParams;
+  let savedWebcamParams: SourceParams = isWebcamCurrentlyActive ? liveParams : defaultWebcamParams;
 
   // ── Label row (Image Force + enabled toggle) ──────────────────────
   const labelRow = document.createElement('div');
@@ -63,7 +82,7 @@ export function buildImagePanelSection(
   label.textContent = 'Image Force';
   const enableToggle = document.createElement('input');
   enableToggle.type    = 'checkbox';
-  enableToggle.checked = true;
+  enableToggle.checked = opts.imageForce.getEnabled();
   enableToggle.title   = 'Enable/disable image force';
   enableToggle.addEventListener('change', () => opts.imageForce.setEnabled(enableToggle.checked));
   labelRow.appendChild(label);
@@ -85,8 +104,8 @@ export function buildImagePanelSection(
 
   staticPill.textContent = '📷 Static';
   webcamPill.textContent = '🎥 Webcam';
-  staticPill.style.cssText = pillActiveStyle(true);
-  webcamPill.style.cssText = pillActiveStyle(false);
+  staticPill.style.cssText = pillActiveStyle(activeSource === 'static');
+  webcamPill.style.cssText = pillActiveStyle(activeSource === 'webcam');
   sourceRow.appendChild(staticPill);
   sourceRow.appendChild(webcamPill);
   section.appendChild(sourceRow);
@@ -103,7 +122,7 @@ export function buildImagePanelSection(
   staticArea.appendChild(thumbCanvas);
 
   const thumbCtxStatic = thumbCanvas.getContext('webgpu') as GPUCanvasContext | null;
-  if (thumbCtxStatic) processor.setThumbnailContext(thumbCtxStatic);
+  // setThumbnailContext deferred below — needs thumbCtxWebcam to also exist first
 
   const fileInput = createFileInput((bmp) => {
     processor.loadImage(bmp);
@@ -148,17 +167,21 @@ export function buildImagePanelSection(
   const previewCanvas = document.createElement('canvas');
   previewCanvas.width  = 180;
   previewCanvas.height = 101;
-  previewCanvas.style.cssText = 'width:100%;border-radius:3px;border:1px solid var(--bg-surface-border);display:block;margin-bottom:0.4rem;';
+  previewCanvas.style.cssText = 'width:100%;border-radius:3px;border:1px solid var(--bg-surface-border);display:block;margin-bottom:0.4rem;cursor:pointer;';
+  previewCanvas.title = 'Click to open editor';
+  previewCanvas.addEventListener('click', opts.onOpenEditor);
   webcamArea.appendChild(previewCanvas);
   const thumbCtxWebcam = previewCanvas.getContext('webgpu') as GPUCanvasContext | null;
 
+  // Initial thumbnail context set after populateCameraSelect is defined (see below)
+
   const camRow = document.createElement('div');
-  camRow.style.cssText = 'display:flex;gap:4px;margin-bottom:0.35rem;align-items:center;';
+  camRow.style.cssText = 'display:flex;gap:4px;margin-bottom:0.35rem;align-items:center;overflow:hidden;';
   const camSelect = document.createElement('select');
-  camSelect.style.cssText = 'flex:1;font-size:0.6rem;background:var(--bg-surface);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 4px;color:var(--text-body);';
+  camSelect.style.cssText = 'flex:1;min-width:0;font-size:0.6rem;background:var(--bg-surface);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 4px;color:var(--text-body);';
   const startStopBtn = document.createElement('button');
   startStopBtn.className = 'panel-close'; startStopBtn.textContent = '▶ Start';
-  startStopBtn.style.cssText = 'font-size:0.6rem;padding:3px 8px;white-space:nowrap;';
+  startStopBtn.style.cssText = 'flex-shrink:0;font-size:0.6rem;padding:3px 8px;white-space:nowrap;';
   camRow.appendChild(camSelect); camRow.appendChild(startStopBtn);
   webcamArea.appendChild(camRow);
 
@@ -204,7 +227,7 @@ export function buildImagePanelSection(
   const modeNames = ['Attract', 'Repel', 'Grad Flow', 'Grad Edge', 'Threshold', 'SDF'];
   const pillRow = document.createElement('div');
   pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px;margin-bottom:0.4rem;';
-  let activeModeIdx = 0;
+  let activeModeIdx = processor.params.mode;
 
   function setActivePill(idx: number): void {
     activeModeIdx = idx;
@@ -221,7 +244,7 @@ export function buildImagePanelSection(
   modeNames.forEach((name, i) => {
     const pill = document.createElement('button');
     pill.textContent = name;
-    pill.style.cssText = i === 0
+    pill.style.cssText = i === activeModeIdx
       ? 'font-size:0.58rem;padding:2px 6px;border-radius:10px;background:var(--accent);color:var(--bg-primary);border:1px solid transparent;cursor:pointer;'
       : 'font-size:0.58rem;padding:2px 6px;border-radius:10px;background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);cursor:pointer;';
     pill.addEventListener('click', () => {
@@ -258,9 +281,9 @@ export function buildImagePanelSection(
     return { row, input: inp };
   }
 
-  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 2, 0.5, 0.01, v => opts.imageForce.setStrength(v));
-  const { row: blurRow,     input: blurInput }     = makeSlider('Blur',     0, 10, 0,   0.5,  v => processor.setBlurRadius(v));
-  const { row: threshRow,   input: threshInput }   = makeSlider('Threshold',0, 1,  0.5, 0.01, v => processor.setThreshold(v));
+  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 2, liveParams.strength,   0.01, v => opts.imageForce.setStrength(v));
+  const { row: blurRow,     input: blurInput }     = makeSlider('Blur',     0, 10, liveParams.blurRadius, 0.5,  v => processor.setBlurRadius(v));
+  const { row: threshRow,   input: threshInput }   = makeSlider('Threshold',0, 1,  liveParams.threshold,  0.01, v => processor.setThreshold(v));
   sharedDiv.appendChild(strengthRow);
   sharedDiv.appendChild(blurRow);
   sharedDiv.appendChild(threshRow);
@@ -271,7 +294,7 @@ export function buildImagePanelSection(
   overlayLbl.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
   overlayLbl.textContent = 'Show image';
   const overlayChk = document.createElement('input');
-  overlayChk.type = 'checkbox'; overlayChk.checked = true;
+  overlayChk.type = 'checkbox'; overlayChk.checked = opts.imageForce.showOverlay;
   overlayChk.addEventListener('change', () => opts.imageForce.setShowOverlay(overlayChk.checked));
   overlayRow.appendChild(overlayLbl); overlayRow.appendChild(overlayChk);
   sharedDiv.appendChild(overlayRow);
@@ -282,7 +305,7 @@ export function buildImagePanelSection(
   invertLbl.style.cssText = 'font-size:0.6rem;color:var(--text-muted);';
   invertLbl.textContent = 'Invert';
   const invertChk = document.createElement('input');
-  invertChk.type = 'checkbox';
+  invertChk.type = 'checkbox'; invertChk.checked = opts.imageForce.getInvert();
   invertChk.addEventListener('change', () => {
     opts.imageForce.setInvert(invertChk.checked);
     processor.setInvert(invertChk.checked);
@@ -326,6 +349,10 @@ export function buildImagePanelSection(
   }
 
   // ── Source switching ──────────────────────────────────────────────
+  // Tracks whether the webcam was running when we last switched away from it,
+  // so we can auto-restart it when the user switches back to the Webcam tab.
+  let wasWebcamRunning = false;
+
   async function switchSource(to: 'static' | 'webcam'): Promise<void> {
     if (to === activeSource) return;
 
@@ -338,6 +365,7 @@ export function buildImagePanelSection(
     activeSource = to;
 
     if (to === 'static') {
+      wasWebcamRunning = opts.webcam.status === 'active';
       opts.webcam.stop();
       processor.clearImage();
       opts.onRebindGroups();
@@ -346,7 +374,14 @@ export function buildImagePanelSection(
     } else {
       if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
       applyParams(savedWebcamParams);
-      if (opts.webcam.availableCameras.length === 0) await populateCameraSelect();
+      await populateCameraSelect(); // repopulate from cache (or enumerate if first visit)
+      // Auto-restart webcam if it was running when user switched away
+      if (wasWebcamRunning) {
+        void opts.webcam.start(opts.webcam.activeCameraId || undefined).then(() => {
+          opts.onRebindGroups();
+          refreshUI();
+        }).catch(() => refreshUI());
+      }
     }
     refreshUI();
   }
@@ -356,7 +391,10 @@ export function buildImagePanelSection(
 
   // ── Camera population ─────────────────────────────────────────────
   async function populateCameraSelect(): Promise<void> {
-    await opts.webcam.enumerateCameras();
+    // Enumerate only when cache is empty; always repopulate the <select> from cache.
+    if (opts.webcam.availableCameras.length === 0) {
+      await opts.webcam.enumerateCameras();
+    }
     camSelect.innerHTML = '';
     for (const cam of opts.webcam.availableCameras) {
       const opt = document.createElement('option');
@@ -364,6 +402,17 @@ export function buildImagePanelSection(
       opt.textContent = cam.label || `Camera ${camSelect.options.length + 1}`;
       camSelect.appendChild(opt);
     }
+    if (opts.webcam.activeCameraId) camSelect.value = opts.webcam.activeCameraId;
+  }
+
+  // ── Initial thumbnail context (deferred so populateCameraSelect is in scope) ─
+  // Set the thumbnail context for whichever tab is active on panel build.
+  if (activeSource === 'webcam') {
+    if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+    // Populate camera list from cache (webcam was running so list already has data)
+    void populateCameraSelect();
+  } else {
+    if (thumbCtxStatic) processor.setThumbnailContext(thumbCtxStatic);
   }
 
   // ── Start / Stop button ───────────────────────────────────────────

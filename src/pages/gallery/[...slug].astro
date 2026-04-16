@@ -720,7 +720,16 @@ const sim = project.data.simulation;
                 Object.assign(boidsCtrl.params, preset.params);
                 boidsCtrl.trailsEnabled = preset.trailsEnabled;
                 boidsCtrl.trailDecay = preset.trailDecay;
-                await boidsCtrl.reloadShader(preset.shader ?? boidsCtrl.shaderSource);
+                // Use defaultShaderSource (not shaderSource) so loading a no-custom-shader
+                // preset always resets to boids.wgsl, not whatever was last running.
+                const nextShader = preset.shader ?? boidsCtrl.defaultShaderSource;
+                await boidsCtrl.reloadShader(nextShader);
+                // Push new shader into the editor so it reflects what's actually running.
+                // editorView is defined below but this closure is only called by user interaction,
+                // which happens after the full setup has completed.
+                editorView?.dispatch({
+                  changes: { from: 0, to: editorView.state.doc.length, insert: nextShader },
+                });
                 buildPanel(preset.id);
               },
             });
