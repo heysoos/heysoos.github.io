@@ -14,7 +14,7 @@ export interface BandSnapshot {
   volume: number;
 }
 
-export type AudioMode = 'add' | 'multiply';
+export type AudioMode = 'add' | 'subtract' | 'multiply';
 export type AudioSourceKind = 'microphone' | 'system';
 export type AudioStatus = 'idle' | 'active' | 'error';
 
@@ -65,8 +65,9 @@ const BAND_HZ: Record<BandKey, [number, number]> = {
   volume:   [0, 0],  // special-cased: RMS of full spectrum
 };
 
-const STORAGE_KEY = 'boids-audio-mappings';
-const FFT_SIZE    = 2048;
+const STORAGE_KEY        = 'boids-audio-mappings';
+const GLOBAL_STORAGE_KEY = 'boids-audio-global';
+const FFT_SIZE           = 2048;
 
 // ── AudioReactor ─────────────────────────────────────────────────────────────
 
@@ -74,6 +75,8 @@ export class AudioReactor {
   mappings: AudioMapping[] = [];
   status: AudioStatus = 'idle';
   lastError = '';
+  globalStrength: number = 1.0;
+  paramStrengths: Record<string, number> = {};
 
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -84,6 +87,7 @@ export class AudioReactor {
 
   constructor() {
     this.loadMappings();
+    this.loadGlobal();
   }
 
   isActive(): boolean {
@@ -200,7 +204,7 @@ export class AudioReactor {
       if (!m.enabled) continue;
       const key = m.param as string;
       if (!PARAM_META[key]) continue;
-      if (m.mode === 'add') {
+      if (m.mode === 'add' || m.mode === 'subtract') {
         if (!addsByParam.has(key)) addsByParam.set(key, []);
         addsByParam.get(key)!.push(m);
       } else {
@@ -216,10 +220,11 @@ export class AudioReactor {
       if (!meta) continue;
       let val = base[param] as number;
 
-      // Apply all additive mappings first
+      // Apply all additive/subtractive mappings first
       for (const m of (addsByParam.get(param) ?? [])) {
         const signal = snapshot[m.band] * (m.gain ?? 1);
-        val += signal * m.depth * (m.max - m.min);
+        const sign   = m.mode === 'subtract' ? -1 : 1;
+        val += sign * signal * m.depth * (m.max - m.min);
       }
 
       // Then apply all multiplicative mappings
@@ -227,6 +232,10 @@ export class AudioReactor {
         const signal = snapshot[m.band] * (m.gain ?? 1);
         val *= (1 + signal * m.depth);
       }
+
+      // Apply per-param and global strength — scale the total modulation delta uniformly
+      const pStr = this.paramStrengths[param] ?? 1.0;
+      val = (base[param] as number) + (val - (base[param] as number)) * pStr * this.globalStrength;
 
       // Clamp to param's natural range
       (params as unknown as Record<string, number>)[param] =
@@ -249,7 +258,7 @@ export class AudioReactor {
       const parsed = JSON.parse(raw) as AudioMapping[];
       // Validate each entry has required fields and param is still valid
       const VALID_BANDS = new Set<string>(['bass', 'mid', 'presence', 'hi', 'volume']);
-      const VALID_MODES = new Set<string>(['add', 'multiply']);
+      const VALID_MODES = new Set<string>(['add', 'subtract', 'multiply']);
       this.mappings = parsed.filter(
         m => typeof m.param === 'string'
           && m.param in PARAM_META
@@ -266,6 +275,31 @@ export class AudioReactor {
     } catch {
       this.mappings = [];
     }
+  }
+
+  saveGlobal(): void {
+    try {
+      localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify({
+        globalStrength: this.globalStrength,
+        paramStrengths: this.paramStrengths,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  loadGlobal(): void {
+    try {
+      const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { globalStrength?: unknown; paramStrengths?: unknown };
+      if (typeof parsed.globalStrength === 'number') {
+        this.globalStrength = Math.max(0, Math.min(2, parsed.globalStrength));
+      }
+      if (parsed.paramStrengths && typeof parsed.paramStrengths === 'object') {
+        for (const [k, v] of Object.entries(parsed.paramStrengths as Record<string, unknown>)) {
+          if (typeof v === 'number') this.paramStrengths[k] = Math.max(0, Math.min(2, v));
+        }
+      }
+    } catch { /* ignore */ }
   }
 }
 

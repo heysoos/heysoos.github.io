@@ -642,7 +642,7 @@ const sim = project.data.simulation;
 
           // Declared early so the mapping loop IIFE (below) can reference it without TDZ issues.
           // Assigned by buildPanel() after the default preset loads.
-          let panelControls: { teardown: () => void; updateAudioViz: () => void } | null = null;
+          let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
 
           // ── baseParams: tracks the user's slider intent, separate from audio modulation ──
           // We proxy boidsCtrl.params so slider/preset writes (isApplyingAudio=false)
@@ -682,7 +682,7 @@ const sim = project.data.simulation;
               reactor.applyMappings(boidsCtrl.params, snapshot); // modulate on top
               isApplyingAudio = false;
             }
-            panelControls?.updateAudioViz();
+            panelControls?.updateAudioViz(baseParams as Record<string, number>);
             mappingRafId = requestAnimationFrame(mappingLoop);
           })();
 
