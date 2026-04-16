@@ -532,9 +532,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         Object.assign(ctrl.params, preset.params);
         ctrl.trailsEnabled = preset.trailsEnabled;
         ctrl.trailDecay = preset.trailDecay;
-        await ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
+        await ctrl.reloadShader(preset.shader ?? ctrl.defaultShaderSource);
         editorView.dispatch({
-          changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.shaderSource },
+          changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.defaultShaderSource },
         });
         // Pre-fill shaderFile input with the loaded preset's file stem
         const sfInput = presetsContainer.querySelector<HTMLInputElement>('input[placeholder*="filename"]');
@@ -652,9 +652,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
           Object.assign(ctrl.params, preset.params);
           ctrl.trailsEnabled = preset.trailsEnabled;
           ctrl.trailDecay = preset.trailDecay;
-          ctrl.reloadShader(preset.shader ?? ctrl.shaderSource);
+          ctrl.reloadShader(preset.shader ?? ctrl.defaultShaderSource);
           editorView.dispatch({
-            changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.shaderSource },
+            changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.defaultShaderSource },
           });
           buildAdminPanel(preset.id);
           renderPresetList();
