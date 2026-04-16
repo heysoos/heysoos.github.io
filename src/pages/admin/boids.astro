@@ -690,9 +690,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     shaderFileLabel.style.cssText = 'font-size:0.65rem;color:var(--text-muted);white-space:nowrap;';
     const shaderFileInput = document.createElement('input');
     shaderFileInput.type = 'text';
-    shaderFileInput.placeholder = 'filename (no ext) or blank to inline';
+    shaderFileInput.placeholder = 'filename (no ext) — required for custom shaders';
     shaderFileInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.65rem;';
-    shaderFileInput.title = 'Name of .wgsl file in boids-shaders/. Share a name to reuse an existing shader. Leave blank to inline.';
+    shaderFileInput.title = 'Name of .wgsl file in boids-shaders/. Share a name to reuse an existing shader. Required when saving with a custom shader.';
     shaderFileRow.appendChild(shaderFileLabel);
     shaderFileRow.appendChild(shaderFileInput);
     presetsContainer.appendChild(shaderFileRow);
@@ -702,15 +702,25 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
       if (!rawName) return;
       const id = rawName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const currentShader = editorView.state.doc.toString();
-      const isCustomShader = currentShader !== ctrl.shaderSource;
+      const isCustomShader = currentShader !== ctrl.defaultShaderSource;
       const shaderFileStem = shaderFileInput.value.trim().replace(/\.wgsl$/, '').replace(/[^a-z0-9-]/gi, '-') || undefined;
+      if (isCustomShader && !shaderFileStem) {
+        shaderFileInput.style.borderColor = '#e05060';
+        shaderFileInput.focus();
+        shaderFileInput.placeholder = 'required — enter a filename';
+        setTimeout(() => {
+          shaderFileInput.style.borderColor = '';
+          shaderFileInput.placeholder = 'filename (no ext) — required for custom shaders';
+        }, 2500);
+        return;
+      }
       const newPreset: BoidsPreset = {
         id: adminPresets.some(p => p.id === id) ? `${id}-${Date.now()}` : id,
         name: rawName,
         params: { ...ctrl.params },
         trailsEnabled: ctrl.trailsEnabled,
         trailDecay: ctrl.trailDecay,
-        ...(isCustomShader ? { shader: currentShader, ...(shaderFileStem ? { shaderFile: shaderFileStem } : {}) } : {}),
+        ...(isCustomShader ? { shader: currentShader, shaderFile: shaderFileStem } : {}),
       };
       adminPresets.push(newPreset);
       activePresetId = newPreset.id;

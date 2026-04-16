@@ -102,7 +102,7 @@ fn obstacleForce(pos: vec2f) -> vec2f {
           awayDir = vec2f(0.0, select(-1.0, 1.0, pos.y > center.y));
         }
       }
-      force += awayDir * strength * 1.;;
+      force += awayDir * strength * 1.;
     }
   }
   return force;

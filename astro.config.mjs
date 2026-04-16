@@ -58,8 +58,14 @@ function generatePresetsFile(presets) {
         return p;
       }
 
-      // 3. No match and no shaderFile → inline (legacy / truly one-off)
-      // shader stays as-is
+      // 3. No match and no shaderFile → auto-save using preset id as filename
+      const autoStem = p.id.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const filePath = resolve(SHADERS_DIR, `${autoStem}.wgsl`);
+      writeFileSync(filePath, p.shader, 'utf-8');
+      p.shaderFile = autoStem;
+      const varName = stemToVarName(autoStem);
+      imports.set(autoStem, varName);
+      delete p.shader;
     } else if (p.shaderFile) {
       // shaderFile reference with no inline shader — just add the import
       imports.set(p.shaderFile, stemToVarName(p.shaderFile));
