@@ -81,6 +81,7 @@ export class BoidsController {
   private gridAssignPipeline!: GPUComputePipeline;
   private prefixSumPipeline!: GPUComputePipeline;
   private scatterPipeline!: GPUComputePipeline;
+  private scatterDataPipeline!: GPUComputePipeline;
   private gridBindGroupLayout!: GPUBindGroupLayout;
   private gridBindGroups!: GPUBindGroup[]; // [frame%2] — reads from A or B
 
@@ -93,6 +94,7 @@ export class BoidsController {
   private cellOffsetsBuffer!: GPUBuffer;
   private cellScatterIdxBuffer!: GPUBuffer;
   private sortedIndicesBuffer!: GPUBuffer;
+  private sortedParticlesBuffer!: GPUBuffer;
 
   // Shared uniform/obstacle/vertex buffers
   private uniformBuffer!: GPUBuffer;
@@ -113,6 +115,7 @@ export class BoidsController {
   readonly imageForce     = new BoidsImageForce();
   readonly webcam         = new BoidsWebcam();
   private overlayPipeline: GPURenderPipeline | null = null;
+  private overlayBindGroup: GPUBindGroup | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
 
@@ -174,6 +177,10 @@ export class BoidsController {
         size: MAX_PARTICLES * 4,
         usage: gridStorageUsage,
       });
+      this.sortedParticlesBuffer = device.createBuffer({
+        size: MAX_PARTICLES * 16,  // Particle = vec2f pos + vec2f vel = 16 bytes
+        usage: gridStorageUsage,
+      });
 
       // ── Grid pipeline setup ───────────────────────────────────────────
       const gridModule = device.createShaderModule({ code: gridShaderCode });
@@ -187,6 +194,7 @@ export class BoidsController {
           { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         ],
       });
 
@@ -210,6 +218,10 @@ export class BoidsController {
         layout: gridPipelineLayout,
         compute: { module: gridModule, entryPoint: 'scatter' },
       });
+      this.scatterDataPipeline = device.createComputePipeline({
+        layout: gridPipelineLayout,
+        compute: { module: gridModule, entryPoint: 'scatterData' },
+      });
 
       // Grid bind groups — one per ping-pong frame (reads from A or B)
       this.gridBindGroups = [
@@ -223,6 +235,7 @@ export class BoidsController {
             { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
             { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
             { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
           ],
         }),
         device.createBindGroup({
@@ -235,6 +248,7 @@ export class BoidsController {
             { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
             { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
             { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
           ],
         }),
       ];
@@ -294,7 +308,7 @@ export class BoidsController {
           { binding: 3, resource: { buffer: this.obstacleBuffer } },
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
           ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
@@ -307,7 +321,7 @@ export class BoidsController {
           { binding: 3, resource: { buffer: this.obstacleBuffer } },
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
           ...this.imageForce.buildBindGroupEntries(),
         ],
       }),
@@ -441,6 +455,7 @@ export class BoidsController {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
+      this.overlayBindGroup = null;   // compositedTexture was re-allocated; rebuild on next use
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
@@ -516,7 +531,12 @@ export class BoidsController {
     computePass.setBindGroup(0, gridBG);
     computePass.dispatchWorkgroups(Math.ceil(N / 256));
 
-    // Pass 5: boids update
+    // Pass 5: scatterData — copy particle data into cell-sorted order
+    computePass.setPipeline(this.scatterDataPipeline);
+    computePass.setBindGroup(0, gridBG);
+    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+
+    // Pass 6: boids update
     computePass.setPipeline(this.computePipeline);
     computePass.setBindGroup(0, this.boidsBindGroups[this.frame % 2]);
     computePass.dispatchWorkgroups(Math.ceil(N / 256));
@@ -550,13 +570,15 @@ export class BoidsController {
 
     // ── Image overlay ─────────────────────────────────────────────────
     if (this.imageForce.isActive() && this.imageForce.showOverlay && this.overlayPipeline) {
-      const bg = device.createBindGroup({
-        layout: this.overlayPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: this.imageProcessor.getOutputSampler() },
-          { binding: 1, resource: this.imageProcessor.getCompositedTexture().createView() },
-        ],
-      });
+      if (!this.overlayBindGroup) {
+        this.overlayBindGroup = device.createBindGroup({
+          layout: this.overlayPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: this.imageProcessor.getOutputSampler() },
+            { binding: 1, resource: this.imageProcessor.getCompositedTexture().createView() },
+          ],
+        });
+      }
       const enc  = device.createCommandEncoder();
       const pass = enc.beginRenderPass({
         colorAttachments: [{
@@ -566,7 +588,7 @@ export class BoidsController {
         }],
       });
       pass.setPipeline(this.overlayPipeline);
-      pass.setBindGroup(0, bg);
+      pass.setBindGroup(0, this.overlayBindGroup);
       pass.draw(6);
       pass.end();
       device.queue.submit([enc.finish()]);
@@ -638,7 +660,7 @@ export class BoidsController {
           { binding: 3, resource: { buffer: this.obstacleBuffer } },
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
           ...forceEntries,
         ],
       }),
@@ -651,7 +673,7 @@ export class BoidsController {
           { binding: 3, resource: { buffer: this.obstacleBuffer } },
           { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
           { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
           ...forceEntries,
         ],
       }),

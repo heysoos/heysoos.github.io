@@ -48,7 +48,8 @@ struct Particle {
 @group(0) @binding(3) var<storage, read_write> cellCounts:    array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> cellOffsets:   array<u32>;
 @group(0) @binding(5) var<storage, read_write> cellScatterIdx: array<atomic<u32>>;
-@group(0) @binding(6) var<storage, read_write> sortedIndices: array<u32>;
+@group(0) @binding(6) var<storage, read_write> sortedIndices:   array<u32>;
+@group(0) @binding(7) var<storage, read_write> sortedParticles: array<Particle>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 1: clearGrid — zero active cells before each frame
@@ -115,4 +116,17 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let cellID = particleCellIDs[index];
   let slot = atomicAdd(&cellScatterIdx[cellID], 1u);
   sortedIndices[slot] = index;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pass 5: scatterData — copy particle data into cell-sorted order
+// Enables sequential memory access in the boids compute pass instead of
+// scattered reads via sortedIndices[k] → particlesA[i].
+// Dispatch: ceil(numParticles / 256)
+// ─────────────────────────────────────────────────────────────────────────────
+@compute @workgroup_size(256)
+fn scatterData(@builtin(global_invocation_id) id: vec3u) {
+  let index = id.x;
+  if (index >= params.numParticles) { return; }
+  sortedParticles[index] = particlesRead[sortedIndices[index]];
 }

@@ -48,7 +48,7 @@ struct Obstacles {
 // Grid lookup buffers (written by boids-grid.wgsl passes 1-4)
 @group(0) @binding(4) var<storage, read> cellOffsets:   array<u32>;
 @group(0) @binding(5) var<storage, read> cellCounts:    array<u32>;
-@group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(6) var<storage, read> sortedParticles: array<Particle>;
 @group(0) @binding(7) var imageTexture: texture_2d<f32>;
 @group(0) @binding(8) var imageSampler: sampler;
 
@@ -157,9 +157,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       let end   = start + cellCounts[cellID];
 
       for (var k = start; k < end; k++) {
-        let i = sortedIndices[k];
-        if (i == index) { continue; }
-        let other = particlesA[i];
+        let other = sortedParticles[k];
         var diff = other.pos - pos;
         // Minimum image convention: use shortest path across periodic boundaries
         if (diff.x >  1.0) { diff.x -= 2.0; }
