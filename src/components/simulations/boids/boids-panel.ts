@@ -30,9 +30,10 @@ export function buildBoidsPanel(
 ): { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } {
   // ── Audio visualisation state — declared first so buildAudioTab can capture them ──
   const paramIndicators = new Map<string, { wrap: HTMLElement; fill: HTMLElement }>();
-  const cellUpdaters  = new Map<string, (amplitude: number) => void>();
-  const totalUpdaters = new Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>();
-  const traceUpdaters = new Map<string, (amplitude: number) => void>();
+  const cellUpdaters        = new Map<string, (amplitude: number) => void>();
+  const totalUpdaters       = new Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>();
+  const traceUpdaters       = new Map<string, (amplitude: number) => void>();
+  const matrixTraceUpdaters = new Map<string, (normalizedVal: number) => void>();
 
   // ── Tab bar (replaces old plain header) ──────────────────────────
   const tabBar = document.createElement('div');
@@ -123,7 +124,7 @@ export function buildBoidsPanel(
 
   // Audio tab placeholder — replaced in Tasks 7–9
   if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, cellUpdaters, totalUpdaters, traceUpdaters);
+    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, cellUpdaters, totalUpdaters, traceUpdaters, matrixTraceUpdaters);
     // Start immediately stopped since Params tab is shown first
     audioVizControls.stop();
   } else {
@@ -496,6 +497,16 @@ export function buildBoidsPanel(
       u(snapshot, baseVal, modulatedVal);
     }
 
+    // Matrix row sparklines (one per param, shows combined modulated value)
+    for (const [param, u] of matrixTraceUpdaters) {
+      const meta = PARAM_META[param];
+      if (!meta) continue;
+      const modulatedVal = (controller.params as Record<string, number>)[param] ?? 0;
+      const range = meta.max - meta.min;
+      const normalized = range > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / range)) : 0;
+      u(normalized);
+    }
+
     // Param indicators in the Params tab
     for (const m of reactor.mappings) {
       if (!m.enabled) continue;
@@ -521,6 +532,39 @@ export function buildBoidsPanel(
   };
 }
 
+// ── Reset button helper ───────────────────────────────────────────────────────
+// Returns a small ↺ button wired to a range slider. Invisible when at default,
+// muted when changed, accent on hover. Dispatches 'input' so the slider's own
+// listener handles value propagation.
+
+function makeResetBtn(slider: HTMLInputElement, defaultValue: number): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.textContent = '↺';
+  btn.title = `Reset to ${defaultValue}`;
+  btn.style.cssText = [
+    'background:none;border:none;cursor:pointer;padding:0 1px;',
+    'font-size:0.7rem;line-height:1;border-radius:2px;flex-shrink:0;',
+    'color:var(--bg-surface-border);transition:color 0.1s;',
+  ].join('');
+
+  function sync(): void {
+    const atDefault = Math.abs(parseFloat(slider.value) - defaultValue) < 0.001;
+    btn.style.color = atDefault ? 'var(--bg-surface-border)' : 'var(--text-muted)';
+  }
+
+  slider.addEventListener('input', sync);
+  sync(); // set initial state
+
+  btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--accent)'; });
+  btn.addEventListener('mouseleave', sync);
+  btn.addEventListener('click', () => {
+    slider.value = String(defaultValue);
+    slider.dispatchEvent(new Event('input'));
+  });
+
+  return btn;
+}
+
 // ── Audio tab builder ─────────────────────────────────────────────────────────
 
 function buildAudioTab(
@@ -530,6 +574,7 @@ function buildAudioTab(
   cellUpdaters: Map<string, (amplitude: number) => void>,
   totalUpdaters: Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>,
   traceUpdaters: Map<string, (amplitude: number) => void>,
+  matrixTraceUpdaters: Map<string, (normalizedVal: number) => void>,
 ): { start: () => void; stop: () => void } {
 
   // Do NOT touch display here — it's managed by switchTab (setting display:flex
@@ -627,9 +672,36 @@ function buildAudioTab(
   sourceBtnRow.appendChild(sysBtn);
   sourceBtnRow.appendChild(statusDot);
 
+  // Global strength slider
+  const globalStrRow = document.createElement('div');
+  globalStrRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px;';
+  const globalStrLbl = document.createElement('span');
+  globalStrLbl.style.cssText = 'font-size:0.55rem;color:var(--text-muted);min-width:44px;';
+  globalStrLbl.textContent = 'Strength';
+  const globalStrSlider = document.createElement('input');
+  globalStrSlider.type = 'range';
+  globalStrSlider.min  = '0';
+  globalStrSlider.max  = '2';
+  globalStrSlider.step = '0.01';
+  globalStrSlider.value = String(reactor.globalStrength);
+  globalStrSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
+  const globalStrVal = document.createElement('span');
+  globalStrVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:26px;text-align:right;font-variant-numeric:tabular-nums;';
+  globalStrVal.textContent = reactor.globalStrength.toFixed(2);
+  globalStrSlider.addEventListener('input', () => {
+    reactor.globalStrength = parseFloat(globalStrSlider.value);
+    globalStrVal.textContent = reactor.globalStrength.toFixed(2);
+    reactor.saveGlobal();
+  });
+  globalStrRow.appendChild(globalStrLbl);
+  globalStrRow.appendChild(globalStrSlider);
+  globalStrRow.appendChild(globalStrVal);
+  globalStrRow.appendChild(makeResetBtn(globalStrSlider, 1.0));
+
   sourceSection.appendChild(sourceLabel);
   sourceSection.appendChild(sourceBtnRow);
   sourceSection.appendChild(errorMsg);
+  sourceSection.appendChild(globalStrRow);
   container.appendChild(sourceSection);
 
   // Sync UI to current reactor state (reactor may already be active from a prior panel build)
@@ -692,17 +764,22 @@ function buildAudioTab(
   mappingsHeader.appendChild(mappingsLabel);
   mappingsSection.appendChild(mappingsHeader);
 
-  // Matrix table
+  // Matrix table — fixed layout so we can control column widths precisely
+  // Layout: 85px label | 12px trace | 5 × ~29px bands (table is 250px wide)
   const matrixTable = document.createElement('table');
-  matrixTable.style.cssText = 'width:100%;border-collapse:collapse;';
+  matrixTable.style.cssText = 'width:100%;border-collapse:collapse;table-layout:fixed;';
 
   // thead — band column headers
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
   const paramTh = document.createElement('th');
-  paramTh.style.cssText = 'text-align:left;padding-left:8px;font-size:0.5rem;color:transparent;user-select:none;';
+  paramTh.style.cssText = 'width:85px;text-align:left;padding-left:8px;font-size:0.5rem;color:transparent;user-select:none;';
   paramTh.textContent = '-';
   headerRow.appendChild(paramTh);
+  // Trace column header (no label — just reserves the space)
+  const traceTh = document.createElement('th');
+  traceTh.style.cssText = 'width:12px;padding:0;';
+  headerRow.appendChild(traceTh);
   const BAND_KEYS_ORDER: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
   const BAND_ABBR: Record<BandKey, string> = { bass: 'B', mid: 'M', presence: 'P', hi: 'H', volume: 'V' };
   for (const band of BAND_KEYS_ORDER) {
@@ -722,13 +799,49 @@ function buildAudioTab(
   // Track which param row's drawer is currently open (null = none)
   let openParam: string | null = null;
   let drawerRow: HTMLTableRowElement | null = null;
-  const dotUpdaters = new Map<string, (depth: number) => void>();
+
+  // Persistent sparkline objects — survive rebuildMatrix() so ring buffers are not wiped
+  const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void }>();
+
+  // Mini sparkline for matrix trace column
+  const MAT_TRACE_LEN = 60;
+  const MAT_TRACE_W   = 10;
+  const MAT_TRACE_H   = 14;
+  const matDpr        = window.devicePixelRatio || 1;
+
+  function makeMatrixTrace(): { canvas: HTMLCanvasElement; push: (v: number) => void } {
+    const buf = new Float32Array(MAT_TRACE_LEN);
+    let ptr = 0;
+    const canvas = document.createElement('canvas');
+    canvas.width  = MAT_TRACE_W * matDpr;
+    canvas.height = MAT_TRACE_H * matDpr;
+    canvas.style.cssText = `width:${MAT_TRACE_W}px;height:${MAT_TRACE_H}px;display:block;border-radius:1px;`;
+    function push(v: number): void {
+      buf[ptr] = v;
+      ptr = (ptr + 1) % MAT_TRACE_LEN;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth   = matDpr;
+      ctx.beginPath();
+      const H = canvas.height, W = canvas.width;
+      for (let i = 0; i < MAT_TRACE_LEN; i++) {
+        const idx = (ptr + i) % MAT_TRACE_LEN;
+        const x = (i / (MAT_TRACE_LEN - 1)) * W;
+        const y = H - buf[idx] * (H - 2) - 1;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    return { canvas, push };
+  }
 
   function rebuildMatrix(): void {
     cellUpdaters.clear();
     totalUpdaters.clear();
-    dotUpdaters.clear();
     traceUpdaters.clear();
+    matrixTraceUpdaters.clear();
     tbody.innerHTML = '';
     openParam = null;
     drawerRow = null;
@@ -746,47 +859,65 @@ function buildAudioTab(
       tr.addEventListener('mouseenter', () => { if (openParam !== param) tr.style.background = 'rgba(255,255,255,0.03)'; });
       tr.addEventListener('mouseleave', () => { if (openParam !== param) tr.style.background = ''; });
 
-      // Param label cell
+      // Param label cell — truncates with ellipsis; click opens/closes the drawer
       const nameTd = document.createElement('td');
-      nameTd.style.cssText = `font-size:0.57rem;padding:3px 4px 3px 8px;white-space:nowrap;color:${hasAny ? 'var(--text-body)' : 'var(--text-muted)'};opacity:${hasAny ? '1' : '0.4'};`;
+      nameTd.title = meta.label;
+      nameTd.style.cssText = [
+        `font-size:0.57rem;padding:3px 4px 3px 8px;`,
+        `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`,
+        `color:${hasAny ? 'var(--text-body)' : 'var(--text-muted)'};`,
+        `opacity:${hasAny ? '1' : '0.5'};`,
+        `cursor:${hasAny ? 'pointer' : 'default'};`,
+      ].join('');
       nameTd.textContent = meta.label;
-      nameTd.style.cssText += ';cursor:pointer;';
       nameTd.addEventListener('click', () => {
+        if (!hasAny) return;
         if (openParam === param) {
           closeDrawer();
-        } else if (activeMappings.length > 0) {
-          const firstBand = activeMappings[0].band;
+        } else {
+          const firstBand = [...activeMappings].sort(
+            (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
+          )[0].band;
           openDrawer(param, firstBand);
         }
       });
       tr.appendChild(nameTd);
 
+      // Trace column — sparkline of combined modulation for this param
+      const traceTd = document.createElement('td');
+      traceTd.style.cssText = 'padding:1px 1px;vertical-align:middle;';
+      if (hasAny) {
+        // Reuse cached trace so the ring buffer survives rebuildMatrix() calls
+        if (!matTraceCache.has(param)) {
+          matTraceCache.set(param, makeMatrixTrace());
+        }
+        const { canvas: traceCanvas, push } = matTraceCache.get(param)!;
+        traceTd.appendChild(traceCanvas);
+        matrixTraceUpdaters.set(param, push);
+      } else {
+        matTraceCache.delete(param);
+      }
+      tr.appendChild(traceTd);
+
       // Band cells
       for (const band of BAND_KEYS_ORDER) {
-        const td  = document.createElement('td');
-        td.style.cssText = 'text-align:center;padding:3px 0;';
+        const td = document.createElement('td');
+        td.style.cssText = 'text-align:center;padding:3px 0;cursor:pointer;transition:background 0.1s;';
+        td.addEventListener('mouseenter', () => { td.style.background = 'rgba(255,255,255,0.06)'; });
+        td.addEventListener('mouseleave', () => { td.style.background = ''; });
 
         const mapping = activeMappings.find(m => m.band === band) ?? null;
-        const cellDiv = document.createElement('div');
-        cellDiv.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px;border-radius:3px;transition:background 0.1s;';
-        cellDiv.addEventListener('mouseenter', () => { cellDiv.style.background = 'rgba(255,255,255,0.06)'; });
-        cellDiv.addEventListener('mouseleave', () => { cellDiv.style.background = ''; });
-        cellDiv.addEventListener('click', () => {
+        td.addEventListener('click', () => {
+          // Remember which drawer was open so we can restore it after rebuild
+          const wasOpenParam = openParam;
+
           if (mapping) {
-            // Filled dot: toggle drawer or switch to this band's tab
-            if (openParam === param) {
-              // Drawer already open for this param
-              const activeTab = drawerRow?.querySelector<HTMLButtonElement>('[data-tabkey].active-tab');
-              if (activeTab?.dataset['tabkey'] === band) {
-                closeDrawer(); // clicking the active band's dot closes the drawer
-              } else {
-                openDrawer(param, band); // switch to this band's tab
-              }
-            } else {
-              openDrawer(param, band);
-            }
+            // Filled dot → toggle OFF (remove mapping)
+            const idx = reactor.mappings.findIndex(m => String(m.param) === param && m.band === band);
+            if (idx !== -1) reactor.mappings.splice(idx, 1);
+            reactor.saveMappings();
           } else {
-            // Empty cell: create a new mapping for this param+band and open drawer
+            // Empty dot → toggle ON (add mapping)
             const meta = PARAM_META[param];
             reactor.mappings.push({
               param: paramKey,
@@ -799,25 +930,35 @@ function buildAudioTab(
               enabled: true,
             });
             reactor.saveMappings();
-            closeDrawer();
-            rebuildMatrix();
-            openDrawer(param, band);
+          }
+
+          rebuildMatrix();
+
+          // Restore drawer — band cell clicks must never change drawer open/close state.
+          // If the drawer was open before the toggle, reopen it (unless all mappings were removed).
+          if (wasOpenParam !== null) {
+            const remaining = reactor.mappings.filter(m => String(m.param) === wasOpenParam);
+            if (remaining.length > 0) {
+              const bandToOpen = [...remaining].sort(
+                (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
+              )[0].band;
+              openDrawer(wasOpenParam, bandToOpen);
+            }
           }
         });
 
+        const cellDiv = document.createElement('div');
+        cellDiv.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;gap:1px;padding:2px;border-radius:3px;';
+
         const dot = document.createElement('div');
-        dot.style.cssText = `border-radius:50%;border:1px solid var(--bg-surface-border);background:transparent;display:block;`;
+        dot.style.cssText = 'width:9px;height:9px;border-radius:50%;display:block;';
         if (mapping) {
-          const sz = mapping.depth < 0.33 ? 6 : mapping.depth < 0.67 ? 9 : 11;
-          dot.style.width  = `${sz}px`;
-          dot.style.height = `${sz}px`;
           dot.style.background  = BAND_COLORS[band];
-          dot.style.borderColor = BAND_COLORS[band];
+          dot.style.border      = `1px solid ${BAND_COLORS[band]}`;
           dot.style.boxShadow   = `0 0 4px ${BAND_COLORS[band]}aa`;
         } else {
-          dot.style.width   = '8px';
-          dot.style.height  = '8px';
-          dot.style.opacity = '0.2';
+          dot.style.background = `${BAND_COLORS[band]}28`;
+          dot.style.border     = `1px solid ${BAND_COLORS[band]}70`;
         }
         cellDiv.appendChild(dot);
 
@@ -833,11 +974,6 @@ function buildAudioTab(
           const key = `${param}::${band}`;
           cellUpdaters.set(key, (amplitude: number) => {
             liveFill.style.width = `${Math.round(amplitude * 100)}%`;
-          });
-          dotUpdaters.set(key, (depth: number) => {
-            const sz = depth < 0.33 ? 6 : depth < 0.67 ? 9 : 11;
-            dot.style.width  = `${sz}px`;
-            dot.style.height = `${sz}px`;
           });
         }
 
@@ -914,9 +1050,9 @@ function buildAudioTab(
       ctx.fillText(trMax.toFixed(2), 2, 10);
       ctx.fillText(trMin.toFixed(2), 2, H - 2);
       const tipY = H - currentVal * innerH - 1;
-      const clampedTipY = Math.max(10, Math.min(H - 2, tipY));
+      const labelY = Math.max(9, Math.min(H - 3, tipY - 5));
       ctx.fillStyle = bandColor;
-      ctx.fillText(currentVal.toFixed(2), W - 26, clampedTipY);
+      ctx.fillText(currentVal.toFixed(2), W - 26, labelY);
     }
 
     function push(v: number): void {
@@ -964,14 +1100,12 @@ function buildAudioTab(
       mapping.depth = parseFloat(depthSlider.value);
       depthVal.textContent = mapping.depth.toFixed(2);
       reactor.saveMappings();
-      // Update dot size in-place without full rebuild
-      const dotKey = `${String(mapping.param)}::${mapping.band}`;
-      dotUpdaters.get(dotKey)?.(mapping.depth);
     });
     const depthWrap = document.createElement('div');
     depthWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
     depthWrap.appendChild(depthSlider);
     depthWrap.appendChild(depthVal);
+    depthWrap.appendChild(makeResetBtn(depthSlider, 0.5));
     row('Depth', depthWrap);
 
     // Gain
@@ -985,6 +1119,7 @@ function buildAudioTab(
     gainWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
     gainWrap.appendChild(gainSlider);
     gainWrap.appendChild(gainVal);
+    gainWrap.appendChild(makeResetBtn(gainSlider, 1.0));
     row('Gain', gainWrap);
 
     // Mode
@@ -993,10 +1128,13 @@ function buildAudioTab(
       'padding:1px 6px;border-radius:3px;font-size:0.65rem;cursor:pointer;',
       'border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-muted);',
     ].join('');
-    modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+    function modeBtnLabel(mode: typeof mapping.mode): string {
+      return mode === 'add' ? '+ add' : mode === 'subtract' ? '− sub' : '× mul';
+    }
+    modeBtn.textContent = modeBtnLabel(mapping.mode);
     modeBtn.addEventListener('click', () => {
-      mapping.mode = mapping.mode === 'add' ? 'multiply' : 'add';
-      modeBtn.textContent = mapping.mode === 'add' ? '+ add' : '× mul';
+      mapping.mode = mapping.mode === 'add' ? 'subtract' : mapping.mode === 'subtract' ? 'multiply' : 'add';
+      modeBtn.textContent = modeBtnLabel(mapping.mode);
       reactor.saveMappings();
     });
     row('Mode', modeBtn);
@@ -1060,7 +1198,9 @@ function buildAudioTab(
     const resolvedTextBody = getComputedStyle(document.documentElement)
       .getPropertyValue('--text-body').trim() || 'rgba(232,224,208,0.9)';
     const meta     = PARAM_META[param];
-    const mappings = reactor.mappings.filter(m => String(m.param) === param);
+    const mappings = reactor.mappings
+      .filter(m => String(m.param) === param)
+      .sort((a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band));
 
     const body = document.createElement('div');
     body.style.cssText = 'padding:6px 8px;';
@@ -1138,7 +1278,10 @@ function buildAudioTab(
     contribLbl.style.cssText = 'font-size:0.5rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:3px;';
     contribLbl.textContent = 'contributions';
     contribSection.appendChild(contribLbl);
-    const contribRows: { fill: HTMLElement; valEl: HTMLElement }[] = [];
+    function contribModeLabel(mode: AudioMapping['mode']): string {
+      return mode === 'add' ? '+add' : mode === 'subtract' ? '−sub' : '×mul';
+    }
+    const contribRows: { fill: HTMLElement; valEl: HTMLElement; modeEl: HTMLElement }[] = [];
     for (const m of mappings) {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:3px;';
@@ -1148,8 +1291,16 @@ function buildAudioTab(
       name.style.cssText = `font-size:0.52rem;color:${BAND_COLORS[m.band]};min-width:30px;`;
       name.textContent = m.band;
       const modeEl = document.createElement('span');
-      modeEl.style.cssText = 'font-size:0.5rem;color:var(--text-muted);min-width:22px;';
-      modeEl.textContent = m.mode === 'add' ? '+add' : '×mul';
+      modeEl.style.cssText = 'font-size:0.5rem;color:var(--text-muted);min-width:22px;cursor:pointer;user-select:none;';
+      modeEl.title = 'Click to cycle mode';
+      modeEl.textContent = contribModeLabel(m.mode);
+      modeEl.addEventListener('mouseenter', () => { modeEl.style.color = 'var(--text-body)'; });
+      modeEl.addEventListener('mouseleave', () => { modeEl.style.color = 'var(--text-muted)'; });
+      modeEl.addEventListener('click', () => {
+        m.mode = m.mode === 'add' ? 'subtract' : m.mode === 'subtract' ? 'multiply' : 'add';
+        modeEl.textContent = contribModeLabel(m.mode);
+        reactor.saveMappings();
+      });
       const barWrap = document.createElement('div');
       barWrap.style.cssText = 'flex:1;height:3px;background:var(--bg-surface-border);border-radius:2px;';
       const barFill = document.createElement('div');
@@ -1161,7 +1312,7 @@ function buildAudioTab(
       row.appendChild(swatch); row.appendChild(name); row.appendChild(modeEl);
       row.appendChild(barWrap); row.appendChild(valEl);
       contribSection.appendChild(row);
-      contribRows.push({ fill: barFill, valEl });
+      contribRows.push({ fill: barFill, valEl, modeEl });
     }
     body.appendChild(contribSection);
 
@@ -1228,8 +1379,11 @@ function buildAudioTab(
           const mappingMeta = PARAM_META[String(m.param)];
           let contribution: number;
           let barFraction: number;
-          if (m.mode === 'add') {
-            contribution = signal * m.depth * (m.max - m.min);
+          // Keep modeEl in sync — mode may have changed via the band tab's mode button
+          contribRows[i].modeEl.textContent = contribModeLabel(m.mode);
+          if (m.mode === 'add' || m.mode === 'subtract') {
+            const sign = m.mode === 'subtract' ? -1 : 1;
+            contribution = sign * signal * m.depth * (m.max - m.min);
             barFraction  = Math.min(1, Math.abs(contribution) / Math.max(0.001, mappingMeta.max - mappingMeta.min));
             contribRows[i].valEl.textContent = (contribution >= 0 ? '+' : '') + contribution.toFixed(3);
           } else {
@@ -1275,15 +1429,16 @@ function buildAudioTab(
     const tr = document.createElement('tr');
     tr.className = 'audio-drawer-row';
     const td = document.createElement('td');
-    td.colSpan = 6;
+    td.colSpan = 7; // param + trace + 5 bands
     td.style.cssText = 'padding:0;border-top:1px solid var(--bg-surface-border);border-bottom:1px solid var(--bg-surface-border);';
 
     // Tab strip
     const tabs = document.createElement('div');
-    tabs.style.cssText = 'display:flex;border-bottom:1px solid var(--bg-surface-border);background:var(--bg-surface);';
+    tabs.style.cssText = 'display:flex;border-bottom:1px solid var(--bg-surface-border);background:var(--bg-primary);';
 
     const tabBodies: Record<string, HTMLDivElement> = {};
-    let activeTabKey = multiMapping ? '∑' : activeBand;
+    // Default to ∑ tab when multiple mappings exist; otherwise show the requested band
+    let activeTabKey: string = multiMapping ? '∑' : activeBand;
 
     function switchDrawerTab(key: string): void {
       activeTabKey = key;
@@ -1300,91 +1455,102 @@ function buildAudioTab(
       });
     }
 
-    function makeTabBtn(label: string, key: string, color: string): HTMLButtonElement {
+    function makeTabBtn(label: string, key: string, color: string, removable = false): HTMLButtonElement {
       const btn = document.createElement('button');
-      btn.textContent = label;
       btn.dataset['tabkey']    = key;
       btn.dataset['bandcolor'] = color;
       btn.style.cssText = [
-        'flex:1;padding:4px 2px;font-size:0.52rem;text-align:center;',
+        'flex:1;padding:4px 4px 4px 6px;font-size:0.52rem;',
         'cursor:pointer;border:none;background:transparent;',
         'border-bottom:2px solid transparent;transition:color 0.1s;',
         `color:var(--text-muted);`,
+        removable ? 'display:flex;align-items:center;gap:3px;' : 'text-align:center;',
       ].join('');
+
+      if (removable) {
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = label;
+        labelSpan.style.cssText = 'flex:1;text-align:center;';
+        const xSpan = document.createElement('span');
+        xSpan.textContent = '×';
+        xSpan.title = 'Remove mapping';
+        xSpan.style.cssText = 'font-size:0.8rem;line-height:1;opacity:0.4;padding:0 2px;border-radius:2px;flex-shrink:0;';
+        xSpan.addEventListener('mouseenter', () => { xSpan.style.opacity = '1'; xSpan.style.color = '#e05060'; });
+        xSpan.addEventListener('mouseleave', () => { xSpan.style.opacity = '0.4'; xSpan.style.color = ''; });
+        xSpan.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = reactor.mappings.findIndex(m => String(m.param) === param && m.band === (key as BandKey));
+          if (idx !== -1) reactor.mappings.splice(idx, 1);
+          reactor.saveMappings();
+          closeDrawer();
+          rebuildMatrix();
+          const remaining = reactor.mappings.filter(m => String(m.param) === param);
+          if (remaining.length > 0) openDrawer(param, remaining[0].band);
+        });
+        btn.appendChild(labelSpan);
+        btn.appendChild(xSpan);
+      } else {
+        btn.textContent = label;
+      }
+
       btn.addEventListener('click', () => switchDrawerTab(key));
       return btn;
     }
 
-    // Band tabs
-    for (const m of activeMappings) {
+    // Band tabs — sorted by BAND_KEYS_ORDER so tabs always match matrix column order
+    const sortedMappings = [...activeMappings].sort(
+      (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
+    );
+    for (const m of sortedMappings) {
       const label = `● ${m.band}`;
       const color = BAND_COLORS[m.band];
-      const btn   = makeTabBtn(label, m.band, color);
+      const btn   = makeTabBtn(label, m.band, color, true);
       tabs.appendChild(btn);
       const body = buildBandTab(m);
       body.style.display = 'none';
       tabBodies[m.band] = body;
     }
 
-    // Remove button (removes current active band's mapping)
-    const removeBtn = document.createElement('button');
-    removeBtn.textContent = 'remove';
-    removeBtn.style.cssText = 'font-size:0.52rem;color:var(--text-muted);padding:4px 8px;background:none;border:none;cursor:pointer;white-space:nowrap;';
-    removeBtn.addEventListener('mouseenter', () => { removeBtn.style.color = '#e05060'; });
-    removeBtn.addEventListener('mouseleave', () => { removeBtn.style.color = 'var(--text-muted)'; });
-    removeBtn.addEventListener('click', () => {
-      if (activeTabKey === '∑') return; // ∑ tab has no single band to remove
-      const idx = reactor.mappings.findIndex(m => String(m.param) === param && m.band === activeTabKey);
-      if (idx !== -1) reactor.mappings.splice(idx, 1);
-      reactor.saveMappings();
-      closeDrawer();
-      rebuildMatrix();
-      // Reopen drawer on same param if mappings remain
-      if (reactor.mappings.some(m => String(m.param) === param)) {
-        const remaining = reactor.mappings.filter(m => String(m.param) === param);
-        openDrawer(param, remaining[0].band);
-      }
-    });
-    tabs.appendChild(removeBtn);
-
-    // ∑ total tab (only when 2+ mappings; built in Task 4)
+    // ∑ total tab (only when 2+ mappings)
     if (multiMapping) {
-      const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)');
-      tabs.insertBefore(totalBtn, removeBtn);
+      const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)', false);
+      tabs.appendChild(totalBtn);
       const { body: totalBody, registerUpdater } = buildTotalTab(param);
       totalBody.style.display = 'none';
       tabBodies['∑'] = totalBody;
       registerUpdater();
     }
 
+    // Per-param strength row — sits above the tab strip, always visible
+    const paramStrRow = document.createElement('div');
+    paramStrRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bg-surface-border);background:var(--bg-primary);';
+    const paramStrLbl = document.createElement('span');
+    paramStrLbl.style.cssText = 'font-size:0.55rem;color:var(--text-muted);min-width:44px;';
+    paramStrLbl.textContent = 'Strength';
+    const paramStrSlider = document.createElement('input');
+    paramStrSlider.type = 'range';
+    paramStrSlider.min  = '0';
+    paramStrSlider.max  = '2';
+    paramStrSlider.step = '0.01';
+    const curParamStr = reactor.paramStrengths[param] ?? 1.0;
+    paramStrSlider.value = String(curParamStr);
+    paramStrSlider.style.cssText = 'flex:1;accent-color:var(--accent);';
+    const paramStrVal = document.createElement('span');
+    paramStrVal.style.cssText = 'font-size:0.6rem;color:var(--accent);min-width:26px;text-align:right;font-variant-numeric:tabular-nums;';
+    paramStrVal.textContent = curParamStr.toFixed(2);
+    paramStrSlider.addEventListener('input', () => {
+      reactor.paramStrengths[param] = parseFloat(paramStrSlider.value);
+      paramStrVal.textContent = reactor.paramStrengths[param].toFixed(2);
+      reactor.saveGlobal();
+    });
+    paramStrRow.appendChild(paramStrLbl);
+    paramStrRow.appendChild(paramStrSlider);
+    paramStrRow.appendChild(paramStrVal);
+    paramStrRow.appendChild(makeResetBtn(paramStrSlider, 1.0));
+
+    td.appendChild(paramStrRow);
     td.appendChild(tabs);
     for (const body of Object.values(tabBodies)) td.appendChild(body);
-
-    // "+ add another band" footer
-    const addBandFooter = document.createElement('div');
-    addBandFooter.style.cssText = [
-      'padding:4px 8px;font-size:0.55rem;color:var(--text-muted);',
-      'cursor:pointer;border-top:1px dashed var(--bg-surface-border);text-align:center;',
-    ].join('');
-    addBandFooter.textContent = '+ add another band';
-    addBandFooter.addEventListener('mouseenter', () => { addBandFooter.style.color = 'var(--accent)'; });
-    addBandFooter.addEventListener('mouseleave', () => { addBandFooter.style.color = 'var(--text-muted)'; });
-    addBandFooter.addEventListener('click', () => {
-      const usedBands = reactor.mappings.filter(m => String(m.param) === param).map(m => m.band);
-      const nextBand  = (BAND_KEYS_ORDER as string[]).find(b => !usedBands.includes(b as BandKey)) as BandKey | undefined;
-      if (!nextBand) return; // all 5 bands already used
-      const meta = PARAM_META[param];
-      reactor.mappings.push({
-        param: param as keyof import('./boids-controller').BoidsParams,
-        band: nextBand, mode: 'add', depth: 0.5, gain: 1.0,
-        min: meta.min, max: meta.max, enabled: true,
-      });
-      reactor.saveMappings();
-      closeDrawer();
-      rebuildMatrix();
-      openDrawer(param, nextBand);
-    });
-    td.appendChild(addBandFooter);
 
     tr.appendChild(td);
     // Insert after paramTr
