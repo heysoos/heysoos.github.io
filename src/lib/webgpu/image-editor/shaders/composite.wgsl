@@ -25,7 +25,7 @@ fn compositeMain(@builtin(global_invocation_id) id: vec3u) {
   let v  = (cy - tf.offsetY) / tf.scaleY;
 
   var src = vec4f(0.0);
-  if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0 && tf.scaleX > 0.0 && tf.scaleY > 0.0) {
+  if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0 && tf.scaleX != 0.0 && tf.scaleY > 0.0) {
     let srcDims  = textureDimensions(srcTex);
     let srcCoord = vec2u(vec2f(f32(srcDims.x) * u, f32(srcDims.y) * v));
     src = textureLoad(srcTex, clamp(srcCoord, vec2u(0u), srcDims - 1u), 0);

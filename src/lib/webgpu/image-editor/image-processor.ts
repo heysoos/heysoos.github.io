@@ -41,9 +41,18 @@ export class ImageProcessor {
 
   // Uniforms
   private transformUniform!: GPUBuffer;  // 16 bytes (4 × f32)
-  private blurUniform!:      GPUBuffer;  // 16 bytes
+  private blurUniformH!:     GPUBuffer;  // 16 bytes — horizontal pass
+  private blurUniformV!:     GPUBuffer;  // 16 bytes — vertical pass
   private modeUniform!:      GPUBuffer;  // 16 bytes
   private sdfUniform!:       GPUBuffer;  // 16 bytes
+
+  // Cached bind groups — rebuilt lazily when textures are reallocated or mode changes
+  private _compositeBG: GPUBindGroup | null = null;
+  private _blurBGH: GPUBindGroup | null = null;
+  private _blurBGV: GPUBindGroup | null = null;
+  private _modeBG: GPUBindGroup | null = null;
+  private _cachedModePipeline: GPUComputePipeline | null = null;
+  private _bgsDirty = true;
 
   // State
   private width  = 1;
@@ -52,6 +61,7 @@ export class ImageProcessor {
   imageHeight = 1;
   hasPaint = false;
   hasImage = false;
+  private _flipX = false;
 
   transform: ImageTransform = { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 };
   params: ProcessingParams = {
@@ -74,7 +84,8 @@ export class ImageProcessor {
 
     // Uniforms
     this.transformUniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.blurUniform      = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.blurUniformH     = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.blurUniformV     = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.modeUniform      = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.sdfUniform       = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
@@ -128,6 +139,8 @@ export class ImageProcessor {
     this.sdfPongTexture = make(sdfUsage, 'rgba16float');
     this.width  = w;
     this.height = h;
+    this._bgsDirty = true;
+    this._modeBG = null;  // processedTexture reallocated — force modeBG rebuild too
   }
 
   private _clearMaskToOnes(): void {
@@ -165,16 +178,19 @@ export class ImageProcessor {
     );
 
     // Default transform: contain
+    this._bgsDirty = true;  // sourceTexture reallocated
     this._applyContainTransform();
     this._triggerReprocess();
   }
 
   clearImage(): void {
     this.hasImage = false;
+    this._flipX = false;
     this.sourceTexture.destroy();
     this.sourceTexture = this.device.createTexture({
       size: [1, 1, 1], format: 'rgba8unorm', usage: TEX_USAGE_COMPUTE_IN,
     });
+    this._bgsDirty = true;  // sourceTexture reallocated
     this._clearMaskToOnes();
     this.transform = { offsetX: 0, offsetY: 0, scaleX: this.width, scaleY: this.height };
     this._triggerReprocess();
@@ -228,7 +244,7 @@ export class ImageProcessor {
   get canvasWidth():  number         { return this.width;  }
   get canvasHeight(): number         { return this.height; }
 
-  writeVideoFrame(source: HTMLVideoElement | HTMLCanvasElement): void {
+  writeVideoFrame(source: HTMLVideoElement | HTMLCanvasElement, flipX = false): void {
     // Skip if video not ready yet
     if (source instanceof HTMLVideoElement && source.readyState < 2 /* HAVE_CURRENT_DATA */) return;
 
@@ -248,8 +264,12 @@ export class ImageProcessor {
       this.imageWidth  = w;
       this.imageHeight = h;
       this.hasImage    = true;
+      this._bgsDirty = true;  // sourceTexture reallocated — compositeBG must be rebuilt
       this._applyContainTransform();
     }
+
+    // Apply flip at the GPU transform level — no CPU canvas draw needed
+    this._flipX = flipX;
 
     try {
       device.queue.copyExternalImageToTexture(
@@ -357,19 +377,9 @@ export class ImageProcessor {
     };
   }
 
-  private _triggerReprocess(): void {
-    const { device, width, height } = this;
-    const enc = device.createCommandEncoder();
-    const wg  = (n: number) => Math.ceil(n / 8);
-
-    // ── Pass 1: Composite ──────────────────────────────────────────────
-    const tf = new Float32Array([
-      this.transform.offsetX, this.transform.offsetY,
-      this.transform.scaleX,  this.transform.scaleY,
-    ]);
-    device.queue.writeBuffer(this.transformUniform, 0, tf);
-
-    const compositeBG = device.createBindGroup({
+  private _rebuildBindGroups(): void {
+    const { device } = this;
+    this._compositeBG = device.createBindGroup({
       layout: this.compositePipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.transformUniform } },
@@ -379,75 +389,113 @@ export class ImageProcessor {
         { binding: 4, resource: this.compositedTexture.createView() },
       ],
     });
-    const compositePass = enc.beginComputePass();
-    compositePass.setPipeline(this.compositePipeline);
-    compositePass.setBindGroup(0, compositeBG);
-    compositePass.dispatchWorkgroups(wg(width), wg(height));
-    compositePass.end();
-    device.queue.submit([enc.finish()]);
+    this._blurBGH = device.createBindGroup({
+      layout: this.blurPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.blurUniformH } },
+        { binding: 1, resource: this.compositedTexture.createView() },
+        { binding: 2, resource: this.blurTempTexture.createView() },
+      ],
+    });
+    this._blurBGV = device.createBindGroup({
+      layout: this.blurPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.blurUniformV } },
+        { binding: 1, resource: this.blurTempTexture.createView() },
+        { binding: 2, resource: this.compositedTexture.createView() },
+      ],
+    });
+    this._bgsDirty = false;
+  }
 
-    // ── Pass 2: Optional blur ─────────────────────────────────────────
-    if (this.params.blurRadius > 0) {
-      const r = Math.round(this.params.blurRadius);
-      const makeBlurBG = (inT: GPUTexture, outT: GPUTexture, horiz: number) => {
-        device.queue.writeBuffer(this.blurUniform, 0, new Uint32Array([r, horiz, 0, 0]));
-        return device.createBindGroup({
-          layout: this.blurPipeline.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: { buffer: this.blurUniform } },
-            { binding: 1, resource: inT.createView() },
-            { binding: 2, resource: outT.createView() },
-          ],
-        });
-      };
-      const e1 = device.createCommandEncoder();
-      const p1 = e1.beginComputePass();
-      p1.setPipeline(this.blurPipeline);
-      p1.setBindGroup(0, makeBlurBG(this.compositedTexture, this.blurTempTexture, 1));
-      p1.dispatchWorkgroups(wg(width), wg(height));
-      p1.end();
-      device.queue.submit([e1.finish()]);
+  private _rebuildModeBG(pipeline: GPUComputePipeline): void {
+    this._modeBG = this.device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.modeUniform } },
+        { binding: 1, resource: this.compositedTexture.createView() },
+        { binding: 2, resource: this.processedTexture.createView() },
+      ],
+    });
+    this._cachedModePipeline = pipeline;
+  }
 
-      const e2 = device.createCommandEncoder();
-      const p2 = e2.beginComputePass();
-      p2.setPipeline(this.blurPipeline);
-      p2.setBindGroup(0, makeBlurBG(this.blurTempTexture, this.compositedTexture, 0));
-      p2.dispatchWorkgroups(wg(width), wg(height));
-      p2.end();
-      device.queue.submit([e2.finish()]);
+  private _triggerReprocess(): void {
+    const { device, width, height } = this;
+    const wg = (n: number) => Math.ceil(n / 8);
+
+    // ── Write uniforms (before encoder — writeBuffer is ordered ahead of submit) ──
+    // Apply horizontal flip via signed scaleX: u = (cx - offsetX) / scaleX.
+    // Negating scaleX and shifting offsetX to the right edge flips u in [0,1].
+    const { offsetX, offsetY, scaleX, scaleY } = this.transform;
+    const gpuOffsetX = this._flipX ? offsetX + scaleX : offsetX;
+    const gpuScaleX  = this._flipX ? -scaleX          : scaleX;
+    device.queue.writeBuffer(this.transformUniform, 0,
+      new Float32Array([gpuOffsetX, offsetY, gpuScaleX, scaleY]));
+
+    const mode = this.params.mode;
+    const modeData = new ArrayBuffer(16);
+    const mv = new DataView(modeData);
+    mv.setUint32(0, mode, true);
+    mv.setFloat32(8, this.params.threshold, true);
+    device.queue.writeBuffer(this.modeUniform, 0, modeData);
+
+    // ── Rebuild bind groups only when textures were reallocated ────────
+    if (this._bgsDirty) {
+      this._rebuildBindGroups();
     }
 
-    // ── Pass 3: Mode pass ─────────────────────────────────────────────
-    const mode = this.params.mode;
+    // ── Single command encoder for all passes ─────────────────────────
+    const enc = device.createCommandEncoder();
 
+    // Pass 1: Composite
+    const p1 = enc.beginComputePass();
+    p1.setPipeline(this.compositePipeline);
+    p1.setBindGroup(0, this._compositeBG!);
+    p1.dispatchWorkgroups(wg(width), wg(height));
+    p1.end();
+
+    // Pass 2: Optional blur (two sub-passes, ping-pong textures)
+    if (this.params.blurRadius > 0) {
+      const r = Math.round(this.params.blurRadius);
+      device.queue.writeBuffer(this.blurUniformH, 0, new Uint32Array([r, 1, 0, 0]));
+      device.queue.writeBuffer(this.blurUniformV, 0, new Uint32Array([r, 0, 0, 0]));
+
+      const p2h = enc.beginComputePass();
+      p2h.setPipeline(this.blurPipeline);
+      p2h.setBindGroup(0, this._blurBGH!);
+      p2h.dispatchWorkgroups(wg(width), wg(height));
+      p2h.end();
+
+      const p2v = enc.beginComputePass();
+      p2v.setPipeline(this.blurPipeline);
+      p2v.setBindGroup(0, this._blurBGV!);
+      p2v.dispatchWorkgroups(wg(width), wg(height));
+      p2v.end();
+    }
+
+    // Pass 3: Mode pass
     if (mode === ProcessingMode.SDF) {
+      // SDF requires many JFA passes with its own encoders — submit what we have
+      // first so compositedTexture is ready, then let _runSdfPipeline take over.
+      device.queue.submit([enc.finish()]);
       this._runSdfPipeline(width, height);
     } else {
       const pipeline = mode <= 1 ? this.modeLuminancePipeline
         : mode <= 3 ? this.modeGradientPipeline
         : this.modeThresholdPipeline;
 
-      const modeData = new ArrayBuffer(16);
-      const mv = new DataView(modeData);
-      mv.setUint32(0, mode, true);
-      mv.setFloat32(8, this.params.threshold, true); // threshold_bits at byte 8
-      device.queue.writeBuffer(this.modeUniform, 0, modeData);
+      if (!this._modeBG || pipeline !== this._cachedModePipeline) {
+        this._rebuildModeBG(pipeline);
+      }
 
-      const modeBG = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.modeUniform } },
-          { binding: 1, resource: this.compositedTexture.createView() },
-          { binding: 2, resource: this.processedTexture.createView() },
-        ],
-      });
-      const e3 = device.createCommandEncoder();
-      const p3 = e3.beginComputePass();
+      const p3 = enc.beginComputePass();
       p3.setPipeline(pipeline);
-      p3.setBindGroup(0, modeBG);
+      p3.setBindGroup(0, this._modeBG!);
       p3.dispatchWorkgroups(wg(width), wg(height));
       p3.end();
-      device.queue.submit([e3.finish()]);
+
+      device.queue.submit([enc.finish()]);
     }
 
     this.renderThumbnail();
@@ -541,7 +589,8 @@ export class ImageProcessor {
   destroy(): void {
     this.brush.destroy();
     this.transformUniform.destroy();
-    this.blurUniform.destroy();
+    this.blurUniformH.destroy();
+    this.blurUniformV.destroy();
     this.modeUniform.destroy();
     this.sdfUniform.destroy();
     for (const t of [

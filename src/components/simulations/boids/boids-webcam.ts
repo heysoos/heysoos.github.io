@@ -15,11 +15,6 @@ export class BoidsWebcam {
   private stream:      MediaStream | null = null;
   private lastFrameTime = 0;
 
-  // Canvas used to draw a horizontally-flipped frame when mirrored = true
-  // Created lazily on first use to avoid document access at class instantiation time
-  private mirrorCanvas: HTMLCanvasElement | null = null;
-  private mirrorCtx:   CanvasRenderingContext2D | null = null;
-
   async enumerateCameras(): Promise<MediaDeviceInfo[]> {
     const devices = await navigator.mediaDevices.enumerateDevices();
     this.availableCameras = devices.filter(d => d.kind === 'videoinput');
@@ -68,25 +63,9 @@ export class BoidsWebcam {
     const now = performance.now();
     if (now - this.lastFrameTime < 1000 / this.targetFps) return;
     this.lastFrameTime = now;
-    processor.writeVideoFrame(this._getFrameSource());
-  }
-
-  private _getFrameSource(): HTMLVideoElement | HTMLCanvasElement {
-    if (!this.mirrored || !this.video) return this.video!;
-    const w = this.video.videoWidth;
-    const h = this.video.videoHeight;
-    if (!this.mirrorCanvas) {
-      this.mirrorCanvas = document.createElement('canvas');
-      this.mirrorCtx = this.mirrorCanvas.getContext('2d');
-    }
-    if (this.mirrorCanvas.width  !== w) this.mirrorCanvas.width  = w;
-    if (this.mirrorCanvas.height !== h) this.mirrorCanvas.height = h;
-    const ctx = this.mirrorCtx!;
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(this.video, -w, 0);
-    ctx.restore();
-    return this.mirrorCanvas;
+    // Pass the video element directly; flipping is handled by the composite shader
+    // via a negative scaleX transform — no CPU canvas draw needed.
+    processor.writeVideoFrame(this.video, this.mirrored);
   }
 
   destroy(): void {
