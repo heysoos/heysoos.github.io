@@ -367,17 +367,22 @@ export function buildImagePanelSection(
     if (to === 'static') {
       wasWebcamRunning = opts.webcam.status === 'active';
       opts.webcam.stop();
-      processor.clearImage();
+      // Only clear the source texture if webcam was running (it overwrote the static image).
+      // If webcam was never started, sourceTexture still holds the loaded static image — preserve it.
+      if (wasWebcamRunning) processor.clearImage();
       opts.onRebindGroups();
       if (thumbCtxStatic) processor.setThumbnailContext(thumbCtxStatic);
       applyParams(savedStaticParams);
     } else {
-      if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+      // Don't set the webcam thumbnail context here — that would blit the current processedTexture
+      // (which may contain the static image) into the webcam preview canvas. Set it only when
+      // the webcam actually starts and begins writing frames.
       applyParams(savedWebcamParams);
       await populateCameraSelect(); // repopulate from cache (or enumerate if first visit)
       // Auto-restart webcam if it was running when user switched away
       if (wasWebcamRunning) {
         void opts.webcam.start(opts.webcam.activeCameraId || undefined).then(() => {
+          if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
           opts.onRebindGroups();
           refreshUI();
         }).catch(() => refreshUI());
@@ -425,6 +430,7 @@ export function buildImagePanelSection(
     } else {
       const cameraId = camSelect.value || undefined;
       void opts.webcam.start(cameraId).then(() => {
+        if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
         opts.onRebindGroups();
         refreshUI();
       }).catch(() => {
