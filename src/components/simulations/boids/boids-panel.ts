@@ -11,7 +11,6 @@ import {
   BAND_COLORS,
   PARAM_META,
   MAPPABLE_PARAMS,
-  defaultMapping,
   drawAudioViz,
 } from './boids-audio';
 
@@ -33,6 +32,7 @@ export function buildBoidsPanel(
   const paramIndicators = new Map<string, { wrap: HTMLElement; fill: HTMLElement }>();
   const cellUpdaters  = new Map<string, (amplitude: number) => void>();
   const totalUpdaters = new Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>();
+  const traceUpdaters = new Map<string, (amplitude: number) => void>();
 
   // ── Tab bar (replaces old plain header) ──────────────────────────
   const tabBar = document.createElement('div');
@@ -123,7 +123,7 @@ export function buildBoidsPanel(
 
   // Audio tab placeholder — replaced in Tasks 7–9
   if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, cellUpdaters, totalUpdaters);
+    audioVizControls = buildAudioTab(audioBody, opts.reactor, switchTab, cellUpdaters, totalUpdaters, traceUpdaters);
     // Start immediately stopped since Params tab is shown first
     audioVizControls.stop();
   } else {
@@ -529,6 +529,7 @@ function buildAudioTab(
   switchTab: (name: string) => void,
   cellUpdaters: Map<string, (amplitude: number) => void>,
   totalUpdaters: Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>,
+  traceUpdaters: Map<string, (amplitude: number) => void>,
 ): { start: () => void; stop: () => void } {
 
   // Do NOT touch display here — it's managed by switchTab (setting display:flex
@@ -722,7 +723,6 @@ function buildAudioTab(
   let openParam: string | null = null;
   let drawerRow: HTMLTableRowElement | null = null;
   const dotUpdaters = new Map<string, (depth: number) => void>();
-  const traceUpdaters = new Map<string, (amplitude: number) => void>();
 
   function rebuildMatrix(): void {
     cellUpdaters.clear();
@@ -1256,15 +1256,14 @@ function buildAudioTab(
   }
 
   function openDrawer(param: string, activeBand: BandKey): void {
-    // Remove existing drawer if any
-    drawerRow?.remove();
-    drawerRow = null;
+    // Close any existing drawer first (handles cleanup of updaters + row highlight)
+    closeDrawer();
 
     const activeMappings = reactor.mappings.filter(m => String(m.param) === param);
     const multiMapping   = activeMappings.length >= 2;
 
     // Find the param <tr> in tbody (exclude drawer rows to prevent index desync)
-    const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
+    const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('tr:not(.audio-drawer-row)'));
     const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === param);
     const paramTr  = rows[paramIdx];
     if (!paramTr) return;
@@ -1405,7 +1404,7 @@ function buildAudioTab(
       reactor.mappings
         .filter(m => String(m.param) === openParam)
         .forEach(m => traceUpdaters.delete(`${openParam}::${m.band}`));
-      const rows = Array.from(tbody.querySelectorAll('tr:not(.audio-drawer-row)'));
+      const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('tr:not(.audio-drawer-row)'));
       const paramIdx = MAPPABLE_PARAMS.findIndex(p => String(p) === openParam);
       const paramTr  = rows[paramIdx];
       if (paramTr) paramTr.style.background = '';
