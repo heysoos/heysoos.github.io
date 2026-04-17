@@ -43,7 +43,7 @@ function makeMatrixTrace(
     render: makeMiniRenderer(bandColor),
     initialHeight: 16,
   });
-  rbc.canvas.style.cssText = STYLES.matrixCanvas + 'width:100%;height:16px;';
+  rbc.canvas.style.cssText = STYLES.matrixCanvas + 'width:100%;height:16px;margin-top:2px;';
   return {
     canvas:     rbc.canvas,
     push:       (v) => rbc.push(v),
@@ -836,7 +836,7 @@ export function buildAudioTab(
   let drawerTr: HTMLTableRowElement | null = null;
 
   // Persistent sparkline objects — survive rebuildMatrix() so ring buffers are not wiped
-  const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void }>();
+  const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void; disconnect: () => void }>();
 
   function rebuildMatrix(): void {
     updMaps.cellUpdaters.clear();
@@ -898,6 +898,8 @@ export function buildAudioTab(
         traceTd.appendChild(traceCanvas);
         updMaps.matrixTraceUpdaters.set(param, push);
       } else {
+        const old = matTraceCache.get(param);
+        if (old) old.disconnect();
         matTraceCache.delete(param);
       }
       tr.appendChild(traceTd);
@@ -1111,8 +1113,8 @@ export function buildAudioTab(
       (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
     );
 
-    // Use DrawerController to manage disconnect lifecycle; build all content into td
-    drawer.open(param, td, (_body) => {
+    // Use DrawerController to manage disconnect lifecycle; DOM managed manually
+    drawer.open(param, () => {
       const drawerDisconnects: Array<() => void> = [];
       const drawerRegister = (fn: () => void) => drawerDisconnects.push(fn);
 
@@ -1197,6 +1199,8 @@ export function buildAudioTab(
   }
 
   function stopViz(): void {
+    for (const entry of matTraceCache.values()) entry.disconnect();
+    matTraceCache.clear();
     cancelAnimationFrame(vizRafId);
     drawer.dispose();
   }
