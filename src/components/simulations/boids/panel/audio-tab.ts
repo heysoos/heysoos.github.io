@@ -11,7 +11,6 @@ import type { AudioReactor, BandKey, AudioMapping, BandSnapshot } from '../boids
 import { BAND_COLORS, PARAM_META, MAPPABLE_PARAMS, drawAudioViz } from '../boids-audio';
 import { RingBufferCanvas, makeTraceRenderer, makeMiniRenderer, TRACE_LEN } from './ring-buffer-canvas';
 import { DrawerController } from './drawer-controller';
-import { ResizeObserverPool } from './resize-observer-pool';
 import { pillStyle, STYLES } from './panel-styles';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
