@@ -445,6 +445,42 @@ export class BoidsController {
     this.gpu.device.queue.writeBuffer(this.obstacleBuffer, 0, buf);
   }
 
+  private _packUniforms(aspect: number): ArrayBuffer {
+    const buf = new ArrayBuffer(112);
+    const v   = new DataView(buf);
+    v.setFloat32( 0, this.params.dt,                   true);
+    v.setFloat32( 4, this.params.attractionRadius,      true);
+    v.setFloat32( 8, this.params.repulsionRadius,       true);
+    v.setFloat32(12, this.params.attraction,            true);
+    v.setFloat32(16, this.params.repulsion,             true);
+    v.setFloat32(20, this.params.alignment,             true);
+    v.setFloat32(24, this.params.friction,              true);
+    v.setFloat32(28, this.params.maxSpeed,              true);
+    v.setUint32 (32, this.params.numParticles,          true);
+    v.setFloat32(36, this.mouseX,                       true);
+    v.setFloat32(40, this.mouseY,                       true);
+    v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,      true);
+    v.setFloat32(48, this.params.mouseRadius,           true);
+    v.setFloat32(52, this.params.coneAngle,             true);
+    v.setFloat32(56, aspect,                            true);
+    v.setFloat32(60, this.params.size,                  true);
+    v.setUint32 (64, this.params.shapeId,               true);
+    v.setFloat32(68, this.params.colorR,                true);
+    v.setFloat32(72, this.params.colorG,                true);
+    v.setFloat32(76, this.params.colorB,                true);
+    v.setFloat32(80, this.params.opacity,               true);
+    v.setUint32 (84, this.params.opacityMode,           true);
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    v.setUint32 (88, gridDim,                           true);
+    v.setUint32 (92, this.frame,                        true);
+    const imgParams = this.imageForce.getExtraParams();
+    v.setFloat32(96,  imgParams.imageStrength,          true);
+    v.setUint32 (100, imgParams.imageForceMode,         true);
+    v.setUint32 (104, imgParams.imageInvert,            true);
+    v.setFloat32(108, this.params.noise ?? 0.0,         true);
+    return buf;
+  }
+
   private tick = () => {
     if (!this.running || !this.gpu) return;
 
@@ -478,42 +514,11 @@ export class BoidsController {
     const aspect = canvas.width > 0 && canvas.height > 0
       ? canvas.width / canvas.height : 1.0;
 
-    const uniformArray = new ArrayBuffer(112);
-    const v = new DataView(uniformArray);
-    v.setFloat32( 0, this.params.dt,                   true);
-    v.setFloat32( 4, this.params.attractionRadius,      true);
-    v.setFloat32( 8, this.params.repulsionRadius,       true);
-    v.setFloat32(12, this.params.attraction,           true);
-    v.setFloat32(16, this.params.repulsion,            true);
-    v.setFloat32(20, this.params.alignment,            true);
-    v.setFloat32(24, this.params.friction,             true);
-    v.setFloat32(28, this.params.maxSpeed,             true);
-    v.setUint32 (32, this.params.numParticles,         true);
-    v.setFloat32(36, this.mouseX,                      true);
-    v.setFloat32(40, this.mouseY,                      true);
-    v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,     true);
-    v.setFloat32(48, this.params.mouseRadius,          true);
-    v.setFloat32(52, this.params.coneAngle,            true);
-    v.setFloat32(56, aspect,                           true);
-    v.setFloat32(60, this.params.size,                 true);
-    v.setUint32 (64, this.params.shapeId,              true);
-    v.setFloat32(68, this.params.colorR,               true);
-    v.setFloat32(72, this.params.colorG,               true);
-    v.setFloat32(76, this.params.colorB,               true);
-    v.setFloat32(80, this.params.opacity,              true);
-    v.setUint32 (84, this.params.opacityMode,          true);
-    // byte 88: gridDim — adaptive grid dimension based on attractionRadius
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
-    v.setUint32 (88, gridDim,                          true);
-    v.setUint32 (92, this.frame,                       true);  // tick — noise seed
-    const imgParams = this.imageForce.getExtraParams();
-    v.setFloat32(96, imgParams.imageStrength,  true);
-    v.setUint32 (100, imgParams.imageForceMode, true);
-    v.setUint32 (104, imgParams.imageInvert,    true);
-    v.setFloat32(108, this.params.noise ?? 0.0, true);
+    const uniformArray = this._packUniforms(aspect);
     device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
 
     const N = this.params.numParticles;
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
     const gridSize = gridDim * gridDim;
     const gridBG = this.gridBindGroups[this.frame % 2];
 
