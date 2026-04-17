@@ -1,75 +1,26 @@
 ---
-// Dev-only admin page. Write-to-disk API only exists during `npm run dev`,
-// so this page is non-functional in production even without an explicit guard.
-import BaseLayout from '../../layouts/BaseLayout.astro';
+// Dev-only admin page. Write-to-disk API only exists during `npm run dev`.
+import AdminLayout from '../../layouts/AdminLayout.astro';
 ---
 
-<BaseLayout title="Boids Admin">
-  <div class="admin-wrap">
-    <div class="admin-canvas-area">
-      <canvas id="admin-canvas"></canvas>
-      <div id="admin-fallback" class="admin-fallback" style="display:none;">
-        <p>WebGPU not available.</p>
-      </div>
-      <!-- Floating shader panel (mirrors gallery style) -->
-      <div id="admin-shader-panel" class="admin-shader-panel" style="display:none;">
-        <div class="shader-panel-header">
-          <span>Shader Editor</span>
-          <button id="admin-shader-close" class="shader-panel-close">×</button>
-        </div>
-        <div id="admin-shader-wrap" class="shader-editor-wrap"></div>
-        <div class="shader-panel-footer">
-          <div class="shader-btn-row">
-            <button id="admin-shader-apply" class="shader-apply-btn">Apply</button>
-            <button id="admin-shader-reset" class="shader-reset-btn">Reset to Default</button>
-          </div>
-          <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
-        </div>
-      </div>
-      <div class="sim-controls">
-        <button id="btn-play-pause" class="sim-btn">⏸</button>
-        <button id="btn-reset" class="sim-btn">↺</button>
-      </div>
+<AdminLayout title="Boids Admin">
+  <div slot="canvas-overlay" id="admin-shader-panel" class="admin-shader-panel" style="display:none;">
+    <div class="shader-panel-header">
+      <span>Shader Editor</span>
+      <button id="admin-shader-close" class="shader-panel-close">×</button>
     </div>
-    <div class="admin-sidebar">
-      <div class="tab-bar">
-        <button class="tab-btn active" data-tab="params">Params</button>
-        <button class="tab-btn" data-tab="presets">Presets</button>
+    <div id="admin-shader-wrap" class="shader-editor-wrap"></div>
+    <div class="shader-panel-footer">
+      <div class="shader-btn-row">
+        <button id="admin-shader-apply" class="shader-apply-btn">Apply</button>
+        <button id="admin-shader-reset" class="shader-reset-btn">Reset to Default</button>
       </div>
-      <div id="tab-params" class="tab-pane params-panel"></div>
-      <div id="tab-presets" class="tab-pane" style="display:none;"></div>
+      <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
     </div>
   </div>
-</BaseLayout>
+</AdminLayout>
 
 <style>
-  .admin-wrap {
-    display: flex;
-    height: calc(100vh - 60px); /* 60px = nav height from BaseLayout */
-    overflow: hidden;
-  }
-
-  .admin-canvas-area {
-    flex: 1;
-    position: relative;
-    background: var(--bg-primary);
-  }
-
-  #admin-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-
-  .admin-fallback {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-  }
-
   /* Floating shader panel — mirrors gallery .shader-panel */
   .admin-shader-panel {
     position: absolute;
@@ -156,225 +107,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     max-height: 80px;
     overflow-y: auto;
     width: 100%;
-  }
-
-  .sim-controls {
-    position: absolute;
-    bottom: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .sim-btn {
-    padding: 0.3rem 0.75rem;
-    background: transparent;
-    border: 1px solid var(--bg-surface-border);
-    border-radius: 4px;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .sim-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  .admin-sidebar {
-    width: 240px;
-    flex-shrink: 0;
-    background: var(--bg-nav);
-    border-left: 1px solid var(--bg-surface-border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .tab-bar {
-    display: flex;
-    border-bottom: 1px solid var(--bg-surface-border);
-    flex-shrink: 0;
-  }
-
-  .tab-btn {
-    flex: 1;
-    padding: 0.5rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 0.7rem;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    transition: color 0.15s;
-  }
-  .tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-
-  .tab-pane {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0.75rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  /* ── Params panel styles (mirror of gallery page .params-panel) ── */
-  .params-panel :global(.panel-title) {
-    font-size: 0.65rem;
-    letter-spacing: 1.5px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin: 0 0 0.2rem;
-  }
-  .params-panel :global(.panel-header) {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.2rem;
-  }
-  .params-panel :global(.panel-close) {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    padding: 0;
-  }
-  .params-panel :global(.panel-close:hover) { color: var(--text-primary); }
-  .params-panel :global(.param-row) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .params-panel :global(.param-label) {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.72rem;
-    color: var(--text-body);
-  }
-  .params-panel :global(.param-value) {
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
-  }
-  .params-panel :global(.param-value-edit) {
-    width: 3.5rem;
-    background: var(--bg-surface);
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 3px;
-    padding: 0 2px;
-    font-size: inherit;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    outline: none;
-  }
-  .params-panel :global(input[type=range]) {
-    width: 100%;
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-  .params-panel :global(.section-divider) {
-    height: 1px;
-    background: var(--bg-surface-border);
-    margin: 0.4rem 0 0.3rem;
-  }
-  .params-panel :global(.section-heading) {
-    font-size: 0.6rem;
-    letter-spacing: 1.5px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin: 0 0 0.25rem;
-  }
-  .params-panel :global(.shape-row) {
-    display: flex;
-    gap: 0.35rem;
-    margin-top: 0.15rem;
-  }
-  .params-panel :global(.shape-btn) {
-    flex: 1;
-    height: 28px;
-    border: 1px solid var(--bg-surface-border);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-body);
-    cursor: pointer;
-    font-size: 0.8rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: border-color var(--transition-speed);
-  }
-  .params-panel :global(.shape-btn.active) {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .params-panel :global(.color-row) {
-    display: flex;
-    gap: 0.35rem;
-    align-items: center;
-    margin-top: 0.15rem;
-    flex-wrap: wrap;
-  }
-  .params-panel :global(.color-swatch) {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .params-panel :global(.color-swatch.active) { border-color: var(--text-primary); }
-  .params-panel :global(.color-picker) {
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 50%;
-    padding: 0;
-    cursor: pointer;
-    background: none;
-    flex-shrink: 0;
-  }
-  .params-panel :global(.trail-row) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.72rem;
-    color: var(--text-body);
-  }
-  .params-panel :global(.toggle-switch) {
-    position: relative;
-    width: 32px;
-    height: 18px;
-  }
-  .params-panel :global(.toggle-switch input) { opacity: 0; width: 0; height: 0; }
-  .params-panel :global(.toggle-slider) {
-    position: absolute;
-    inset: 0;
-    background: var(--bg-surface-border);
-    border-radius: 18px;
-    cursor: pointer;
-    transition: background var(--transition-speed);
-  }
-  .params-panel :global(.toggle-slider::before) {
-    content: '';
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    left: 3px;
-    top: 3px;
-    background: var(--text-muted);
-    border-radius: 50%;
-    transition: transform var(--transition-speed), background var(--transition-speed);
-  }
-  .params-panel :global(.toggle-switch input:checked + .toggle-slider) { background: var(--accent); }
-  .params-panel :global(.toggle-switch input:checked + .toggle-slider::before) {
-    transform: translateX(14px);
-    background: var(--bg-primary);
   }
 </style>
 

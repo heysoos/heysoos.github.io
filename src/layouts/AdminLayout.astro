@@ -6,15 +6,17 @@ import BaseLayout from './BaseLayout.astro';
 interface Props {
   title: string;
   tabs?: string[];
+  paramsPaneId?: string;
+  canvasStyle?: string;
 }
 
-const { title, tabs = ['params', 'presets'] } = Astro.props;
+const { title, tabs = ['params', 'presets'], paramsPaneId, canvasStyle } = Astro.props;
 ---
 
 <BaseLayout title={title}>
   <div class="admin-wrap">
     <div class="admin-canvas-area">
-      <canvas id="admin-canvas"></canvas>
+      <canvas id="admin-canvas" style={canvasStyle}></canvas>
       <div id="admin-fallback" class="admin-fallback" style="display:none;">
         <p>WebGPU not available.</p>
       </div>
@@ -33,11 +35,11 @@ const { title, tabs = ['params', 'presets'] } = Astro.props;
         ))}
       </div>
       {tabs.map((tab, i) => (
-        <div id={`tab-${tab}`} class={`tab-pane${i === 0 ? ' params-panel' : ''}`} style={i > 0 ? 'display:none;' : ''}></div>
+        <div id={i === 0 && paramsPaneId ? paramsPaneId : `tab-${tab}`} class={`tab-pane${i === 0 ? ' params-panel' : ''}`} style={i > 0 ? 'display:none;' : ''}></div>
       ))}
+      <slot />
     </div>
   </div>
-  <slot />
 </BaseLayout>
 
 <style>
