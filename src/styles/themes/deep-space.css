@@ -1,3 +1,12 @@
+/*
+ * Theme: Deep Space
+ * Tokens: --bg-primary, --bg-surface, --bg-surface-hover, --bg-surface-border,
+ *         --bg-nav, --text-primary, --text-body, --text-muted, --text-link,
+ *         --text-link-hover, --accent, --accent-glow, --accent-subtle,
+ *         --hero-gradient-start, --hero-gradient-end,
+ *         --border-radius, --transition-speed
+ */
+
 :root {
   --bg-primary: #060612;
   --bg-surface: #0d1530;
