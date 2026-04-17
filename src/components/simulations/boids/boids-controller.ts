@@ -224,34 +224,29 @@ export class BoidsController {
       });
 
       // Grid bind groups — one per ping-pong frame (reads from A or B)
-      this.gridBindGroups = [
-        device.createBindGroup({
-          layout: this.gridBindGroupLayout,
-          entries: [
-            { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[0] } }, // read A
-            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
-            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
-            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
-            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
-            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
-          ],
-        }),
-        device.createBindGroup({
-          layout: this.gridBindGroupLayout,
-          entries: [
-            { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[1] } }, // read B
-            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
-            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
-            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
-            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
-            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
-          ],
-        }),
-      ];
+      this.gridBindGroups = this._buildBindGroupPair(
+        this.gridBindGroupLayout,
+        [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[0] } }, // read A
+          { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+          { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
+        ],
+        [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[1] } }, // read B
+          { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+          { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
+        ],
+      );
 
       // ── Image processor + force must be ready before bind groups ─────
       this.imageProcessor.init(device);
@@ -298,34 +293,30 @@ export class BoidsController {
       ],
     });
 
-    this.boidsBindGroups = [
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...this.imageForce.buildBindGroupEntries(),
-        ],
-      }),
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...this.imageForce.buildBindGroupEntries(),
-        ],
-      }),
-    ];
+    const forceEntriesPipelines = this.imageForce.buildBindGroupEntries();
+    this.boidsBindGroups = this._buildBindGroupPair(
+      this.boidsBindGroupLayout,
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntriesPipelines,
+      ],
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntriesPipelines,
+      ],
+    );
 
     const boidsPipelineLayout = device.createPipelineLayout({
       bindGroupLayouts: [this.boidsBindGroupLayout],
@@ -479,6 +470,18 @@ export class BoidsController {
     v.setUint32 (104, imgParams.imageInvert,            true);
     v.setFloat32(108, this.params.noise ?? 0.0,         true);
     return buf;
+  }
+
+  private _buildBindGroupPair(
+    layout:   GPUBindGroupLayout,
+    entriesA: GPUBindGroupEntry[],
+    entriesB: GPUBindGroupEntry[],
+  ): GPUBindGroup[] {
+    const { device } = this.gpu!;
+    return [
+      device.createBindGroup({ layout, entries: entriesA }),
+      device.createBindGroup({ layout, entries: entriesB }),
+    ];
   }
 
   private tick = () => {
@@ -664,34 +667,29 @@ export class BoidsController {
     // replaced the active preset shader with the default boids.wgsl on every
     // canvas resize, changing physics and breaking webcam force consistency.
     const forceEntries = this.imageForce.buildBindGroupEntries();
-    this.boidsBindGroups = [
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...forceEntries,
-        ],
-      }),
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...forceEntries,
-        ],
-      }),
-    ];
+    this.boidsBindGroups = this._buildBindGroupPair(
+      this.boidsBindGroupLayout,
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntries,
+      ],
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntries,
+      ],
+    );
   }
 
   destroy(): void {
