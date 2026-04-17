@@ -6,7 +6,6 @@ export interface RangeSliderOpts {
   get:     () => number;
   set:     (v: number) => void;
   scale?:  'linear' | 'log';
-  /** Called with (indWrap, indFill) if an audio indicator bar should be created. */
   onIndicatorCreate?: (wrap: HTMLElement, fill: HTMLElement) => void;
 }
 
@@ -66,7 +65,10 @@ export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): v
     valueSpan.replaceWith(editInput);
     editInput.select();
 
+    let escaped = false;
+
     function commit(): void {
+      if (escaped) { editInput.replaceWith(valueSpan); return; }
       const raw      = decimals === 0 ? parseInt(editInput.value, 10) : parseFloat(editInput.value);
       const isValid  = !isNaN(raw) && raw >= min && raw <= max;
       const finalVal = isValid ? raw : lastVal;
@@ -78,7 +80,7 @@ export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): v
     editInput.addEventListener('blur', commit);
     editInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter')  { editInput.blur(); }
-      if (e.key === 'Escape') { editInput.value = lastVal.toFixed(decimals); editInput.blur(); }
+      if (e.key === 'Escape') { escaped = true; editInput.blur(); }
     });
     editInput.focus();
   });
