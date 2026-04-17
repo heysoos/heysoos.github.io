@@ -4,16 +4,27 @@
 
 **Goal:** Replace the 8 Forces section sliders in the boids panel with 4 interactive 2D XY pads that pair semantically related parameters, with audio trace visualization.
 
-**Architecture:** New `boids-xy-pad.ts` holds all XY pad logic (types, DOM, drag, canvas trace). `boids-panel.ts` gains a `buildForcesPads()` closure function that builds the 2×2 grid and pushes each pad's `updateViz` into a new `updMaps.padVizUpdaters` array. `updateAudioViz` calls those updaters every rAF. CSS goes in `[...slug].astro` global rules.
+**Architecture:** New `boids-xy-pad.ts` in `panel/` holds all XY pad logic (types, DOM, drag, canvas trace). `audio-tab.ts` gains a `padVizUpdaters` field on `AudioUpdaterMaps`. `boids-panel.ts` gains `buildForcesPads()` which builds the 2×2 grid and populates `updMaps.padVizUpdaters`. `updateAudioViz` calls those updaters every rAF. CSS goes in `[...slug].astro` global rules.
 
-**Tech Stack:** TypeScript, DOM APIs, Canvas 2D, existing `boids-audio.ts` types (`BandSnapshot`, `AudioMapping`, `BAND_COLORS`)
+**Tech Stack:** TypeScript, DOM APIs, Canvas 2D, `../boids-audio` types (`BandSnapshot`, `AudioMapping`, `BAND_COLORS`)
+
+---
+
+## File map
+
+| Action | Path | What changes |
+|--------|------|-------------|
+| Create | `src/components/simulations/boids/panel/boids-xy-pad.ts` | All XY pad logic |
+| Modify | `src/components/simulations/boids/panel/audio-tab.ts` | Add `padVizUpdaters` to `AudioUpdaterMaps` |
+| Modify | `src/components/simulations/boids/panel/boids-panel.ts` | Import, init field, `buildForcesPads`, replace Forces block, update `updateAudioViz` |
+| Modify | `src/pages/gallery/[...slug].astro` | Add CSS for pad elements |
 
 ---
 
 ### Task 1: CSS for pad layout and elements
 
 **Files:**
-- Modify: `src/pages/gallery/[...slug].astro` (after the last `.params-panel :global(...)` block, ~line 375)
+- Modify: `src/pages/gallery/[...slug].astro` (after `.params-panel :global(.edit-shader-btn:hover)`, ~line 375)
 
 - [ ] **Step 1: Add pad CSS rules**
 
@@ -128,19 +139,19 @@ git commit -m "style: add CSS for XY pad forces elements"
 ### Task 2: Create `boids-xy-pad.ts`
 
 **Files:**
-- Create: `src/components/simulations/boids/boids-xy-pad.ts`
+- Create: `src/components/simulations/boids/panel/boids-xy-pad.ts`
 
-This file contains: exported types, `toNorm`/`fromNorm` helpers, the SVG sprite injector, and the full `buildXYPad` function (DOM skeleton, drag interaction, value readouts, canvas trace, `updateViz`).
+Note: this file lives inside `panel/`, so it imports from `'../boids-audio'` and `'../boids-controller'`.
 
-- [ ] **Step 1: Create the file**
+- [ ] **Step 1: Create the file with full content**
 
-Create `src/components/simulations/boids/boids-xy-pad.ts` with this full content:
+Create `src/components/simulations/boids/panel/boids-xy-pad.ts`:
 
 ```ts
-// src/components/simulations/boids/boids-xy-pad.ts
+// src/components/simulations/boids/panel/boids-xy-pad.ts
 
-import type { BoidsController } from './boids-controller';
-import { type BandKey, type BandSnapshot, type AudioMapping, BAND_COLORS } from './boids-audio';
+import type { BoidsController } from '../boids-controller';
+import { type BandKey, type BandSnapshot, type AudioMapping, BAND_COLORS } from '../boids-audio';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -399,7 +410,7 @@ export function buildXYPad(
     ctx.shadowBlur = 0;
   }
 
-  // ── updateViz ─────────────────────────────────────────────────────────────
+  // ── updateViz (called every rAF from updateAudioViz) ──────────────────────
   function updateViz(snapshot: BandSnapshot | null, mappings: AudioMapping[]): void {
     refreshDot();
 
@@ -450,29 +461,37 @@ export function buildXYPad(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/components/simulations/boids/boids-xy-pad.ts
+git add src/components/simulations/boids/panel/boids-xy-pad.ts
 git commit -m "feat(boids): add boids-xy-pad.ts — XY pad with drag and audio trace"
 ```
 
 ---
 
-### Task 3: Wire `buildForcesPads` into `boids-panel.ts`
+### Task 3: Add `padVizUpdaters` to `AudioUpdaterMaps` in `audio-tab.ts`
 
 **Files:**
-- Modify: `src/components/simulations/boids/boids-panel.ts`
+- Modify: `src/components/simulations/boids/panel/audio-tab.ts` (lines 23–29)
 
-- [ ] **Step 1: Add import**
+`AudioUpdaterMaps` is defined here and exported. `AudioMapping` and `BandSnapshot` are already imported at line 10.
 
-After the existing imports at the top of `boids-panel.ts` (~line 32), add:
+- [ ] **Step 1: Add the new field to the interface**
+
+Find the `AudioUpdaterMaps` interface (lines 23–29):
 
 ```ts
-import { buildXYPad, type XYPadDef, type XYPadHandle } from './boids-xy-pad';
+export interface AudioUpdaterMaps {
+  paramIndicators:     Map<string, { wrap: HTMLElement; fill: HTMLElement }>;
+  cellUpdaters:        Map<string, (amplitude: number) => void>;
+  totalUpdaters:       Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>;
+  traceUpdaters:       Map<string, (amplitude: number) => void>;
+  matrixTraceUpdaters: Map<string, (normalizedVal: number) => void>;
+}
 ```
 
-- [ ] **Step 2: Add `padVizUpdaters` field to `AudioUpdaterMaps` interface (~line 55)**
+Replace with:
 
 ```ts
-interface AudioUpdaterMaps {
+export interface AudioUpdaterMaps {
   paramIndicators:     Map<string, { wrap: HTMLElement; fill: HTMLElement }>;
   cellUpdaters:        Map<string, (amplitude: number) => void>;
   totalUpdaters:       Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>;
@@ -482,7 +501,43 @@ interface AudioUpdaterMaps {
 }
 ```
 
-- [ ] **Step 3: Initialize `padVizUpdaters` in the `updMaps` object (~line 85)**
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/components/simulations/boids/panel/audio-tab.ts
+git commit -m "feat(boids): add padVizUpdaters field to AudioUpdaterMaps"
+```
+
+---
+
+### Task 4: Wire `buildForcesPads` into `boids-panel.ts`
+
+**Files:**
+- Modify: `src/components/simulations/boids/panel/boids-panel.ts`
+
+- [ ] **Step 1: Add import for `buildXYPad` and `XYPadDef`**
+
+After line 14 (the `pillStyle` import), add:
+
+```ts
+import { buildXYPad, type XYPadDef } from './boids-xy-pad';
+```
+
+- [ ] **Step 2: Initialize `padVizUpdaters` in `updMaps` (~line 38)**
+
+Find the `updMaps` initialization:
+
+```ts
+  const updMaps: AudioUpdaterMaps = {
+    paramIndicators:     new Map(),
+    cellUpdaters:        new Map(),
+    totalUpdaters:       new Map(),
+    traceUpdaters:       new Map(),
+    matrixTraceUpdaters: new Map(),
+  };
+```
+
+Replace with:
 
 ```ts
   const updMaps: AudioUpdaterMaps = {
@@ -495,7 +550,7 @@ interface AudioUpdaterMaps {
   };
 ```
 
-- [ ] **Step 4: Add `buildForcesPads` function inside the `buildBoidsPanel` closure, after `addSlider` (~line 307)**
+- [ ] **Step 3: Add `buildForcesPads` function inside the `buildBoidsPanel` closure, after `addSection` (~line 164)**
 
 ```ts
   function buildForcesPads(parent: HTMLElement): void {
@@ -522,7 +577,7 @@ interface AudioUpdaterMaps {
     grid.className = 'pads-grid';
 
     for (const [xDef, yDef] of PAD_DEFS) {
-      const handle: XYPadHandle = buildXYPad(grid, xDef, yDef, controller);
+      const handle = buildXYPad(grid, xDef, yDef, controller);
       updMaps.padVizUpdaters.push(handle.updateViz);
       disconnects.push(handle.teardown);
     }
@@ -531,21 +586,60 @@ interface AudioUpdaterMaps {
   }
 ```
 
-- [ ] **Step 5: Replace 8 Forces `addSlider` calls with `buildForcesPads`**
+- [ ] **Step 4: Replace 8 Forces `createRangeSlider` calls with `buildForcesPads`**
 
-Find the Forces block (~lines 323–332):
+Find the Forces block (~lines 199–247):
 
 ```ts
   // ── Forces ────────────────────────────────────────────────────────────────
   addSection(paramsBody, 'Forces');
-  addSlider(paramsBody, 'Attraction Radius', 0.02, 0.6,  0.01,  () => controller.params.attractionRadius, v => { controller.params.attractionRadius = v; }, 'linear', 'attractionRadius');
-  addSlider(paramsBody, 'Repulsion Radius',  0.01, 0.3,  0.005, () => controller.params.repulsionRadius,  v => { controller.params.repulsionRadius = v; },  'linear', 'repulsionRadius');
-  addSlider(paramsBody, 'Attraction',        0,    2.0,  0.01,  () => controller.params.attraction,       v => { controller.params.attraction = v; },       'linear', 'attraction');
-  addSlider(paramsBody, 'Repulsion',         0,    5.0,  0.05,  () => controller.params.repulsion,        v => { controller.params.repulsion = v; },        'linear', 'repulsion');
-  addSlider(paramsBody, 'Alignment',         0,    1.0,  0.01,  () => controller.params.alignment,        v => { controller.params.alignment = v; },        'linear', 'alignment');
-  addSlider(paramsBody, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,         v => { controller.params.friction = v; },         'linear', 'friction');
-  addSlider(paramsBody, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,         v => { controller.params.maxSpeed = v; },         'linear', 'maxSpeed');
-  addSlider(paramsBody, 'Noise',             0,    0.5,  0.005, () => controller.params.noise ?? 0,       v => { controller.params.noise = v; });
+  createRangeSlider(paramsBody, {
+    label: 'Attraction Radius', min: 0.02, max: 0.6, step: 0.01,
+    get: () => controller.params.attractionRadius,
+    set: v => { controller.params.attractionRadius = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('attractionRadius', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Repulsion Radius', min: 0.01, max: 0.3, step: 0.005,
+    get: () => controller.params.repulsionRadius,
+    set: v => { controller.params.repulsionRadius = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('repulsionRadius', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Attraction', min: 0, max: 2.0, step: 0.01,
+    get: () => controller.params.attraction,
+    set: v => { controller.params.attraction = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('attraction', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Repulsion', min: 0, max: 5.0, step: 0.05,
+    get: () => controller.params.repulsion,
+    set: v => { controller.params.repulsion = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('repulsion', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Alignment', min: 0, max: 1.0, step: 0.01,
+    get: () => controller.params.alignment,
+    set: v => { controller.params.alignment = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('alignment', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Friction', min: 0, max: 10.0, step: 0.1,
+    get: () => controller.params.friction,
+    set: v => { controller.params.friction = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('friction', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Max Speed', min: 0.01, max: 1.0, step: 0.01,
+    get: () => controller.params.maxSpeed,
+    set: v => { controller.params.maxSpeed = v; },
+    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('maxSpeed', { wrap: w, fill: f }),
+  });
+  createRangeSlider(paramsBody, {
+    label: 'Noise', min: 0, max: 0.5, step: 0.005,
+    get: () => controller.params.noise ?? 0,
+    set: v => { controller.params.noise = v; },
+  });
 ```
 
 Replace with:
@@ -556,9 +650,9 @@ Replace with:
   buildForcesPads(paramsBody);
 ```
 
-- [ ] **Step 6: Update `updateAudioViz` to call pad updaters**
+- [ ] **Step 5: Update `updateAudioViz` to call pad updaters (~line 281)**
 
-Replace the full `updateAudioViz` function body (~lines 357–412) with:
+Find the full `updateAudioViz` function body and replace it:
 
 ```ts
   function updateAudioViz(baseParams?: Record<string, number>): void {
@@ -627,7 +721,7 @@ Replace the full `updateAudioViz` function body (~lines 357–412) with:
   }
 ```
 
-- [ ] **Step 7: Start dev server and verify**
+- [ ] **Step 6: Start dev server and verify**
 
 ```bash
 npm run dev
@@ -635,17 +729,18 @@ npm run dev
 
 Open `http://localhost:4321/gallery/boids` in Chrome. Check:
 
-1. **Forces section** shows a 2×2 grid of square pads (8 sliders gone)
-2. Each pad has a dot, corner chips (Y-axis label top-left, X-axis label bottom-right), and two axis value readouts (X centered on top edge, Y centered on right edge)
-3. SVG icons render in the chips (small, uses `currentColor`)
-4. **Drag**: clicking anywhere on a pad moves the dot there immediately; dragging tracks the cursor
-5. **Values**: readouts update live during drag with the correct decimal places
-6. **Simulation**: boid behavior changes as you drag (attraction, repulsion, etc. are live)
-7. **Audio trace** (if you enable microphone): a fading path appears on the canvas and blends band colors
+1. Forces section shows a 2×2 grid of square pads (8 sliders gone)
+2. Each pad has a dot, corner chips (Y-axis label top-left, X-axis label bottom-right), and value readouts (X centered on top edge, Y centered on right edge)
+3. SVG icons render in the chips
+4. Clicking anywhere on a pad moves the dot there; dragging tracks the cursor
+5. Value readouts update live during drag with correct decimal places
+6. Boid behavior changes as you drag (forces are live)
+7. All other sections unchanged (Appearance, Simulation, Perception)
+8. With microphone active: fading trace appears on the canvas, colors blend across bands
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/components/simulations/boids/boids-panel.ts
+git add src/components/simulations/boids/panel/boids-panel.ts
 git commit -m "feat(boids): replace Forces sliders with XY pad grid, wire audio trace"
 ```
