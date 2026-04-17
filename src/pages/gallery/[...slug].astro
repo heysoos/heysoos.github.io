@@ -75,6 +75,8 @@ const sim = project.data.simulation;
 </SimLayout>
 
 <style>
+  /* ── VIEWPORT & LAYOUT ───────────────────────────────────────────────────── */
+
   .sim-viewport {
     position: relative;
     width: 100%;
@@ -98,6 +100,8 @@ const sim = project.data.simulation;
     color: var(--text-muted);
     gap: 0.25rem;
   }
+
+  /* ── PARAMS PANEL ────────────────────────────────────────────────────────── */
 
   .params-panel {
     position: absolute;
@@ -164,6 +168,8 @@ const sim = project.data.simulation;
   .panel-content::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
   }
+
+  /* ── PARAMS PANEL CONTENT (global rules injected by panel builders) ──────── */
 
   .params-panel :global(.panel-title) {
     font-size: 0.65rem;
@@ -371,7 +377,8 @@ const sim = project.data.simulation;
     color: var(--accent);
   }
 
-  /* Shader editor panel */
+  /* ── SHADER EDITOR PANEL ─────────────────────────────────────────────────── */
+
   .shader-panel {
     position: absolute;
     top: 1rem;
@@ -476,6 +483,8 @@ const sim = project.data.simulation;
     width: 100%;
   }
 
+  /* ── FPS DISPLAY ─────────────────────────────────────────────────────────── */
+
   .fps-display {
     position: absolute;
     bottom: 0.6rem;
@@ -565,6 +574,8 @@ const sim = project.data.simulation;
     text-align: right;
   }
 
+  /* ── PAGE CONTENT ────────────────────────────────────────────────────────── */
+
   h1 {
     margin-bottom: 1.5rem;
   }
@@ -588,6 +599,19 @@ const sim = project.data.simulation;
 </style>
 
 <script>
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE STRUCTURE
+//   Imports              ~L1    — controllers, CodeMirror, panel builders, presets
+//   DOM Queries          ~L15   — element references used across the module
+//   Panel Drag & Resize  ~L25   — 8-dir resize + drag-to-move + sessionStorage state
+//   Controller Registry  ~L95   — sim-id → controller instance map
+//   Shared UI State      ~L104  — playing / panelOpen / shaderEditorOpen
+//   setupBoids()         ~L109  — audio proxy, mapping loop, panel builder, shader editor
+//   setupCPPN()          ~L215  — preset load, panel builder
+//   setupNCA()           ~L240  — preset load, panel builder
+//   Main Init            ~L263  — init, start, FPS counter, sim dispatch, controls bar
+// ─────────────────────────────────────────────────────────────────────────────
+
   import { BoidsController, type BoidsParams } from '../../components/simulations/boids/boids-controller';
   import { ParticleLifeController } from '../../components/simulations/particle-life/particle-life-controller';
   import { NCAController } from '../../components/simulations/nca/nca-controller';
@@ -603,15 +627,20 @@ const sim = project.data.simulation;
   import { buildNCAPanel } from '../../components/simulations/nca/nca-panel';
   import { NCA_PRESETS } from '../../data/nca-presets';
 
-  const viewport = document.getElementById('sim-viewport') as HTMLElement;
-  const sim = viewport.dataset.sim!;
-  const canvas = document.getElementById('sim-canvas') as HTMLCanvasElement;
-  const fallback = document.getElementById('sim-fallback') as HTMLElement;
-  const panel = document.getElementById('params-panel') as HTMLElement;
-  const panelContent = document.getElementById('panel-content') as HTMLElement;
+  // ── DOM Queries ─────────────────────────────────────────────────────────────
+
+  const viewport      = document.getElementById('sim-viewport') as HTMLElement;
+  const sim           = viewport.dataset.sim!;
+  const canvas        = document.getElementById('sim-canvas') as HTMLCanvasElement;
+  const fallback      = document.getElementById('sim-fallback') as HTMLElement;
+  const panel         = document.getElementById('params-panel') as HTMLElement;
+  const panelContent  = document.getElementById('panel-content') as HTMLElement;
   const shaderPanelEl = document.getElementById('shader-panel') as HTMLElement;
 
-  // ── Panel drag & resize ────────────────────────────────────────────────
+  // ── Panel Drag & Resize ─────────────────────────────────────────────────────
+  // Block-scoped to keep all drag/resize state private; reads/writes only
+  // `panel`, `viewport`, and sessionStorage.
+
   {
     const dragHandle = panel.querySelector('.panel-drag-handle') as HTMLElement;
     const PANEL_STATE_KEY = `panel-state-${sim}`;
@@ -649,8 +678,8 @@ const sim = project.data.simulation;
       }
     }
 
-    /** Returns one of 'n','ne','e','se','s','sw','w','nw' if the mouse is within EDGE px
-     *  of the corresponding panel border, or null if it's inside the content area. */
+    /** Returns 'n','ne','e','se','s','sw','w','nw' if mouse is within EDGE px of that
+     *  panel border, or null if inside the content area. */
     function getResizeZone(e: MouseEvent): string | null {
       const r = panel.getBoundingClientRect();
       const x = e.clientX, y = e.clientY;
@@ -669,17 +698,16 @@ const sim = project.data.simulation;
       return null;
     }
 
-    // ── Drag state ──
+    // Drag state
     let dragging = false;
     let dragOX = 0, dragOY = 0, startL = 0, startT = 0;
 
-    // ── Resize state ──
+    // Resize state
     let resizeZone: string | null = null;
     let rsStartX = 0, rsStartY = 0;
     let rsStartW = 0, rsStartH = 0, rsStartLeft = 0, rsStartTop = 0;
     let rsFixedRight = 0, rsFixedBottom = 0;
 
-    // Update cursor when hovering over panel edges
     panel.addEventListener('mousemove', (e: MouseEvent) => {
       if (dragging || resizeZone) return;
       const zone = getResizeZone(e);
@@ -689,7 +717,6 @@ const sim = project.data.simulation;
       if (!dragging && !resizeZone) panel.style.cursor = '';
     });
 
-    // Drag handle — move panel
     dragHandle.addEventListener('mousedown', (e: MouseEvent) => {
       e.preventDefault();
       const vRect = viewport.getBoundingClientRect();
@@ -704,7 +731,6 @@ const sim = project.data.simulation;
       document.body.style.userSelect = 'none';
     });
 
-    // Panel mousedown — detect resize zones
     panel.addEventListener('mousedown', (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('.panel-drag-handle')) return;
       const zone = getResizeZone(e);
@@ -776,6 +802,8 @@ const sim = project.data.simulation;
     restorePanelState();
   }
 
+  // ── Controller Registry ─────────────────────────────────────────────────────
+
   const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
     boids: new BoidsController(),
     'particle-life': new ParticleLifeController(),
@@ -783,7 +811,214 @@ const sim = project.data.simulation;
     cppn: new CPPNController(),
   };
 
+  // ── Shared UI State ─────────────────────────────────────────────────────────
+
+  let playing = true;
+  let panelOpen = false;
+  let shaderEditorOpen = false;
+
+  // ── Sim: Boids ──────────────────────────────────────────────────────────────
+
+  async function setupBoids(ctrl: BoidsController): Promise<void> {
+    const reactor = new AudioReactor();
+
+    // Declared early so the mapping loop IIFE can reference it without TDZ issues.
+    let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
+
+    // baseParams tracks the user's slider intent, separate from audio modulation.
+    // Proxy intercepts writes: slider/preset writes update both live params AND
+    // baseParams; audio-modulation writes update only live params. Each frame
+    // restores from baseParams before modulating — prevents inter-frame accumulation.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const baseParams: Record<string, number> = { ...(ctrl.params as any) };
+    let isApplyingAudio = false;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const trackedParams = new Proxy(ctrl.params as any, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      set(target: any, prop: string, value: any): boolean {
+        target[prop] = value;
+        if (!isApplyingAudio) baseParams[prop] = value;
+        return true;
+      },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (ctrl as any).params = trackedParams;
+
+    let mappingRafId = 0;
+    (function mappingLoop() {
+      if (reactor.isActive()) {
+        isApplyingAudio = true;
+        Object.assign(ctrl.params, baseParams);
+        const snapshot = reactor.analyze();
+        reactor.applyMappings(ctrl.params, snapshot);
+        isApplyingAudio = false;
+      }
+      panelControls?.updateAudioViz(baseParams as Record<string, number>);
+      mappingRafId = requestAnimationFrame(mappingLoop);
+    })();
+
+    document.addEventListener('pagehide', () => {
+      cancelAnimationFrame(mappingRafId);
+      reactor.stop();
+    }, { once: true });
+
+    const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
+    if (defaultPreset) {
+      Object.assign(ctrl.params, defaultPreset.params);
+      ctrl.trailsEnabled = defaultPreset.trailsEnabled;
+      ctrl.trailDecay = defaultPreset.trailDecay;
+      if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
+    }
+
+    function buildPanel(activeId?: string): void {
+      panelControls?.teardown();
+      panelContent.innerHTML = '';
+      panelControls = buildBoidsPanel(panelContent, ctrl, {
+        presets: BOIDS_PRESETS,
+        activePresetId: activeId,
+        reactor,
+        onClose: () => { panelControls?.teardown(); panel.style.display = 'none'; panelOpen = false; },
+        onShaderEdit: () => {
+          shaderEditorOpen = !shaderEditorOpen;
+          shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
+        },
+        onPresetLoad: async (preset) => {
+          Object.assign(ctrl.params, preset.params);
+          ctrl.trailsEnabled = preset.trailsEnabled;
+          ctrl.trailDecay = preset.trailDecay;
+          // Use defaultShaderSource (not shaderSource) so loading a no-custom-shader
+          // preset always resets to boids.wgsl, not whatever was last running.
+          const nextShader = preset.shader ?? ctrl.defaultShaderSource;
+          await ctrl.reloadShader(nextShader);
+          // Push new shader into the editor so it reflects what's actually running.
+          editorView?.dispatch({
+            changes: { from: 0, to: editorView.state.doc.length, insert: nextShader },
+          });
+          buildPanel(preset.id);
+        },
+      });
+    }
+    buildPanel(defaultPreset?.id);
+
+    // Shader editor (CodeMirror)
+    const editorWrap   = document.getElementById('shader-editor-wrap') as HTMLElement;
+    const shaderErrors = document.getElementById('shader-errors') as HTMLElement;
+
+    const editorView = new EditorView({
+      doc: ctrl.shaderSource,
+      extensions: [
+        basicSetup,
+        StreamLanguage.define(cpp),
+        EditorView.theme({
+          '&': { background: 'var(--bg-primary)' },
+          '.cm-content': { color: 'var(--text-body)', caretColor: 'var(--accent)' },
+          '.cm-gutters': {
+            background: 'var(--bg-surface)',
+            color: 'var(--text-muted)',
+            borderRight: '1px solid var(--bg-surface-border)',
+          },
+          '.cm-activeLineGutter': { background: 'var(--bg-surface)' },
+          '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
+          '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
+        }),
+      ],
+      parent: editorWrap,
+    });
+
+    const applyBtn = document.getElementById('shader-apply') as HTMLButtonElement;
+    applyBtn.addEventListener('click', async () => {
+      const code = editorView.state.doc.toString();
+      const result = await ctrl.reloadShader(code);
+      if (result.success) {
+        shaderErrors.style.display = 'none';
+        shaderErrors.textContent = '';
+        applyBtn.textContent = 'Applied ✓';
+        applyBtn.style.borderColor = 'var(--accent)';
+        applyBtn.style.color = 'var(--accent)';
+        setTimeout(() => {
+          applyBtn.textContent = 'Apply';
+          applyBtn.style.borderColor = '';
+          applyBtn.style.color = '';
+        }, 1500);
+      } else {
+        shaderErrors.textContent = result.error || 'Unknown error';
+        shaderErrors.style.display = 'block';
+      }
+    });
+
+    document.getElementById('shader-reset')!.addEventListener('click', async () => {
+      editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: ctrl.shaderSource },
+      });
+      await ctrl.reloadShader(ctrl.shaderSource);
+      shaderErrors.style.display = 'none';
+    });
+
+    document.getElementById('shader-panel-close')!.addEventListener('click', () => {
+      shaderPanelEl.style.display = 'none';
+      shaderEditorOpen = false;
+    });
+  }
+
+  // ── Sim: CPPN ───────────────────────────────────────────────────────────────
+
+  async function setupCPPN(ctrl: CPPNController): Promise<void> {
+    const defaultPreset = CPPN_PRESETS.find(p => p.isDefault) ?? CPPN_PRESETS[0];
+    if (defaultPreset) await ctrl.loadPreset(defaultPreset);
+
+    let activeId = defaultPreset?.id;
+
+    function buildPanel(id?: string): void {
+      panelContent.innerHTML = '';
+      buildCPPNPanel(panelContent, ctrl, {
+        presets: CPPN_PRESETS,
+        activePresetId: id,
+        onClose: () => { panel.style.display = 'none'; panelOpen = false; },
+        onPresetLoad: async (preset) => {
+          await ctrl.loadPreset(preset);
+          activeId = preset.id;
+          buildPanel(preset.id);
+        },
+      });
+    }
+    buildPanel(activeId);
+  }
+
+  // ── Sim: NCA ────────────────────────────────────────────────────────────────
+
+  function setupNCA(ctrl: NCAController): void {
+    const defaultPreset = NCA_PRESETS.find(p => p.isDefault) ?? NCA_PRESETS[0];
+    if (defaultPreset) ctrl.loadPreset(defaultPreset);
+
+    let activeId = defaultPreset?.id;
+
+    function buildPanel(id?: string): void {
+      panelContent.innerHTML = '';
+      buildNCAPanel(panelContent, ctrl, {
+        presets: NCA_PRESETS,
+        activePresetId: id,
+        onClose: () => { panel.style.display = 'none'; panelOpen = false; },
+        onPresetLoad: (preset) => {
+          activeId = preset.id;
+        },
+      });
+    }
+    buildPanel(activeId);
+  }
+
+  // ── Main Init ───────────────────────────────────────────────────────────────
+  // To add a new simulation: write a setupXxx() function above and add one entry here.
+
+  type AnyController = typeof controllers[string];
+  const simSetup: Partial<Record<string, (ctrl: AnyController) => Promise<void> | void>> = {
+    boids: (ctrl) => setupBoids(ctrl as BoidsController),
+    cppn:  (ctrl) => setupCPPN(ctrl as CPPNController),
+    nca:   (ctrl) => setupNCA(ctrl as NCAController),
+  };
+
   const controller = controllers[sim];
+
   if (!controller) {
     fallback.style.display = 'flex';
     (fallback.querySelector('p') as HTMLElement).textContent = 'Simulation coming soon.';
@@ -793,27 +1028,24 @@ const sim = project.data.simulation;
       if (ok) {
         controller.start();
 
-        // ── FPS counter + throttle UI ──────────────────────────────────────
-        const fpsValue    = document.getElementById('fps-value') as HTMLElement;
-        const fpsUnlimited = document.getElementById('fps-unlimited') as HTMLInputElement;
-        const fpsSlider   = document.getElementById('fps-slider') as HTMLInputElement;
+        // ── FPS counter + throttle UI ─────────────────────────────────────────
+        const fpsValue       = document.getElementById('fps-value') as HTMLElement;
+        const fpsUnlimited   = document.getElementById('fps-unlimited') as HTMLInputElement;
+        const fpsSlider      = document.getElementById('fps-slider') as HTMLInputElement;
         const fpsSliderLabel = document.getElementById('fps-slider-label') as HTMLElement;
-        const fpsSliderRow = document.getElementById('fps-slider-row') as HTMLElement;
+        const fpsSliderRow   = document.getElementById('fps-slider-row') as HTMLElement;
         const ctrl = controller as unknown as { maxFps: number; tickCount: number };
 
-        // Measure FPS by sampling tickCount every 500 ms (accurate in unlimited mode)
         let lastTick = ctrl.tickCount;
         let lastMs   = performance.now();
         setInterval(() => {
           const now   = performance.now();
           const ticks = ctrl.tickCount - lastTick;
-          const fps   = Math.round(ticks * 1000 / (now - lastMs));
-          fpsValue.textContent = `${fps} fps`;
+          fpsValue.textContent = `${Math.round(ticks * 1000 / (now - lastMs))} fps`;
           lastTick = ctrl.tickCount;
           lastMs   = now;
         }, 500);
 
-        // Apply throttle setting to the controller
         function applyMaxFps(): void {
           if (fpsUnlimited.checked) {
             ctrl.maxFps = Infinity;
@@ -831,223 +1063,13 @@ const sim = project.data.simulation;
           fpsSliderLabel.textContent = fpsSlider.value;
           applyMaxFps();
         });
-        applyMaxFps(); // apply default (unlimited)
+        applyMaxFps();
 
-        if (sim === 'boids') {
-          const boidsCtrl = controller as BoidsController;
+        // ── Sim-specific setup ────────────────────────────────────────────────
+        await simSetup[sim]?.(controller);
 
-          const reactor = new AudioReactor();
-
-          // Declared early so the mapping loop IIFE (below) can reference it without TDZ issues.
-          // Assigned by buildPanel() after the default preset loads.
-          let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
-
-          // ── baseParams: tracks the user's slider intent, separate from audio modulation ──
-          // We proxy boidsCtrl.params so slider/preset writes (isApplyingAudio=false)
-          // update both the live params AND baseParams. Audio-modulation writes
-          // (isApplyingAudio=true) update only the live params, leaving baseParams
-          // as the unmodulated user intent that each frame restores from.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const baseParams: Record<string, number> = { ...(boidsCtrl.params as any) };
-          let isApplyingAudio = false;
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const trackedParams = new Proxy(boidsCtrl.params as any, {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            set(target: any, prop: string, value: any): boolean {
-              target[prop] = value;
-              if (!isApplyingAudio) {
-                baseParams[prop] = value;
-              }
-              return true;
-            },
-          });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (boidsCtrl as any).params = trackedParams;
-
-          // Mapping loop — runs every rAF when reactor is active.
-          // Each frame: restore to user's baseParams first (stateless modulation),
-          // then apply audio modulation on top. This prevents inter-frame accumulation
-          // that would ratchet params to their maximum clamp.
-          // After apply: call updateAudioViz so the Params-tab indicators and
-          // Audio-tab amplitude bars/traces reflect the current modulated values.
-          let mappingRafId = 0;
-          (function mappingLoop() {
-            if (reactor.isActive()) {
-              isApplyingAudio = true;
-              Object.assign(boidsCtrl.params, baseParams);   // restore user intent
-              const snapshot = reactor.analyze();
-              reactor.applyMappings(boidsCtrl.params, snapshot); // modulate on top
-              isApplyingAudio = false;
-            }
-            panelControls?.updateAudioViz(baseParams as Record<string, number>);
-            mappingRafId = requestAnimationFrame(mappingLoop);
-          })();
-
-          // Clean up on navigation: cancel the mapping loop and release audio capture
-          document.addEventListener('pagehide', () => {
-            cancelAnimationFrame(mappingRafId);
-            reactor.stop();
-          }, { once: true });
-
-          // Apply default preset before starting
-          const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
-          if (defaultPreset) {
-            Object.assign(boidsCtrl.params, defaultPreset.params);
-            boidsCtrl.trailsEnabled = defaultPreset.trailsEnabled;
-            boidsCtrl.trailDecay = defaultPreset.trailDecay;
-            if (defaultPreset.shader !== undefined) {
-              await boidsCtrl.reloadShader(defaultPreset.shader);
-            }
-          }
-
-          // Rebuild panel helper (re-syncs sliders + active pill after preset load)
-          function buildPanel(activeId?: string): void {
-            panelControls?.teardown();
-            panelContent.innerHTML = '';
-            panelControls = buildBoidsPanel(panelContent, boidsCtrl, {
-              presets: BOIDS_PRESETS,
-              activePresetId: activeId,
-              reactor,
-              onClose: () => { panelControls?.teardown(); panel.style.display = 'none'; panelOpen = false; },
-              onShaderEdit: () => {
-                shaderEditorOpen = !shaderEditorOpen;
-                shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
-              },
-              onPresetLoad: async (preset) => {
-                Object.assign(boidsCtrl.params, preset.params);
-                boidsCtrl.trailsEnabled = preset.trailsEnabled;
-                boidsCtrl.trailDecay = preset.trailDecay;
-                // Use defaultShaderSource (not shaderSource) so loading a no-custom-shader
-                // preset always resets to boids.wgsl, not whatever was last running.
-                const nextShader = preset.shader ?? boidsCtrl.defaultShaderSource;
-                await boidsCtrl.reloadShader(nextShader);
-                // Push new shader into the editor so it reflects what's actually running.
-                // editorView is defined below but this closure is only called by user interaction,
-                // which happens after the full setup has completed.
-                editorView?.dispatch({
-                  changes: { from: 0, to: editorView.state.doc.length, insert: nextShader },
-                });
-                buildPanel(preset.id);
-              },
-            });
-          }
-          buildPanel(defaultPreset?.id);
-
-          // ── Shader editor (CodeMirror) ─────────────────────────────────
-
-          const editorWrap = document.getElementById('shader-editor-wrap') as HTMLElement;
-          const shaderErrors = document.getElementById('shader-errors') as HTMLElement;
-
-          const editorView = new EditorView({
-            doc: boidsCtrl.shaderSource,
-            extensions: [
-              basicSetup,
-              StreamLanguage.define(cpp),
-              EditorView.theme({
-                '&': { background: 'var(--bg-primary)' },
-                '.cm-content': { color: 'var(--text-body)', caretColor: 'var(--accent)' },
-                '.cm-gutters': {
-                  background: 'var(--bg-surface)',
-                  color: 'var(--text-muted)',
-                  borderRight: '1px solid var(--bg-surface-border)',
-                },
-                '.cm-activeLineGutter': { background: 'var(--bg-surface)' },
-                '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
-                '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
-              }),
-            ],
-            parent: editorWrap,
-          });
-
-          const applyBtn = document.getElementById('shader-apply') as HTMLButtonElement;
-          applyBtn.addEventListener('click', async () => {
-            const code = editorView.state.doc.toString();
-            const result = await boidsCtrl.reloadShader(code);
-            if (result.success) {
-              shaderErrors.style.display = 'none';
-              shaderErrors.textContent = '';
-              applyBtn.textContent = 'Applied ✓';
-              applyBtn.style.borderColor = 'var(--accent)';
-              applyBtn.style.color = 'var(--accent)';
-              setTimeout(() => {
-                applyBtn.textContent = 'Apply';
-                applyBtn.style.borderColor = '';
-                applyBtn.style.color = '';
-              }, 1500);
-            } else {
-              shaderErrors.textContent = result.error || 'Unknown error';
-              shaderErrors.style.display = 'block';
-            }
-          });
-
-          document.getElementById('shader-reset')!.addEventListener('click', async () => {
-            editorView.dispatch({
-              changes: { from: 0, to: editorView.state.doc.length, insert: boidsCtrl.shaderSource },
-            });
-            await boidsCtrl.reloadShader(boidsCtrl.shaderSource);
-            shaderErrors.style.display = 'none';
-          });
-
-          document.getElementById('shader-panel-close')!.addEventListener('click', () => {
-            shaderPanelEl.style.display = 'none';
-            shaderEditorOpen = false;
-          });
-        }
-
-        if (sim === 'cppn') {
-          const cppnCtrl = controller as CPPNController;
-
-          const defaultPreset = CPPN_PRESETS.find(p => p.isDefault) ?? CPPN_PRESETS[0];
-          if (defaultPreset) await cppnCtrl.loadPreset(defaultPreset);
-
-          let activeCPPNId = defaultPreset?.id;
-
-          function buildPanel(activeId?: string): void {
-            panelContent.innerHTML = '';
-            buildCPPNPanel(panelContent, cppnCtrl, {
-              presets: CPPN_PRESETS,
-              activePresetId: activeId,
-              onClose: () => { panel.style.display = 'none'; panelOpen = false; },
-              onPresetLoad: async (preset) => {
-                await cppnCtrl.loadPreset(preset);
-                activeCPPNId = preset.id;
-                buildPanel(preset.id);
-              },
-            });
-          }
-          buildPanel(activeCPPNId);
-        }
-
-        if (sim === 'nca') {
-          const ncaCtrl = controller as NCAController;
-
-          const defaultPreset = NCA_PRESETS.find(p => p.isDefault) ?? NCA_PRESETS[0];
-          if (defaultPreset) ncaCtrl.loadPreset(defaultPreset);
-
-          let activeNCAId = defaultPreset?.id;
-
-          function buildPanel(activeId?: string): void {
-            panelContent.innerHTML = '';
-            buildNCAPanel(panelContent, ncaCtrl, {
-              presets: NCA_PRESETS,
-              activePresetId: activeId,
-              onClose: () => { panel.style.display = 'none'; panelOpen = false; },
-              onPresetLoad: (preset) => {
-                activeNCAId = preset.id;
-              },
-            });
-          }
-          buildPanel(activeNCAId);
-        }
-
-        // ── Controls bar ───────────────────────────────────────────────────
-
+        // ── Controls bar ──────────────────────────────────────────────────────
         const controls = document.getElementById(`controls-${sim}`);
-        let playing = true;
-        let panelOpen = false;
-        let shaderEditorOpen = false;
-
         controls?.addEventListener('click', (e) => {
           const btn = (e.target as HTMLElement).closest('[data-action]');
           if (!btn) return;
@@ -1060,7 +1082,7 @@ const sim = project.data.simulation;
             controller.reset();
           } else if (action === 'fullscreen') {
             document.getElementById('sim-viewport')?.requestFullscreen();
-          } else if (action === 'settings' && (sim === 'boids' || sim === 'cppn' || sim === 'nca')) {
+          } else if (action === 'settings' && sim in simSetup) {
             panelOpen = !panelOpen;
             panel.style.display = panelOpen ? 'flex' : 'none';
           }
