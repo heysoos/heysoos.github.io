@@ -1486,7 +1486,7 @@ function buildAudioTab(
   cg.appendChild(document.createElement('col')); // trace: absorbs remaining space
   for (let i = 0; i < 5; i++) {
     const c = document.createElement('col');
-    c.style.width = '6%';
+    c.style.width = '10%';
     cg.appendChild(c);
   }
   matrixTable.appendChild(cg);

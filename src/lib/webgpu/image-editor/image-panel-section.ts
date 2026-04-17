@@ -113,6 +113,7 @@ export function buildImagePanelSection(
   // ── Static area ──────────────────────────────────────────────────
   const staticArea = document.createElement('div');
 
+  const THUMB_ASPECT = 101 / 180;
   const thumbCanvas = document.createElement('canvas');
   thumbCanvas.width  = 180;
   thumbCanvas.height = 101;
@@ -168,6 +169,7 @@ export function buildImagePanelSection(
   previewCanvas.width  = 180;
   previewCanvas.height = 101;
   previewCanvas.style.cssText = 'width:100%;border-radius:3px;border:1px solid var(--bg-surface-border);display:block;margin-bottom:0.4rem;cursor:pointer;';
+  const dpr = window.devicePixelRatio || 1;
   previewCanvas.title = 'Click to open editor';
   previewCanvas.addEventListener('click', opts.onOpenEditor);
   webcamArea.appendChild(previewCanvas);
@@ -465,7 +467,28 @@ export function buildImagePanelSection(
 
   refreshUI();
 
+  // ── Resize: keep canvas pixel buffers in sync with CSS width ─────────────
+  function resizeThumb(canvas: HTMLCanvasElement, ctx: GPUCanvasContext | null, isActive: boolean): void {
+    const w = canvas.clientWidth;
+    if (w <= 0) return;
+    const h = Math.round(w * THUMB_ASPECT);
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.height = `${h}px`;
+    if (isActive && ctx) {
+      processor.setThumbnailContext(ctx);
+    }
+  }
+
+  const thumbRo = new ResizeObserver(() => {
+    resizeThumb(thumbCanvas,   thumbCtxStatic, activeSource === 'static');
+    resizeThumb(previewCanvas, thumbCtxWebcam, activeSource === 'webcam');
+  });
+  thumbRo.observe(thumbCanvas);
+  thumbRo.observe(previewCanvas);
+
   return () => {
+    thumbRo.disconnect();
     cleanupDrop();
     fileInput.remove();
     section.remove();
