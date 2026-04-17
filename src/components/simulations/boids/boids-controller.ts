@@ -484,50 +484,28 @@ export class BoidsController {
     ];
   }
 
-  private tick = () => {
-    if (!this.running || !this.gpu) return;
-
-    // Capped mode: use RAF as the heartbeat, skip GPU work if called too early
-    if (Number.isFinite(this.maxFps)) {
-      const now = performance.now();
-      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
-        this.animId = requestAnimationFrame(this.tick);
-        return;
-      }
-      this.lastFrameTime = now;
-    }
-
-    const { device, context, canvas } = this.gpu;
-
+  private _preFrameSetup(): { device: GPUDevice; context: GPUCanvasContext; canvas: HTMLCanvasElement; aspect: number } {
+    const { device, context, canvas } = this.gpu!;
     const resized = resizeCanvasToDisplaySize(canvas);
     if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
       this.overlayBindGroup = null;   // compositedTexture was re-allocated; rebuild on next use
-      this.prevCanvasWidth = canvas.width;
+      this.prevCanvasWidth  = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
-
-    // ── Webcam frame capture ──────────────────────────────────────────
     if (this.webcam.status === 'active') {
       this.webcam.tick(this.imageProcessor);
     }
+    const aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 1.0;
+    return { device, context, canvas, aspect };
+  }
 
-    const aspect = canvas.width > 0 && canvas.height > 0
-      ? canvas.width / canvas.height : 1.0;
-
-    const uniformArray = this._packUniforms(aspect);
-    device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
-
-    const N = this.params.numParticles;
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
-    const gridSize = gridDim * gridDim;
+  private _runComputePasses(device: GPUDevice, N: number, gridDim: number, gridSize: number): void {
     const gridBG = this.gridBindGroups[this.frame % 2];
-
-    // ── 5-pass compute ────────────────────────────────────────────────
     const computeEncoder = device.createCommandEncoder();
-    const computePass = computeEncoder.beginComputePass();
+    const computePass    = computeEncoder.beginComputePass();
 
     // Pass 1: clearGrid — only clear active cells (gridDim×gridDim)
     computePass.setPipeline(this.clearGridPipeline);
@@ -561,7 +539,9 @@ export class BoidsController {
 
     computePass.end();
     device.queue.submit([computeEncoder.finish()]);
+  }
 
+  private _renderFrame(device: GPUDevice, context: GPUCanvasContext, N: number): void {
     // ── Render pass ───────────────────────────────────────────────────
     this.trailRenderer.render(
       device,
@@ -581,7 +561,7 @@ export class BoidsController {
         renderPass.setBindGroup(0, this.renderParamsBindGroup);
         renderPass.setVertexBuffer(0, this.particleBuffers[(this.frame + 1) % 2]);
         renderPass.setVertexBuffer(1, this.vertexBuffer);
-        renderPass.draw(6, this.params.numParticles);
+        renderPass.draw(6, N);
         renderPass.end();
       },
     );
@@ -611,6 +591,30 @@ export class BoidsController {
       pass.end();
       device.queue.submit([enc.finish()]);
     }
+  }
+
+  private tick = () => {
+    if (!this.running || !this.gpu) return;
+
+    // Capped mode: use RAF as the heartbeat, skip GPU work if called too early
+    if (Number.isFinite(this.maxFps)) {
+      const now = performance.now();
+      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
+        this.animId = requestAnimationFrame(this.tick);
+        return;
+      }
+      this.lastFrameTime = now;
+    }
+
+    const { device, context, aspect } = this._preFrameSetup();
+    device.queue.writeBuffer(this.uniformBuffer, 0, this._packUniforms(aspect));
+
+    const N       = this.params.numParticles;
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    const gridSize = gridDim * gridDim;
+
+    this._runComputePasses(device, N, gridDim, gridSize);
+    this._renderFrame(device, context, N);
 
     this.frame++;
     void device.queue.onSubmittedWorkDone().then(() => {
