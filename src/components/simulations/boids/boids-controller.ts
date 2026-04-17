@@ -374,23 +374,26 @@ export class BoidsController {
     if (!this.gpu) return { success: false, error: 'GPU not initialized' };
     try {
       const { device } = this.gpu;
-      const prevCompute = this.computePipeline;
-      const prevRender = this.renderPipeline;
-      const prevBoidsBindGroupLayout = this.boidsBindGroupLayout;
-      const prevBoidsBindGroups = this.boidsBindGroups;
-      const prevBindGroup = this.renderParamsBindGroup;
+
+      // Snapshot current pipeline state for atomic rollback on failure
+      const snapshot = {
+        computePipeline:       this.computePipeline,
+        renderPipeline:        this.renderPipeline,
+        boidsBindGroupLayout:  this.boidsBindGroupLayout,
+        boidsBindGroups:       this.boidsBindGroups,
+        renderParamsBindGroup: this.renderParamsBindGroup,
+      };
+
       device.pushErrorScope('validation');
       const module = device.createShaderModule({ code });
       this._createBoidsPipelines(module);
       const gpuError = await device.popErrorScope();
+
       if (gpuError) {
-        this.computePipeline = prevCompute;
-        this.renderPipeline = prevRender;
-        this.boidsBindGroupLayout = prevBoidsBindGroupLayout;
-        this.boidsBindGroups = prevBoidsBindGroups;
-        this.renderParamsBindGroup = prevBindGroup;
+        Object.assign(this, snapshot);
         return { success: false, error: gpuError.message };
       }
+
       this.shaderSource = code;
       return { success: true, error: '' };
     } catch (e) {
