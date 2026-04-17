@@ -35,11 +35,11 @@ Labels are horizontal, never rotated. They sit on a frosted dark background (`rg
 
 ### Value readouts
 
-Values are **not** below the pad. Instead they project onto their respective axis edges, tracking the dot:
-- **X value**: floats along the top edge at the dot's horizontal position
-- **Y value**: floats along the right edge at the dot's vertical position
+Values are **not** below the pad. They sit at fixed positions on their respective axis edges, centered regardless of where the dot is:
+- **X value**: fixed at the horizontal centre of the top edge
+- **Y value**: fixed at the vertical centre of the right edge
 
-Faint tick lines extend from the dot to each edge, making the projection relationship explicit.
+No tick lines — the readouts are stationary axis labels that update numerically as the dot moves.
 
 ### Icons (chosen set)
 
@@ -166,7 +166,10 @@ function toNorm(v: number, def: XYPadDef): number {
 
 ---
 
-## Open questions
+## Scale decisions
 
-- **Reset behaviour:** double-click on pad to reset both params to preset values? Or keep the existing ↺ reset approach per-param somehow?
-- **Log scale params:** Attraction Radius and Repulsion Radius currently use linear scale — should the pad normalise them logarithmically like the old sliders did?
+Each `XYPadDef` carries a `scale: 'linear' | 'log'` field. To switch any pad's scale, change that single field in the pad definitions array at the top of `buildForcesPads`.
+
+Current values:
+- **Attr Radius ↔ Rep Radius pad:** `scale: 'log'` (both axes, consistent with the old sliders)
+- All other pads: `scale: 'linear'`
