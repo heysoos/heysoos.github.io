@@ -1,4 +1,4 @@
-export const TRACE_LEN = 256; // shared ring buffer length
+export const TRACE_LEN = 256;
 
 export interface RingBufferCanvasOpts {
   /** Called whenever a redraw is needed. Receives buffer data, write pointer, and canvas context. */
@@ -24,10 +24,8 @@ export class RingBufferCanvas {
   private render:  RingBufferCanvasOpts['render'];
   private onResize?: RingBufferCanvasOpts['onResize'];
 
-  private static dpr = Math.round(window.devicePixelRatio ?? 1);
-
   constructor(opts: RingBufferCanvasOpts) {
-    const dpr = RingBufferCanvas.dpr;
+    const dpr = Math.round(window.devicePixelRatio ?? 1);
     this.render   = opts.render;
     this.onResize = opts.onResize;
     this.cssH     = opts.initialHeight ?? 40;
@@ -38,6 +36,7 @@ export class RingBufferCanvas {
     this.canvas.style.height = `${this.cssH}px`;
 
     this.ro = new ResizeObserver(() => {
+      const dpr = Math.round(window.devicePixelRatio ?? 1);
       const w = this.canvas.clientWidth;
       if (w > 0) this.canvas.width = Math.round(w * dpr);
       const newH = this.onResize?.(w, this.cssH);
@@ -66,7 +65,7 @@ export class RingBufferCanvas {
   }
 
   draw(): void {
-    const dpr = RingBufferCanvas.dpr;
+    const dpr = Math.round(window.devicePixelRatio ?? 1);
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -100,7 +99,6 @@ export function makeTraceRenderer(bandColor: string): RingBufferCanvasOpts['rend
     if (!isFinite(trMax)) trMax = 0;
     const currentVal = data[(ptr - 1 + TRACE_LEN) % TRACE_LEN];
 
-    // Guide lines
     ctx.strokeStyle = 'rgba(255,255,255,0.10)';
     ctx.lineWidth   = 0.5;
     ctx.beginPath();
@@ -135,7 +133,6 @@ export function makeTraceRenderer(bandColor: string): RingBufferCanvasOpts['rend
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Labels
     ctx.font = '9px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillText(trMax.toFixed(2), 2, 10);
