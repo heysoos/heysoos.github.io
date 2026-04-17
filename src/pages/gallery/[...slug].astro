@@ -21,7 +21,15 @@ const sim = project.data.simulation;
     <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
       <canvas id="sim-canvas"></canvas>
       <Controls simId={sim} />
-      <div id="params-panel" class="params-panel" style="display:none;"></div>
+      <div id="params-panel" class="params-panel" style="display:none;">
+        <div class="panel-drag-handle">
+          <svg width="20" height="8" viewBox="0 0 20 8" fill="currentColor" opacity="0.45">
+            <circle cx="3" cy="2" r="1.5"/><circle cx="10" cy="2" r="1.5"/><circle cx="17" cy="2" r="1.5"/>
+            <circle cx="3" cy="6" r="1.5"/><circle cx="10" cy="6" r="1.5"/><circle cx="17" cy="6" r="1.5"/>
+          </svg>
+        </div>
+        <div id="panel-content" class="panel-content"></div>
+      </div>
       <div id="shader-panel" class="shader-panel" style="display:none;">
         <div class="shader-panel-header">
           <span>Shader Editor</span>
@@ -95,41 +103,65 @@ const sim = project.data.simulation;
     position: absolute;
     top: 1rem;
     right: 1rem;
-    width: 250px;
+    width: 320px;
     max-height: calc(70vh - 2rem);
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* Reserve gutter so the scrollbar never overlaps content */
-    scrollbar-gutter: stable;
-    /* Firefox thin scrollbar styled to match theme */
-    scrollbar-width: thin;
-    scrollbar-color: var(--bg-surface-border) transparent;
+    min-width: 200px;
+    min-height: 80px;
+    overflow: hidden;
     background: var(--bg-nav);
     border: 1px solid var(--bg-surface-border);
     border-radius: var(--border-radius);
     backdrop-filter: blur(8px);
-    padding: 0.75rem 1rem;
     z-index: 20;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-drag-handle {
+    flex-shrink: 0;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    border-bottom: 1px solid var(--bg-surface-border);
+    user-select: none;
+    color: var(--text-muted);
+  }
+
+  .panel-drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-surface-border) transparent;
+    padding: 0.75rem 0.2rem 0.75rem 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
   }
 
   /* Chrome/Edge/Safari: thin themed scrollbar */
-  .params-panel::-webkit-scrollbar {
+  .panel-content::-webkit-scrollbar {
     width: 4px;
   }
 
-  .params-panel::-webkit-scrollbar-track {
+  .panel-content::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .params-panel::-webkit-scrollbar-thumb {
+  .panel-content::-webkit-scrollbar-thumb {
     background: var(--bg-surface-border);
     border-radius: 2px;
   }
 
-  .params-panel::-webkit-scrollbar-thumb:hover {
+  .panel-content::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
   }
 
@@ -576,7 +608,173 @@ const sim = project.data.simulation;
   const canvas = document.getElementById('sim-canvas') as HTMLCanvasElement;
   const fallback = document.getElementById('sim-fallback') as HTMLElement;
   const panel = document.getElementById('params-panel') as HTMLElement;
+  const panelContent = document.getElementById('panel-content') as HTMLElement;
   const shaderPanelEl = document.getElementById('shader-panel') as HTMLElement;
+
+  // ── Panel drag & resize ────────────────────────────────────────────────
+  {
+    const dragHandle = panel.querySelector('.panel-drag-handle') as HTMLElement;
+    const PANEL_STATE_KEY = `panel-state-${sim}`;
+    const EDGE = 8; // px proximity to border that counts as a resize zone
+
+    interface PanelState { left: number; top: number; width?: number; height?: number; hasSize?: boolean; }
+
+    function savePanelState(includeSize = false): void {
+      const vRect = viewport.getBoundingClientRect();
+      const pRect = panel.getBoundingClientRect();
+      if (pRect.width < 50 || pRect.height < 30) return;
+      const prev: PanelState = JSON.parse(sessionStorage.getItem(PANEL_STATE_KEY) ?? '{}');
+      const state: PanelState = { left: pRect.left - vRect.left, top: pRect.top - vRect.top };
+      if (includeSize || prev.hasSize) {
+        state.width = pRect.width; state.height = pRect.height; state.hasSize = true;
+      }
+      sessionStorage.setItem(PANEL_STATE_KEY, JSON.stringify(state));
+    }
+
+    function restorePanelState(): void {
+      const raw = sessionStorage.getItem(PANEL_STATE_KEY);
+      if (!raw) return;
+      const state: PanelState = JSON.parse(raw);
+      const vRect = viewport.getBoundingClientRect();
+      const panelW = state.width ?? 320;
+      const left = Math.max(0, Math.min(state.left, vRect.width  - panelW));
+      const top  = Math.max(0, Math.min(state.top,  vRect.height - 80));
+      panel.style.right = 'auto';
+      panel.style.left  = `${left}px`;
+      panel.style.top   = `${top}px`;
+      if (state.hasSize && state.width && state.height) {
+        panel.style.maxHeight = 'none';
+        panel.style.width     = `${state.width}px`;
+        panel.style.height    = `${state.height}px`;
+      }
+    }
+
+    /** Returns one of 'n','ne','e','se','s','sw','w','nw' if the mouse is within EDGE px
+     *  of the corresponding panel border, or null if it's inside the content area. */
+    function getResizeZone(e: MouseEvent): string | null {
+      const r = panel.getBoundingClientRect();
+      const x = e.clientX, y = e.clientY;
+      const nearTop = y - r.top    < EDGE;
+      const nearBot = r.bottom - y < EDGE;
+      const nearLft = x - r.left   < EDGE;
+      const nearRgt = r.right  - x < EDGE;
+      if (nearTop && nearLft) return 'nw';
+      if (nearTop && nearRgt) return 'ne';
+      if (nearBot && nearLft) return 'sw';
+      if (nearBot && nearRgt) return 'se';
+      if (nearTop) return 'n';
+      if (nearBot) return 's';
+      if (nearLft) return 'w';
+      if (nearRgt) return 'e';
+      return null;
+    }
+
+    // ── Drag state ──
+    let dragging = false;
+    let dragOX = 0, dragOY = 0, startL = 0, startT = 0;
+
+    // ── Resize state ──
+    let resizeZone: string | null = null;
+    let rsStartX = 0, rsStartY = 0;
+    let rsStartW = 0, rsStartH = 0, rsStartLeft = 0, rsStartTop = 0;
+    let rsFixedRight = 0, rsFixedBottom = 0;
+
+    // Update cursor when hovering over panel edges
+    panel.addEventListener('mousemove', (e: MouseEvent) => {
+      if (dragging || resizeZone) return;
+      const zone = getResizeZone(e);
+      panel.style.cursor = zone ? `${zone}-resize` : '';
+    });
+    panel.addEventListener('mouseleave', () => {
+      if (!dragging && !resizeZone) panel.style.cursor = '';
+    });
+
+    // Drag handle — move panel
+    dragHandle.addEventListener('mousedown', (e: MouseEvent) => {
+      e.preventDefault();
+      const vRect = viewport.getBoundingClientRect();
+      const pRect = panel.getBoundingClientRect();
+      panel.style.right = 'auto';
+      panel.style.left  = `${pRect.left - vRect.left}px`;
+      panel.style.top   = `${pRect.top  - vRect.top}px`;
+      dragging = true;
+      dragOX = e.clientX; dragOY = e.clientY;
+      startL = pRect.left - vRect.left;
+      startT = pRect.top  - vRect.top;
+      document.body.style.userSelect = 'none';
+    });
+
+    // Panel mousedown — detect resize zones
+    panel.addEventListener('mousedown', (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest('.panel-drag-handle')) return;
+      const zone = getResizeZone(e);
+      if (!zone) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const vRect = viewport.getBoundingClientRect();
+      const pRect = panel.getBoundingClientRect();
+      resizeZone   = zone;
+      rsStartX     = e.clientX;
+      rsStartY     = e.clientY;
+      rsStartW     = pRect.width;
+      rsStartH     = pRect.height;
+      rsStartLeft  = pRect.left - vRect.left;
+      rsStartTop   = pRect.top  - vRect.top;
+      rsFixedRight  = pRect.right  - vRect.left;
+      rsFixedBottom = pRect.bottom - vRect.top;
+      panel.style.right     = 'auto';
+      panel.style.left      = `${rsStartLeft}px`;
+      panel.style.top       = `${rsStartTop}px`;
+      panel.style.maxHeight = 'none';
+      panel.style.height    = `${rsStartH}px`;
+      panel.style.cursor    = `${zone}-resize`;
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      if (dragging) {
+        const vRect = viewport.getBoundingClientRect();
+        const pRect = panel.getBoundingClientRect();
+        const newL = Math.max(0, Math.min(startL + e.clientX - dragOX, vRect.width  - pRect.width));
+        const newT = Math.max(0, Math.min(startT + e.clientY - dragOY, vRect.height - pRect.height));
+        panel.style.left = `${newL}px`;
+        panel.style.top  = `${newT}px`;
+        return;
+      }
+      if (resizeZone) {
+        const dx = e.clientX - rsStartX;
+        const dy = e.clientY - rsStartY;
+        let newW = rsStartW, newH = rsStartH, newL = rsStartLeft, newT = rsStartTop;
+        if (resizeZone.includes('e')) newW = Math.max(200, rsStartW + dx);
+        if (resizeZone.includes('w')) { newW = Math.max(200, rsStartW - dx); newL = Math.max(0, rsFixedRight - newW); }
+        if (resizeZone.includes('s')) newH = Math.max(80, rsStartH + dy);
+        if (resizeZone.includes('n')) { newH = Math.max(80, rsStartH - dy); newT = Math.max(0, rsFixedBottom - newH); }
+        panel.style.width  = `${newW}px`;
+        panel.style.height = `${newH}px`;
+        panel.style.left   = `${newL}px`;
+        panel.style.top    = `${newT}px`;
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (dragging) {
+        dragging = false;
+        document.body.style.userSelect = '';
+        panel.style.cursor = '';
+        savePanelState(false);
+        return;
+      }
+      if (resizeZone) {
+        resizeZone = null;
+        document.body.style.userSelect = '';
+        panel.style.cursor = '';
+        savePanelState(true);
+        return;
+      }
+    });
+
+    restorePanelState();
+  }
 
   const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
     boids: new BoidsController(),
@@ -706,8 +904,8 @@ const sim = project.data.simulation;
           // Rebuild panel helper (re-syncs sliders + active pill after preset load)
           function buildPanel(activeId?: string): void {
             panelControls?.teardown();
-            panel.innerHTML = '';
-            panelControls = buildBoidsPanel(panel, boidsCtrl, {
+            panelContent.innerHTML = '';
+            panelControls = buildBoidsPanel(panelContent, boidsCtrl, {
               presets: BOIDS_PRESETS,
               activePresetId: activeId,
               reactor,
@@ -806,8 +1004,8 @@ const sim = project.data.simulation;
           let activeCPPNId = defaultPreset?.id;
 
           function buildPanel(activeId?: string): void {
-            panel.innerHTML = '';
-            buildCPPNPanel(panel, cppnCtrl, {
+            panelContent.innerHTML = '';
+            buildCPPNPanel(panelContent, cppnCtrl, {
               presets: CPPN_PRESETS,
               activePresetId: activeId,
               onClose: () => { panel.style.display = 'none'; panelOpen = false; },
@@ -830,8 +1028,8 @@ const sim = project.data.simulation;
           let activeNCAId = defaultPreset?.id;
 
           function buildPanel(activeId?: string): void {
-            panel.innerHTML = '';
-            buildNCAPanel(panel, ncaCtrl, {
+            panelContent.innerHTML = '';
+            buildNCAPanel(panelContent, ncaCtrl, {
               presets: NCA_PRESETS,
               activePresetId: activeId,
               onClose: () => { panel.style.display = 'none'; panelOpen = false; },

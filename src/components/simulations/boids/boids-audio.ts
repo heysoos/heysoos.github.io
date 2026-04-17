@@ -332,20 +332,38 @@ export function drawAudioViz(canvas: HTMLCanvasElement, reactor: AudioReactor): 
   ctx.clearRect(0, 0, width, height);
 
   const data = reactor.getFrequencyData();
-  const numBars = 64; // display 64 bars across the full spectrum
-  const binStep = Math.floor(data.length / numBars);
-  const barW    = width / numBars;
+  const sampleRate = reactor.getSampleRate();
+  const hzPerBin   = sampleRate / (data.length * 2);
 
-  // Determine band colour for each bar by Hz range
-  const sampleRate  = reactor.getSampleRate();
-  const hzPerBin    = sampleRate / (data.length * 2);
+  // Mel-scale spectrum: 64 equal-width bars distributed on the mel scale across
+  // 20 Hz–16 kHz.  The mel scale compresses low frequencies more than log2,
+  // matching human pitch discrimination and naturally giving fewer bars to the
+  // bass region where FFT resolution is sparse (fewer distinct bins).
+  // mel(f) = 2595 × log10(1 + f/700)   →   f(mel) = 700 × (10^(mel/2595) − 1)
+  const numBars = 64;
+  const minHz   = 20;
+  const maxHz   = 16000;
+  const melMin  = 2595 * Math.log10(1 + minHz / 700);
+  const melMax  = 2595 * Math.log10(1 + maxHz / 700);
+  const barW    = width / numBars;
+  const gap     = Math.max(0, Math.floor(barW * 0.15));
 
   ctx.globalAlpha = 0.85;
   for (let i = 0; i < numBars; i++) {
-    const binIdx = i * binStep;
-    const hz     = binIdx * hzPerBin;
-    const val    = data[binIdx] / 255;
+    // Each bar spans one equal mel slice; convert back to Hz for bin lookup
+    const fLo  = 700 * (Math.pow(10, (melMin + (i       / numBars) * (melMax - melMin)) / 2595) - 1);
+    const fHi  = 700 * (Math.pow(10, (melMin + ((i + 1) / numBars) * (melMax - melMin)) / 2595) - 1);
+    const binLo = Math.max(0, Math.round(fLo / hzPerBin));
+    const binHi = Math.min(data.length - 1, Math.round(fHi / hzPerBin));
 
+    // Average all FFT bins in this bar's range (at least 1 bin always)
+    let sum = 0;
+    const count = Math.max(1, binHi - binLo + 1);
+    for (let b = binLo; b <= binHi; b++) sum += data[b];
+    const val = (sum / count) / 255;
+
+    // Band colour determined by the bar's centre frequency
+    const hz = (fLo + fHi) / 2;
     let color: string;
     if      (hz < 250)  color = BAND_COLORS.bass;
     else if (hz < 2000) color = BAND_COLORS.mid;
@@ -354,7 +372,7 @@ export function drawAudioViz(canvas: HTMLCanvasElement, reactor: AudioReactor): 
 
     const barH = val * height;
     ctx.fillStyle = color;
-    ctx.fillRect(i * barW, height - barH, barW - 1, barH);
+    ctx.fillRect(i * barW, height - barH, barW - gap, barH);
   }
   ctx.globalAlpha = 1;
 }

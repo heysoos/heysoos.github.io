@@ -77,6 +77,10 @@ export function buildBoidsPanel(
   opts: BoidsPanelOpts = {},
 ): { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } {
 
+  // ── ResizeObserver disconnect registry ───────────────────────────────────────
+  const disconnects: Array<() => void> = [];
+  const registerDisconnect = (fn: () => void) => disconnects.push(fn);
+
   // ── Audio visualisation state ─────────────────────────────────────────────
   const updMaps: AudioUpdaterMaps = {
     paramIndicators:     new Map(),
@@ -172,7 +176,7 @@ export function buildBoidsPanel(
   const imageBody  = tabBodies['Image'];
 
   if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, updMaps);
+    audioVizControls = buildAudioTab(audioBody, opts.reactor, updMaps, registerDisconnect);
     // Start immediately stopped — Params tab is shown first
     audioVizControls.stop();
   } else {
@@ -408,7 +412,7 @@ export function buildBoidsPanel(
   }
 
   return {
-    teardown: () => { audioVizControls?.stop(); },
+    teardown: () => { audioVizControls?.stop(); for (const d of disconnects) d(); },
     updateAudioViz,
   };
 }
@@ -598,12 +602,12 @@ function makeResetBtn(slider: HTMLInputElement, defaultValue: number): HTMLButto
 // ── Audio tab canvas constants ────────────────────────────────────────────────
 // Shared by makeMatrixTrace, makeTraceCanvas, buildBandTab, and buildTotalTab.
 
-const TRACE_LEN = 200;
+const TRACE_LEN = 1000;
 const TRACE_W   = 184;
 const TRACE_H   = 32;
 const dpr       = window.devicePixelRatio || 1;
 
-const MAT_TRACE_LEN = 60;
+const MAT_TRACE_LEN = 300;
 const MAT_TRACE_W   = 10;
 const MAT_TRACE_H   = 14;
 
@@ -613,44 +617,78 @@ const BAND_KEYS_ORDER: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
 // ── Canvas utilities ──────────────────────────────────────────────────────────
 
 /** Mini sparkline used in the matrix trace column. Ring-buffer backed, redraws on push(). */
-function makeMatrixTrace(): { canvas: HTMLCanvasElement; push: (v: number) => void } {
+function makeMatrixTrace(): { canvas: HTMLCanvasElement; push: (v: number) => void; disconnect: () => void } {
   const buf = new Float32Array(MAT_TRACE_LEN);
   let ptr = 0;
   const canvas = document.createElement('canvas');
   canvas.width  = MAT_TRACE_W * dpr;
   canvas.height = MAT_TRACE_H * dpr;
-  canvas.style.cssText = `width:${MAT_TRACE_W}px;height:${MAT_TRACE_H}px;display:block;border-radius:1px;`;
+  canvas.style.cssText = `width:100%;height:${MAT_TRACE_H}px;display:block;border-radius:1px;`;
 
-  function push(v: number): void {
-    buf[ptr] = v;
-    ptr = (ptr + 1) % MAT_TRACE_LEN;
+  function draw(): void {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
     ctx.lineWidth   = dpr;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
     ctx.beginPath();
     const H = canvas.height, W = canvas.width;
-    for (let i = 0; i < MAT_TRACE_LEN; i++) {
-      const idx = (ptr + i) % MAT_TRACE_LEN;
-      const x = (i / (MAT_TRACE_LEN - 1)) * W;
-      const y = H - buf[idx] * (H - 2) - 1;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    // Show as many history samples as there are CSS pixels, up to the buffer size.
+    const vLen = Math.min(MAT_TRACE_LEN, Math.max(2, Math.round(W / dpr)));
+    const startOff = MAT_TRACE_LEN - vLen;
+    // Interpolate one point per device pixel for a gapless line at any zoom level.
+    if (vLen <= Math.round(W / dpr)) {
+      const cssW = Math.round(W / dpr);
+      for (let x = 0; x < cssW; x++) {
+        const t  = (x / Math.max(1, cssW - 1)) * (vLen - 1);
+        const i0 = Math.floor(t);
+        const i1 = Math.min(vLen - 1, i0 + 1);
+        const v  = buf[(ptr + startOff + i0) % MAT_TRACE_LEN] * (1 - (t - i0))
+                 + buf[(ptr + startOff + i1) % MAT_TRACE_LEN] * (t - i0);
+        const px = x * dpr;
+        const y  = H - v * (H - 2) - 1;
+        if (x === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+      }
+    } else {
+      for (let i = 0; i < vLen; i++) {
+        const idx = (ptr + startOff + i) % MAT_TRACE_LEN;
+        const x = (i / (vLen - 1)) * W;
+        const y = H - buf[idx] * (H - 2) - 1;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
     }
     ctx.stroke();
   }
 
-  return { canvas, push };
+  function push(v: number): void {
+    buf[ptr] = v;
+    ptr = (ptr + 1) % MAT_TRACE_LEN;
+    draw();
+  }
+
+  const ro = new ResizeObserver(() => {
+    const w = canvas.clientWidth;
+    if (w > 0) { canvas.width = Math.round(w * dpr); draw(); }
+  });
+  ro.observe(canvas);
+
+  return { canvas, push, disconnect: () => ro.disconnect() };
 }
 
-/** Full-width trace canvas for a single band. Shows min/max/current labels. */
+/** Full-width trace canvas for a single band. Shows min/max/current labels.
+ *  Height adapts to ~20% of the params-panel height (clamped to [TRACE_H, 160px]). */
 function makeTraceCanvas(bandColor: string): {
   canvas: HTMLCanvasElement;
   push: (v: number) => void;
   draw: () => void;
+  disconnect: () => void;
 } {
   const data = new Float32Array(TRACE_LEN);
   let ptr = 0;
+  let traceH = TRACE_H; // updated by ResizeObserver when panel resizes vertically
+
   const canvas = document.createElement('canvas');
   canvas.width  = TRACE_W * dpr;
   canvas.height = TRACE_H * dpr;
@@ -659,14 +697,20 @@ function makeTraceCanvas(bandColor: string): {
   function draw(): void {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const W = TRACE_W, H = TRACE_H;
+    const W = Math.round(canvas.width / dpr);
+    const H = traceH;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    // Show as many history samples as CSS pixels wide; wider = more past, up to TRACE_LEN.
+    const vLen = Math.min(TRACE_LEN, Math.max(2, W));
+    const startOff = TRACE_LEN - vLen;
+
     let trMin = Infinity, trMax = -Infinity;
-    for (let i = 0; i < TRACE_LEN; i++) {
-      if (data[i] < trMin) trMin = data[i];
-      if (data[i] > trMax) trMax = data[i];
+    for (let i = 0; i < vLen; i++) {
+      const v = data[(ptr + startOff + i) % TRACE_LEN];
+      if (v < trMin) trMin = v;
+      if (v > trMax) trMax = v;
     }
     if (!isFinite(trMin)) trMin = 0;
     if (!isFinite(trMax)) trMax = 0;
@@ -682,13 +726,28 @@ function makeTraceCanvas(bandColor: string): {
     const innerH = H - 2;
     ctx.strokeStyle = bandColor;
     ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
-    for (let i = 0; i < TRACE_LEN; i++) {
-      const idx = (ptr + i) % TRACE_LEN;
-      const x = (i / (TRACE_LEN - 1)) * W;
-      const y = H - data[idx] * innerH - 1;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    // Interpolate one point per pixel so the line is gapless regardless of zoom level.
+    if (vLen <= W) {
+      for (let x = 0; x < W; x++) {
+        const t  = (x / Math.max(1, W - 1)) * (vLen - 1);
+        const i0 = Math.floor(t);
+        const i1 = Math.min(vLen - 1, i0 + 1);
+        const v  = data[(ptr + startOff + i0) % TRACE_LEN] * (1 - (t - i0))
+                 + data[(ptr + startOff + i1) % TRACE_LEN] * (t - i0);
+        const y  = H - v * innerH - 1;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+    } else {
+      for (let i = 0; i < vLen; i++) {
+        const idx = (ptr + startOff + i) % TRACE_LEN;
+        const x = (i / (vLen - 1)) * W;
+        const y = H - data[idx] * innerH - 1;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
     }
     ctx.stroke();
     ctx.globalAlpha = 1;
@@ -709,7 +768,28 @@ function makeTraceCanvas(bandColor: string): {
     draw();
   }
 
-  return { canvas, push, draw };
+  // Lazily discover the parent .params-panel once the canvas is in the DOM,
+  // then observe it for height changes so the trace grows with the panel.
+  let panelObserved = false;
+  const ro = new ResizeObserver(() => {
+    const w = canvas.clientWidth;
+    if (w > 0) canvas.width = Math.round(w * dpr);
+
+    const panelEl = canvas.closest?.('.params-panel') as HTMLElement | null;
+    if (panelEl && !panelObserved) { ro.observe(panelEl); panelObserved = true; }
+    if (panelEl) {
+      const newH = Math.round(Math.min(160, Math.max(TRACE_H, panelEl.clientHeight * 0.20)));
+      if (newH !== traceH) {
+        traceH = newH;
+        canvas.style.height = `${traceH}px`;
+        canvas.height = Math.round(traceH * dpr);
+      }
+    }
+    draw();
+  });
+  ro.observe(canvas);
+
+  return { canvas, push, draw, disconnect: () => ro.disconnect() };
 }
 
 // ── Drawer content builders ───────────────────────────────────────────────────
@@ -722,6 +802,7 @@ function buildBandTab(
   mapping: AudioMapping,
   reactor: AudioReactor,
   traceUpdaters: Map<string, (amplitude: number) => void>,
+  registerDisconnect: (fn: () => void) => void,
 ): HTMLDivElement {
   const body = document.createElement('div');
   body.style.cssText = 'padding:6px 8px;';
@@ -835,9 +916,10 @@ function buildBandTab(
   body.appendChild(minMaxRow);
 
   // Trace canvas — registered so updateAudioViz() can push amplitude values
-  const { canvas: traceCanvas, push: pushTrace } = makeTraceCanvas(color);
+  const { canvas: traceCanvas, push: pushTrace, disconnect: disconnectTrace } = makeTraceCanvas(color);
   body.appendChild(traceCanvas);
   traceUpdaters.set(`${String(mapping.param)}::${mapping.band}`, pushTrace);
+  registerDisconnect(disconnectTrace);
 
   return body;
 }
@@ -851,8 +933,9 @@ function buildTotalTab(
   param: string,
   reactor: AudioReactor,
   totalUpdaters: Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>,
+  registerDisconnect: (fn: () => void) => void,
 ): { body: HTMLDivElement; registerUpdater: () => void } {
-  const STACKED_H = 40;
+  let STACKED_H = 40; // grows with panel height via stackRo
   const resolvedTextBody = getComputedStyle(document.documentElement)
     .getPropertyValue('--text-body').trim() || 'rgba(232,224,208,0.9)';
   const meta     = PARAM_META[param];
@@ -978,39 +1061,73 @@ function buildTotalTab(
   const combinedBuffer = new Float32Array(TRACE_LEN);
   let tracePtr = 0;
 
+  let stackPanelObserved = false;
+  const stackRo = new ResizeObserver(() => {
+    const w = stackCanvas.clientWidth;
+    if (w > 0) stackCanvas.width = Math.round(w * dpr);
+
+    const panelEl = stackCanvas.closest?.('.params-panel') as HTMLElement | null;
+    if (panelEl && !stackPanelObserved) { stackRo.observe(panelEl); stackPanelObserved = true; }
+    if (panelEl) {
+      const newH = Math.round(Math.min(180, Math.max(40, panelEl.clientHeight * 0.22)));
+      if (newH !== STACKED_H) {
+        STACKED_H = newH;
+        stackCanvas.style.height = `${STACKED_H}px`;
+        stackCanvas.height = Math.round(STACKED_H * dpr);
+      }
+    }
+    drawStackedTrace();
+  });
+  stackRo.observe(stackCanvas);
+  registerDisconnect(() => stackRo.disconnect());
+
   function drawStackedTrace(): void {
     const ctx = stackCanvas.getContext('2d');
     if (!ctx) return;
-    const W = TRACE_W, H = STACKED_H;
+    const W = Math.round(stackCanvas.width / dpr), H = STACKED_H;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const innerH = H - 2;
+    // Show as many history samples as CSS pixels wide.
+    const vLen = Math.min(TRACE_LEN, Math.max(2, W));
+    const startOff = TRACE_LEN - vLen;
+    // Helper: draw one trace buffer across W pixels with interpolation when stretched.
+    function drawTraceLine(getBuf: (j: number) => number): void {
+      ctx.beginPath();
+      if (vLen <= W) {
+        for (let x = 0; x < W; x++) {
+          const t  = (x / Math.max(1, W - 1)) * (vLen - 1);
+          const i0 = Math.floor(t), i1 = Math.min(vLen - 1, i0 + 1);
+          const v  = getBuf(i0) * (1 - (t - i0)) + getBuf(i1) * (t - i0);
+          const y  = H - Math.min(1, Math.max(0, v)) * innerH - 1;
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      } else {
+        for (let j = 0; j < vLen; j++) {
+          const x = (j / (vLen - 1)) * W;
+          const y = H - Math.min(1, Math.max(0, getBuf(j))) * innerH - 1;
+          if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
     // Individual band traces (faint)
     mappings.forEach((m, i) => {
       ctx.strokeStyle = BAND_COLORS[m.band];
       ctx.lineWidth   = 1;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
       ctx.globalAlpha = 0.45;
-      ctx.beginPath();
-      for (let j = 0; j < TRACE_LEN; j++) {
-        const idx = (tracePtr + j) % TRACE_LEN;
-        const x = (j / (TRACE_LEN - 1)) * W;
-        const y = H - bandBuffers[i][idx] * innerH - 1;
-        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+      drawTraceLine(j => bandBuffers[i][(tracePtr + startOff + j) % TRACE_LEN]);
     });
     // Combined trace (bright)
     ctx.strokeStyle = resolvedTextBody;
     ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
     ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    for (let j = 0; j < TRACE_LEN; j++) {
-      const idx = (tracePtr + j) % TRACE_LEN;
-      const x = (j / (TRACE_LEN - 1)) * W;
-      const y = H - Math.min(1, Math.max(0, combinedBuffer[idx])) * innerH - 1;
-      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+    drawTraceLine(j => combinedBuffer[(tracePtr + startOff + j) % TRACE_LEN]);
     ctx.globalAlpha = 1;
   }
 
@@ -1072,6 +1189,7 @@ function buildAudioTab(
   container: HTMLElement,
   reactor: AudioReactor,
   updMaps: AudioUpdaterMaps,
+  registerDisconnect: (fn: () => void) => void,
 ): { start: () => void; stop: () => void } {
 
   // Do NOT set display here — it's managed by switchTab (setting display:flex
@@ -1201,7 +1319,42 @@ function buildAudioTab(
   vizCanvas.style.cssText = 'width:100%;height:40px;display:block;border-radius:2px;background:#06050a;';
   canvasSection.appendChild(vizCanvas);
 
-  // Band meters
+  // Keep vizCanvas pixel buffer in sync with its CSS size on panel resize.
+  // When the panel grows vertically, expand the viz up to a W/2.5 aspect-ratio cap —
+  // but only after all fixed content (source, meters, mappings table) is fully visible.
+  const panelEl = container.parentElement?.parentElement as HTMLElement | null;
+
+  function updateVizSize(): void {
+    const w = vizCanvas.clientWidth;
+    if (w <= 0) return;
+    vizCanvas.width = Math.round(w * dpr);
+
+    if (panelEl) {
+      const tabBarEl = container.parentElement?.firstElementChild as HTMLElement | null;
+      const tabBarH  = tabBarEl ? tabBarEl.offsetHeight : 36;
+      // Total space available inside the panel for all tab content
+      const availH = panelEl.clientHeight
+        - 22       /* drag handle */
+        - tabBarH  /* tab button row */
+        - (sourceSection.offsetHeight || 80)
+        - (metersRow.offsetHeight || 25)
+        - (mappingsSection.offsetHeight || 200)
+        - 24;      /* canvasSection padding + breathing room */
+      const maxFromAR = w / 2.5;
+      const newH = Math.min(maxFromAR, Math.max(40, availH));
+      if (Math.abs(newH - vizCanvas.clientHeight) >= 1) {
+        vizCanvas.style.height = `${newH}px`;
+        vizCanvas.height = Math.round(newH * dpr);
+      }
+    }
+  }
+
+  const vizRo = new ResizeObserver(updateVizSize);
+  vizRo.observe(vizCanvas);
+  if (panelEl) vizRo.observe(panelEl);
+  registerDisconnect(() => vizRo.disconnect());
+
+  // Band traces
   const metersRow = document.createElement('div');
   metersRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:5px;';
 
@@ -1210,25 +1363,94 @@ function buildAudioTab(
     bass: 'bass', mid: 'mid', presence: 'pres', hi: 'hi', volume: 'vol',
   };
 
-  const meterBars: Partial<Record<BandKey, HTMLDivElement>> = {};
+  // Push functions for the band traces — called in the animation loop below
+  const bandPush: Partial<Record<BandKey, (v: number) => void>> = {};
+
+  function makeBandTrace(band: BandKey): { canvas: HTMLCanvasElement; push: (v: number) => void } {
+    const buf = new Float32Array(TRACE_LEN);
+    let ptr = 0;
+    let trH = TRACE_H;
+    let panelObserved = false;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = TRACE_W * dpr;
+    canvas.height = 14 * dpr;
+    canvas.style.cssText = `width:100%;height:14px;display:block;border-radius:2px;background:#06050a;`;
+
+    function draw(): void {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      const vLen = Math.min(TRACE_LEN, Math.max(2, W));
+      const startOff = TRACE_LEN - vLen;
+      ctx.strokeStyle = BAND_COLORS[band];
+      ctx.lineWidth   = 1.5 * dpr;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      if (vLen <= W) {
+        for (let x = 0; x < W; x++) {
+          const t  = (x / Math.max(1, W - 1)) * (vLen - 1);
+          const i0 = Math.floor(t);
+          const i1 = Math.min(vLen - 1, i0 + 1);
+          const v  = buf[(ptr + startOff + i0) % TRACE_LEN] * (1 - (t - i0))
+                   + buf[(ptr + startOff + i1) % TRACE_LEN] * (t - i0);
+          const y  = H - v * (H - 2) - 1;
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      } else {
+        for (let i = 0; i < vLen; i++) {
+          const idx = (ptr + startOff + i) % TRACE_LEN;
+          const x = (i / (vLen - 1)) * W;
+          const y = H - buf[idx] * (H - 2) - 1;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    const ro = new ResizeObserver(() => {
+      const panelEl = canvas.closest?.('.params-panel') as HTMLElement | null;
+      if (panelEl && !panelObserved) { ro.observe(panelEl); panelObserved = true; }
+      if (panelEl) {
+        const newH = Math.round(Math.min(36, Math.max(14, panelEl.clientHeight * 0.04)));
+        if (newH !== trH) {
+          trH = newH;
+          canvas.style.height = `${trH}px`;
+          canvas.height = Math.round(trH * dpr);
+        }
+      }
+      const newW = Math.round(canvas.clientWidth * dpr);
+      if (newW > 0 && newW !== canvas.width) canvas.width = newW;
+      draw();
+    });
+    ro.observe(canvas);
+    registerDisconnect(() => ro.disconnect());
+
+    function push(v: number): void {
+      buf[ptr] = v;
+      ptr = (ptr + 1) % TRACE_LEN;
+      draw();
+    }
+
+    return { canvas, push };
+  }
 
   for (const band of BAND_KEYS) {
     const col = document.createElement('div');
     col.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;';
 
-    const barWrap = document.createElement('div');
-    barWrap.style.cssText = 'width:100%;height:16px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;display:flex;align-items:flex-end;';
-
-    const bar = document.createElement('div');
-    bar.style.cssText = `width:100%;height:0%;background:${BAND_COLORS[band]};`;
-    barWrap.appendChild(bar);
-    meterBars[band] = bar;
+    const { canvas: traceCanvas, push } = makeBandTrace(band);
+    bandPush[band] = push;
 
     const label = document.createElement('div');
     label.style.cssText = `font-size:0.55rem;color:${BAND_COLORS[band]};letter-spacing:0.04em;`;
     label.textContent = BAND_LABELS[band];
 
-    col.appendChild(barWrap);
+    col.appendChild(traceCanvas);
     col.appendChild(label);
     metersRow.appendChild(col);
   }
@@ -1248,21 +1470,36 @@ function buildAudioTab(
   mappingsHeader.appendChild(mappingsLabel);
   mappingsSection.appendChild(mappingsHeader);
 
-  // Matrix table — fixed layout so we can control column widths precisely
-  // Layout: 85px label | 12px trace | 5 × ~29px bands (table is 250px wide)
+  // Matrix table — table-layout:fixed + colgroup for fully predictable column widths.
+  // param (38%) | trace (remaining) | 5 × band (18px each)
   const matrixTable = document.createElement('table');
-  matrixTable.style.cssText = 'width:100%;border-collapse:collapse;table-layout:fixed;';
+  matrixTable.style.cssText = 'width:100%;table-layout:fixed;border-collapse:collapse;';
+
+  // colgroup pins every column so widths scale deterministically as the panel resizes.
+  // param: fixed 115px (fits longest label "Attraction Radius" at 0.57rem with padding)
+  // trace: absorbs all remaining space
+  // bands: 30px each — wide enough to be comfortably clickable
+  const cg = document.createElement('colgroup');
+  const paramCol = document.createElement('col');
+  paramCol.style.width = '115px';
+  cg.appendChild(paramCol);
+  cg.appendChild(document.createElement('col')); // trace: absorbs remaining space
+  for (let i = 0; i < 5; i++) {
+    const c = document.createElement('col');
+    c.style.width = '6%';
+    cg.appendChild(c);
+  }
+  matrixTable.appendChild(cg);
 
   // thead — band column headers
   const thead = document.createElement('thead');
   const headerRow = document.createElement('tr');
   const paramTh = document.createElement('th');
-  paramTh.style.cssText = 'width:85px;text-align:left;padding-left:8px;font-size:0.5rem;color:transparent;user-select:none;';
+  paramTh.style.cssText = 'text-align:left;padding-left:8px;font-size:0.5rem;color:transparent;user-select:none;';
   paramTh.textContent = '-';
   headerRow.appendChild(paramTh);
-  // Trace column header (no label — just reserves the space)
   const traceTh = document.createElement('th');
-  traceTh.style.cssText = 'width:12px;padding:0;';
+  traceTh.style.cssText = 'padding:0;';
   headerRow.appendChild(traceTh);
   const BAND_ABBR: Record<BandKey, string> = { bass: 'B', mid: 'M', presence: 'P', hi: 'H', volume: 'V' };
   for (const band of BAND_KEYS_ORDER) {
@@ -1282,6 +1519,7 @@ function buildAudioTab(
   // Track which param row's drawer is currently open (null = none)
   let openParam: string | null = null;
   let drawerRow: HTMLTableRowElement | null = null;
+  let activeDrawerDisconnects: Array<() => void> = [];
 
   // Persistent sparkline objects — survive rebuildMatrix() so ring buffers are not wiped
   const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void }>();
@@ -1313,7 +1551,7 @@ function buildAudioTab(
       nameTd.title = meta.label;
       nameTd.style.cssText = [
         `font-size:0.57rem;padding:3px 4px 3px 8px;`,
-        `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`,
+        `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`,
         `color:${hasAny ? 'var(--text-body)' : 'var(--text-muted)'};`,
         `opacity:${hasAny ? '1' : '0.5'};`,
         `cursor:${hasAny ? 'pointer' : 'default'};`,
@@ -1552,6 +1790,10 @@ function buildAudioTab(
       return btn;
     }
 
+    // Per-drawer ResizeObserver disconnects — stored on outer scope so closeDrawer can reach them
+    activeDrawerDisconnects = [];
+    const drawerRegister = (fn: () => void) => activeDrawerDisconnects.push(fn);
+
     // Band tabs — sorted by BAND_KEYS_ORDER so tabs always match matrix column order
     const sortedMappings = [...activeMappings].sort(
       (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
@@ -1559,7 +1801,7 @@ function buildAudioTab(
     for (const m of sortedMappings) {
       const btn  = makeTabBtn(`● ${m.band}`, m.band, BAND_COLORS[m.band], true);
       tabs.appendChild(btn);
-      const body = buildBandTab(m, reactor, updMaps.traceUpdaters);
+      const body = buildBandTab(m, reactor, updMaps.traceUpdaters, drawerRegister);
       body.style.display = 'none';
       drawerTabBodies[m.band] = body;
     }
@@ -1568,7 +1810,7 @@ function buildAudioTab(
     if (multiMapping) {
       const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)', false);
       tabs.appendChild(totalBtn);
-      const { body: totalBody, registerUpdater } = buildTotalTab(param, reactor, updMaps.totalUpdaters);
+      const { body: totalBody, registerUpdater } = buildTotalTab(param, reactor, updMaps.totalUpdaters, drawerRegister);
       totalBody.style.display = 'none';
       drawerTabBodies['∑'] = totalBody;
       registerUpdater();
@@ -1586,6 +1828,8 @@ function buildAudioTab(
   }
 
   function closeDrawer(): void {
+    for (const d of activeDrawerDisconnects) d();
+    activeDrawerDisconnects = [];
     if (drawerRow) {
       drawerRow.remove();
       drawerRow = null;
@@ -1616,17 +1860,13 @@ function buildAudioTab(
         // analyze() must be called first — it populates freqData that drawAudioViz reads
         drawAudioViz(vizCanvas, reactor);
         for (const band of BAND_KEYS) {
-          const bar = meterBars[band];
-          if (bar) bar.style.height = `${Math.round(snapshot[band] * 100)}%`;
+          bandPush[band]?.(snapshot[band]);
         }
       } else if (wasActive) {
         // Only clear once after going inactive — skip redundant work on subsequent idle frames
         wasActive = false;
         const ctx2d = vizCanvas.getContext('2d');
         if (ctx2d) ctx2d.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
-        for (const bar of Object.values(meterBars)) {
-          if (bar) bar.style.height = '0%';
-        }
       }
       vizRafId = requestAnimationFrame(loop);
     }
