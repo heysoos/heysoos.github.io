@@ -104,7 +104,7 @@ export class BoidsController {
   private frame = 0;
   private running = false;
   private animId = 0;
-  private usingRaf = true;
+  private lastFrameTime = 0;
   maxFps = Infinity;
   tickCount = 0;
   private mouseX = 0;
@@ -415,8 +415,8 @@ export class BoidsController {
 
   stop() {
     this.running = false;
-    if (this.usingRaf) cancelAnimationFrame(this.animId);
-    else clearTimeout(this.animId);
+    cancelAnimationFrame(this.animId);
+    clearTimeout(this.animId);
   }
 
   reset() {
@@ -447,7 +447,17 @@ export class BoidsController {
 
   private tick = () => {
     if (!this.running || !this.gpu) return;
-    const frameStart = performance.now();
+
+    // Capped mode: use RAF as the heartbeat, skip GPU work if called too early
+    if (Number.isFinite(this.maxFps)) {
+      const now = performance.now();
+      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
+        this.animId = requestAnimationFrame(this.tick);
+        return;
+      }
+      this.lastFrameTime = now;
+    }
+
     const { device, context, canvas } = this.gpu;
 
     const resized = resizeCanvasToDisplaySize(canvas);
@@ -598,13 +608,12 @@ export class BoidsController {
     void device.queue.onSubmittedWorkDone().then(() => {
       if (!this.running) return;
       this.tickCount++;
-      if (Number.isFinite(this.maxFps)) {
-        this.usingRaf = false;
-        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
-        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
-      } else {
-        this.usingRaf = true;
+      if (!Number.isFinite(this.maxFps)) {
+        // Display rate (checked): RAF → vsync-locked to display Hz
         this.animId = requestAnimationFrame(this.tick);
+      } else {
+        // Slider mode (unchecked): setTimeout(0) → can exceed display Hz
+        this.animId = window.setTimeout(this.tick, 0) as unknown as number;
       }
     });
   };
