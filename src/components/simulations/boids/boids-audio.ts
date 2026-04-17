@@ -83,7 +83,12 @@ export class AudioReactor {
   private source: MediaStreamAudioSourceNode | null = null;
   private stream: MediaStream | null = null;
   private freqData: Uint8Array = new Uint8Array(FFT_SIZE / 2);
+  private bandBins: Record<BandKey, [number, number]> = {
+    bass: [0, 0], mid: [0, 0], presence: [0, 0], hi: [0, 0], volume: [0, 0],
+  };
   activeSourceKind: AudioSourceKind | null = null;
+
+  // ── Audio lifecycle ──────────────────────────────────────────────────────────
 
   constructor() {
     this.loadMappings();
@@ -128,6 +133,7 @@ export class AudioReactor {
       this.activeSourceKind = sourceKind;
       this.status = 'active';
       this.lastError = '';
+      this._cacheBinRanges();
     } catch (e) {
       this.lastError = e instanceof Error ? e.message : String(e);
       this.stop();           // clears resources, resets status to 'idle'
@@ -151,18 +157,29 @@ export class AudioReactor {
     this.status = 'idle';
   }
 
+  // ── Frequency analysis ───────────────────────────────────────────────────────
+
   private _hzToBin(hz: number): number {
     if (!this.ctx || !this.analyser) return 0;
     return Math.round(hz / (this.ctx.sampleRate / FFT_SIZE));
   }
 
-  private _bandAverage(lo: number, hi: number): number {
-    const loB = Math.max(0, this._hzToBin(lo));
-    const hiB = Math.min(this.freqData.length - 1, this._hzToBin(hi));
+  private _cacheBinRanges(): void {
+    for (const [band, [lo, hi]] of Object.entries(BAND_HZ) as [BandKey, [number, number]][]) {
+      if (band === 'volume') { this.bandBins[band] = [0, 0]; continue; }
+      this.bandBins[band] = [
+        Math.max(0, this._hzToBin(lo)),
+        Math.min(this.freqData.length - 1, this._hzToBin(hi)),
+      ];
+    }
+  }
+
+  private _bandAverage(band: BandKey): number {
+    const [loB, hiB] = this.bandBins[band];
     if (hiB < loB) return 0;
     let sum = 0;
     for (let i = loB; i <= hiB; i++) sum += this.freqData[i];
-    return sum / ((hiB - loB + 1) * 255);  // normalise to 0–1
+    return sum / ((hiB - loB + 1) * 255);
   }
 
   analyze(): BandSnapshot {
@@ -178,10 +195,10 @@ export class AudioReactor {
     const volume = Math.sqrt(rms / this.freqData.length);
 
     return {
-      bass:     this._bandAverage(...BAND_HZ.bass),
-      mid:      this._bandAverage(...BAND_HZ.mid),
-      presence: this._bandAverage(...BAND_HZ.presence),
-      hi:       this._bandAverage(...BAND_HZ.hi),
+      bass:     this._bandAverage('bass'),
+      mid:      this._bandAverage('mid'),
+      presence: this._bandAverage('presence'),
+      hi:       this._bandAverage('hi'),
       volume,
     };
   }
@@ -189,6 +206,8 @@ export class AudioReactor {
   getFrequencyData(): Uint8Array {
     return this.freqData;
   }
+
+  // ── Mapping application ──────────────────────────────────────────────────────
 
   applyMappings(params: BoidsParams, snapshot: BandSnapshot): void {
     // Take a base snapshot BEFORE any mapping mutates params,
@@ -242,6 +261,8 @@ export class AudioReactor {
         Math.max(meta.min, Math.min(meta.max, val));
     }
   }
+
+  // ── Mapping persistence ──────────────────────────────────────────────────────
 
   saveMappings(): void {
     try {
