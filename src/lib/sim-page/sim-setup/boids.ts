@@ -1,6 +1,6 @@
 // src/lib/sim-page/sim-setup/boids.ts
 import type { BoidsController } from '../../../components/simulations/boids/boids-controller';
-import { buildBoidsPanel } from '../../../components/simulations/boids/boids-panel';
+import { buildBoidsPanel } from '../../../components/simulations/boids/panel';
 import { AudioReactor } from '../../../components/simulations/boids/boids-audio';
 import { BOIDS_PRESETS } from '../../../data/boids-presets';
 import { createShaderEditor, type ShaderEditorHandle } from '../shader-editor';

@@ -1,58 +1,26 @@
-// src/components/simulations/boids/boids-panel.ts
+// src/components/simulations/boids/panel/audio-tab.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// FILE STRUCTURE
-//   pillStyle()              ~L24   — shared pill-button CSS helper
-//   AudioUpdaterMaps         ~L35   — interface grouping the 5 live-update maps
-//   buildBoidsPanel()        ~L46   — main entry: tab bar, Params tab, Image/Audio wiring
-//   buildOpacityModeRow()    ~L530  — Params tab: opacity mode toggle
-//   buildShapeRow()          ~L555  — Params tab: shape selector
-//   buildColorRow()          ~L585  — Params tab: color swatches + picker
-//   buildTrailsRow()         ~L635  — Params tab: trails toggle + decay slider
-//   makeResetBtn()           ~L670  — range slider ↺ reset button
-//   Module-level constants   ~L705  — TRACE_*, MAT_TRACE_*, dpr, BAND_KEYS_ORDER
-//   makeMatrixTrace()        ~L718  — mini sparkline for matrix trace column
-//   makeTraceCanvas()        ~L760  — full-size band amplitude trace canvas
-//   buildBandTab()           ~L825  — per-band drawer: depth / gain / mode / range / trace
-//   buildTotalTab()          ~L960  — ∑ combined drawer tab
-//   buildAudioTab()          ~L1175 — Audio tab: source, spectrum, matrix, drawers, viz loop
+// Audio tab builder extracted from boids-panel.ts.
+//   makeMatrixTrace()   — mini sparkline for matrix trace column (RingBufferCanvas)
+//   makeTraceCanvas()   — full-size band amplitude trace canvas (RingBufferCanvas)
+//   buildBandTab()      — per-band drawer: depth / gain / mode / range / trace
+//   buildTotalTab()     — ∑ combined drawer tab
+//   buildAudioTab()     — Audio tab: source, spectrum, matrix, drawers, viz loop
 // ─────────────────────────────────────────────────────────────────────────────
-import type { BoidsController } from './boids-controller';
-import type { BoidsPreset } from '../../../data/boids-presets';
-import { buildImagePanelSection } from '../../../lib/webgpu/image-editor/image-panel-section';
-import { openImageEditorOverlay  } from '../../../lib/webgpu/image-editor/image-editor-overlay';
-import {
-  type AudioReactor,
-  type BandKey,
-  type AudioMapping,
-  type BandSnapshot,
-  BAND_COLORS,
-  PARAM_META,
-  MAPPABLE_PARAMS,
-  drawAudioViz,
-} from './boids-audio';
+import type { AudioReactor, BandKey, AudioMapping, BandSnapshot } from '../boids-audio';
+import { BAND_COLORS, PARAM_META, MAPPABLE_PARAMS, drawAudioViz } from '../boids-audio';
+import { RingBufferCanvas, makeTraceRenderer, makeMiniRenderer, TRACE_LEN } from './ring-buffer-canvas';
+import { DrawerController } from './drawer-controller';
+import { pillStyle, STYLES } from './panel-styles';
 
-// ── Shared utilities ──────────────────────────────────────────────────────────
-
-/** CSS string for a pill-style toggle button. Used by presets, audio source, and opacity mode. */
-function pillStyle(active: boolean): string {
-  return [
-    'padding:2px 8px',
-    'border-radius:12px',
-    'font-size:0.68rem',
-    'cursor:pointer',
-    'transition:background 0.15s,color 0.15s',
-    active
-      ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
-      : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);',
-  ].join(';');
-}
+// ── Shared types ──────────────────────────────────────────────────────────────
 
 /**
  * Groups the five Maps that bridge the Params tab indicator bars (paramIndicators)
  * and the Audio tab live updaters. Passed from buildBoidsPanel into buildAudioTab
  * so both sides share the same references.
  */
-interface AudioUpdaterMaps {
+export interface AudioUpdaterMaps {
   paramIndicators:     Map<string, { wrap: HTMLElement; fill: HTMLElement }>;
   cellUpdaters:        Map<string, (amplitude: number) => void>;
   totalUpdaters:       Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>;
@@ -60,517 +28,53 @@ interface AudioUpdaterMaps {
   matrixTraceUpdaters: Map<string, (normalizedVal: number) => void>;
 }
 
-// ── Main panel builder ────────────────────────────────────────────────────────
+// ── Module-level constant ─────────────────────────────────────────────────────
 
-export interface BoidsPanelOpts {
-  onShaderEdit?: () => void;
-  onClose?: () => void;
-  presets?: BoidsPreset[];
-  activePresetId?: string;
-  onPresetLoad?: (preset: BoidsPreset) => void;
-  reactor?: AudioReactor;
-}
+/** Band order used consistently across the matrix header, rows, and drawers. */
+const BAND_KEYS_ORDER: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
 
-export function buildBoidsPanel(
-  container: HTMLElement,
-  controller: BoidsController,
-  opts: BoidsPanelOpts = {},
-): { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } {
+// ── Canvas utilities ──────────────────────────────────────────────────────────
 
-  // ── ResizeObserver disconnect registry ───────────────────────────────────────
-  const disconnects: Array<() => void> = [];
-  const registerDisconnect = (fn: () => void) => disconnects.push(fn);
-
-  // ── Audio visualisation state ─────────────────────────────────────────────
-  const updMaps: AudioUpdaterMaps = {
-    paramIndicators:     new Map(),
-    cellUpdaters:        new Map(),
-    totalUpdaters:       new Map(),
-    traceUpdaters:       new Map(),
-    matrixTraceUpdaters: new Map(),
-  };
-
-  // ── Tab bar ───────────────────────────────────────────────────────────────
-  const tabBar = document.createElement('div');
-  tabBar.style.cssText = [
-    'display:flex',
-    'border-bottom:1px solid var(--bg-surface-border)',
-    'position:relative',
-  ].join(';');
-
-  // Close + shader buttons in top-right corner of the bar
-  const tabRight = document.createElement('div');
-  tabRight.style.cssText = 'display:flex;align-items:center;gap:0.35rem;padding:0 0.35rem;margin-left:auto;';
-  if (opts.onShaderEdit) {
-    const shaderBtn = document.createElement('button');
-    shaderBtn.className = 'panel-close';
-    shaderBtn.title = 'Edit Shader';
-    shaderBtn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    shaderBtn.addEventListener('click', opts.onShaderEdit);
-    tabRight.appendChild(shaderBtn);
-  }
-  if (opts.onClose) {
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'panel-close';
-    closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', opts.onClose);
-    tabRight.appendChild(closeBtn);
-  }
-
-  const tabNames = ['Params', 'Audio', 'Image'] as const;
-  const tabBodies: Record<string, HTMLDivElement> = {};
-  const tabBtns:  Record<string, HTMLButtonElement> = {};
-
-  let activeTab = 'Params';
-
-  function buildTabStyle(active: boolean): string {
-    return [
-      'padding:5px 8px',
-      'font-size:0.62rem',
-      'text-transform:uppercase',
-      'letter-spacing:0.07em',
-      'background:none',
-      'border:none',
-      'border-bottom:2px solid ' + (active ? 'var(--accent)' : 'transparent'),
-      'color:' + (active ? 'var(--accent)' : 'var(--text-muted)'),
-      'cursor:pointer',
-      'transition:color 0.15s,border-color 0.15s',
-    ].join(';');
-  }
-
-  let audioVizControls: { start: () => void; stop: () => void } | null = null;
-
-  function switchTab(name: string): void {
-    if (name === activeTab) return;
-    if (activeTab === 'Audio') audioVizControls?.stop();
-    activeTab = name;
-    for (const t of tabNames) {
-      const isActive = t === name;
-      tabBtns[t].style.cssText = buildTabStyle(isActive);
-      tabBodies[t].style.display = isActive ? 'block' : 'none';
-    }
-    if (name === 'Audio') audioVizControls?.start();
-  }
-
-  for (const name of tabNames) {
-    const btn = document.createElement('button');
-    btn.textContent = name;
-    btn.style.cssText = buildTabStyle(name === 'Params');
-    btn.addEventListener('click', () => switchTab(name));
-    tabBar.appendChild(btn);
-    tabBtns[name] = btn;
-
-    const body = document.createElement('div');
-    body.style.display = name === 'Params' ? 'block' : 'none';
-    body.style.overflowX = 'hidden';
-    tabBodies[name] = body;
-  }
-
-  tabBar.appendChild(tabRight);
-  container.appendChild(tabBar);
-
-  for (const name of tabNames) container.appendChild(tabBodies[name]);
-
-  const paramsBody = tabBodies['Params'];
-  const audioBody  = tabBodies['Audio'];
-  const imageBody  = tabBodies['Image'];
-
-  if (opts.reactor) {
-    audioVizControls = buildAudioTab(audioBody, opts.reactor, updMaps, registerDisconnect);
-    // Start immediately stopped — Params tab is shown first
-    audioVizControls.stop();
-  } else {
-    audioBody.style.cssText = 'padding:8px;color:var(--text-muted);font-size:0.7rem;';
-    audioBody.textContent = 'No audio reactor provided.';
-  }
-
-  // ── Preset switcher ───────────────────────────────────────────────────────
-  if (opts.presets && opts.presets.length > 0) {
-    const pillRow = document.createElement('div');
-    pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin:0.3rem 0 0.1rem;';
-    for (const preset of opts.presets) {
-      const isActive = preset.id === opts.activePresetId;
-      const pill = document.createElement('button');
-      pill.style.cssText = pillStyle(isActive);
-      pill.textContent = preset.name;
-      pill.addEventListener('click', () => opts.onPresetLoad?.(preset));
-      pillRow.appendChild(pill);
-    }
-    paramsBody.appendChild(pillRow);
-  }
-
-  // ── Helpers (local — addSlider closes over updMaps.paramIndicators) ────────
-  function addSection(parent: HTMLElement, label: string): void {
-    const divider = document.createElement('div');
-    divider.className = 'section-divider';
-    parent.appendChild(divider);
-    const heading = document.createElement('p');
-    heading.className = 'section-heading';
-    heading.textContent = label;
-    parent.appendChild(heading);
-  }
-
-  function addSlider(
-    parent: HTMLElement,
-    label: string,
-    min: number, max: number, step: number,
-    get: () => number,
-    set: (v: number) => void,
-    scale: 'linear' | 'log' = 'linear',
-    paramKey?: string,
-  ): void {
-    const row = document.createElement('div');
-    row.className = 'param-row';
-    const labelEl = document.createElement('div');
-    labelEl.className = 'param-label';
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = label;
-    const valueSpan = document.createElement('span');
-    valueSpan.className = 'param-value';
-    valueSpan.style.cursor = 'text';
-    valueSpan.title = 'Click to edit';
-    labelEl.appendChild(nameSpan);
-    labelEl.appendChild(valueSpan);
-    const input = document.createElement('input');
-    input.type = 'range';
-
-    const isLog = scale === 'log';
-    const sliderMin = isLog ? Math.log(min) : min;
-    const sliderMax = isLog ? Math.log(max) : max;
-    const sliderStep = isLog ? (sliderMax - sliderMin) / 1000 : step;
-    const decimals = step >= 1 ? 0 : (String(step).split('.')[1]?.length ?? 2);
-
-    function sliderToValue(s: number): number {
-      if (!isLog) return s;
-      const v = Math.exp(s);
-      return decimals === 0 ? Math.round(v) : parseFloat(v.toFixed(decimals));
-    }
-    function valueToSlider(v: number): number {
-      return isLog ? Math.log(Math.max(v, min)) : v;
-    }
-
-    input.min = String(sliderMin);
-    input.max = String(sliderMax);
-    input.step = String(sliderStep);
-    input.value = String(valueToSlider(get()));
-    valueSpan.textContent = get().toFixed(decimals);
-
-    input.addEventListener('input', () => {
-      const val = sliderToValue(parseFloat(input.value));
-      set(val);
-      valueSpan.textContent = val.toFixed(decimals);
-    });
-
-    valueSpan.addEventListener('click', () => {
-      const lastVal = get();
-      const editInput = document.createElement('input');
-      editInput.type = 'text';
-      editInput.value = lastVal.toFixed(decimals);
-      editInput.className = 'param-value-edit';
-      valueSpan.replaceWith(editInput);
-      editInput.select();
-
-      function commit(): void {
-        const raw = decimals === 0 ? parseInt(editInput.value, 10) : parseFloat(editInput.value);
-        const isValid = !isNaN(raw) && raw >= min && raw <= max;
-        const finalVal = isValid ? raw : lastVal;
-        if (isValid) {
-          set(finalVal);
-          input.value = String(valueToSlider(finalVal));
-        }
-        valueSpan.textContent = finalVal.toFixed(decimals);
-        editInput.replaceWith(valueSpan);
-      }
-
-      editInput.addEventListener('blur', commit);
-      editInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { editInput.blur(); }
-        if (e.key === 'Escape') { editInput.value = lastVal.toFixed(decimals); editInput.blur(); }
-      });
-      editInput.focus();
-    });
-
-    row.appendChild(labelEl);
-    row.appendChild(input);
-    // Audio modulation indicator — thin colored bar below the slider track,
-    // shown only when an active mapping targets this param.
-    if (paramKey) {
-      const indWrap = document.createElement('div');
-      indWrap.style.cssText = 'height:2px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;margin-top:2px;display:none;';
-      const indFill = document.createElement('div');
-      indFill.style.cssText = 'height:100%;width:0%;border-radius:1px;';
-      indWrap.appendChild(indFill);
-      row.appendChild(indWrap);
-      updMaps.paramIndicators.set(paramKey, { wrap: indWrap, fill: indFill });
-    }
-    parent.appendChild(row);
-  }
-
-  // ── Appearance ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Appearance');
-  addSlider(paramsBody, 'Size',    0.001, 0.08, 0.001, () => controller.params.size,    v => { controller.params.size = v; },    'log');
-  addSlider(paramsBody, 'Opacity', 0.01,  1.0,  0.01,  () => controller.params.opacity, v => { controller.params.opacity = v; });
-  buildOpacityModeRow(paramsBody, controller);
-  buildShapeRow(paramsBody, controller);
-  buildColorRow(paramsBody, controller);
-  buildTrailsRow(paramsBody, controller, addSlider);
-
-  // ── Simulation ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Simulation');
-  addSlider(paramsBody, 'Time Step', 0.001, 0.1,   0.001, () => controller.params.dt,           v => { controller.params.dt = v; },           'linear', 'dt');
-  addSlider(paramsBody, 'Particles', 10,    10000, 10,    () => controller.params.numParticles,  v => { controller.params.numParticles = v; },  'log');
-
-  // ── Forces ────────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Forces');
-  addSlider(paramsBody, 'Attraction Radius', 0.02, 0.6,  0.01,  () => controller.params.attractionRadius, v => { controller.params.attractionRadius = v; }, 'linear', 'attractionRadius');
-  addSlider(paramsBody, 'Repulsion Radius',  0.01, 0.3,  0.005, () => controller.params.repulsionRadius,  v => { controller.params.repulsionRadius = v; },  'linear', 'repulsionRadius');
-  addSlider(paramsBody, 'Attraction',        0,    2.0,  0.01,  () => controller.params.attraction,       v => { controller.params.attraction = v; },       'linear', 'attraction');
-  addSlider(paramsBody, 'Repulsion',         0,    5.0,  0.05,  () => controller.params.repulsion,        v => { controller.params.repulsion = v; },        'linear', 'repulsion');
-  addSlider(paramsBody, 'Alignment',         0,    1.0,  0.01,  () => controller.params.alignment,        v => { controller.params.alignment = v; },        'linear', 'alignment');
-  addSlider(paramsBody, 'Friction',          0,    10.0, 0.1,   () => controller.params.friction,         v => { controller.params.friction = v; },         'linear', 'friction');
-  addSlider(paramsBody, 'Max Speed',         0.01, 1.0,  0.01,  () => controller.params.maxSpeed,         v => { controller.params.maxSpeed = v; },         'linear', 'maxSpeed');
-  addSlider(paramsBody, 'Noise',             0,    0.5,  0.005, () => controller.params.noise ?? 0,       v => { controller.params.noise = v; });
-
-  // ── Perception ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Perception');
-  addSlider(paramsBody, 'Vision Cone',  -1.0, 0.99, 0.05, () => controller.params.coneAngle,   v => { controller.params.coneAngle = v; },   'linear', 'coneAngle');
-  addSlider(paramsBody, 'Mouse Radius', 0.05, 0.5,  0.01, () => controller.params.mouseRadius, v => { controller.params.mouseRadius = v; });
-
-  // ── Image Force Field ─────────────────────────────────────────────────────
-  buildImagePanelSection(imageBody, controller.imageProcessor, {
-    onOpenEditor: () => {
-      const viewport = document.getElementById('sim-viewport') ?? document.body;
-      openImageEditorOverlay(controller.imageProcessor, {
-        onClose:        () => { /* overlay closed */ },
-        onRebindGroups: () => controller.rebuildBoidsBindGroups(),
-        onSetForceMode: (m) => controller.imageForce.setForceMode(m),
-      }, viewport);
-    },
-    onRebindGroups: () => controller.rebuildBoidsBindGroups(),
-    webcam:         controller.webcam,
-    imageForce:     controller.imageForce,
+/** Mini sparkline used in the matrix trace column. RingBufferCanvas backed, redraws on push(). */
+function makeMatrixTrace(
+  bandColor: string,
+): { canvas: HTMLCanvasElement; push: (v: number) => void; disconnect: () => void } {
+  const rbc = new RingBufferCanvas({
+    render: makeMiniRenderer(bandColor),
+    initialHeight: 16,
   });
-
-  // Called from the mapping loop in slug.astro every rAF.
-  // Reads controller.params (already audio-modulated) to update indicator bars
-  // in the Params tab and amplitude bars + traces in the Audio tab.
-  function updateAudioViz(baseParams?: Record<string, number>): void {
-    const reactor = opts.reactor;
-    if (!reactor) return;
-
-    // Reset all param indicators to hidden
-    for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
-
-    if (!reactor.isActive()) {
-      for (const [, u] of updMaps.cellUpdaters) u(0);
-      return;
-    }
-
-    const snapshot = reactor.analyze();
-
-    // Cell amplitude bars + traces
-    for (const m of reactor.mappings) {
-      if (!m.enabled) continue;
-      const key = `${String(m.param)}::${m.band}`;
-      const effectiveSignal = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
-      updMaps.cellUpdaters.get(key)?.(effectiveSignal);
-      updMaps.traceUpdaters.get(key)?.(effectiveSignal);
-    }
-
-    // Total-tab live updates
-    for (const [param, u] of updMaps.totalUpdaters) {
-      const baseVal      = baseParams?.[param] ?? (controller.params as Record<string, number>)[param] ?? 0;
-      const modulatedVal = (controller.params as Record<string, number>)[param] ?? 0;
-      u(snapshot, baseVal, modulatedVal);
-    }
-
-    // Matrix row sparklines (one per param, shows combined modulated value)
-    for (const [param, u] of updMaps.matrixTraceUpdaters) {
-      const meta = PARAM_META[param];
-      if (!meta) continue;
-      const modulatedVal = (controller.params as Record<string, number>)[param] ?? 0;
-      const range = meta.max - meta.min;
-      const normalized = range > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / range)) : 0;
-      u(normalized);
-    }
-
-    // Param indicators in the Params tab
-    for (const m of reactor.mappings) {
-      if (!m.enabled) continue;
-      const meta = PARAM_META[m.param as string];
-      if (!meta) continue;
-      const currentVal = (controller.params as Record<string, number>)[m.param as string] ?? 0;
-      const range = meta.max - meta.min;
-      const fraction = range > 0 ? Math.max(0, Math.min(1, (currentVal - meta.min) / range)) : 0;
-      const ind = updMaps.paramIndicators.get(m.param as string);
-      if (ind) {
-        ind.wrap.style.display = 'block';
-        ind.fill.style.width   = `${fraction * 100}%`;
-        ind.fill.style.background = BAND_COLORS[m.band];
-      }
-    }
-  }
-
+  rbc.canvas.style.cssText = STYLES.matrixCanvas + 'width:100%;height:16px;margin-top:2px;';
   return {
-    teardown: () => { audioVizControls?.stop(); for (const d of disconnects) d(); },
-    updateAudioViz,
+    canvas:     rbc.canvas,
+    push:       (v) => rbc.push(v),
+    disconnect: () => rbc.disconnect(),
   };
 }
 
-// ── Params tab section builders ───────────────────────────────────────────────
-// Each handles one Appearance sub-section. Extracted from buildBoidsPanel to
-// keep that function navigable. Add new Appearance controls here, not inline.
-
-function buildOpacityModeRow(parent: HTMLElement, controller: BoidsController): void {
-  const modeRow = document.createElement('div');
-  modeRow.className = 'param-row';
-  const modeLabel = document.createElement('div');
-  modeLabel.className = 'param-label';
-  modeLabel.innerHTML = '<span>Opacity Mode</span>';
-  const btnRow = document.createElement('div');
-  btnRow.style.cssText = 'display:flex;gap:4px;';
-  const modes = ['velocity', 'uniform'];
-  const modeBtns: HTMLButtonElement[] = [];
-  for (let mi = 0; mi < modes.length; mi++) {
-    const btn = document.createElement('button');
-    btn.style.cssText = pillStyle(controller.params.opacityMode === mi);
-    btn.textContent = modes[mi];
-    btn.addEventListener('click', () => {
-      controller.params.opacityMode = mi;
-      modeBtns.forEach((b, j) => { b.style.cssText = pillStyle(j === mi); });
-    });
-    modeBtns.push(btn);
-    btnRow.appendChild(btn);
-  }
-  modeRow.appendChild(modeLabel);
-  modeRow.appendChild(btnRow);
-  parent.appendChild(modeRow);
-}
-
-function buildShapeRow(parent: HTMLElement, controller: BoidsController): void {
-  const labelEl = document.createElement('div');
-  labelEl.className = 'param-label';
-  labelEl.innerHTML = '<span>Shape</span>';
-  parent.appendChild(labelEl);
-  const shapeRow = document.createElement('div');
-  shapeRow.className = 'shape-row';
-  const shapes = [
-    { id: 0, glyph: '▲' },
-    { id: 1, glyph: '●' },
-    { id: 2, glyph: '◆' },
-    { id: 3, glyph: '✦' },
-  ];
-  const shapeBtns: HTMLButtonElement[] = [];
-  for (const s of shapes) {
-    const btn = document.createElement('button');
-    btn.className = 'shape-btn' + (controller.params.shapeId === s.id ? ' active' : '');
-    btn.textContent = s.glyph;
-    btn.title = ['Triangle', 'Circle', 'Diamond', 'Blob'][s.id];
-    btn.addEventListener('click', () => {
-      controller.params.shapeId = s.id;
-      shapeBtns.forEach((b, i) => b.classList.toggle('active', i === s.id));
-    });
-    shapeBtns.push(btn);
-    shapeRow.appendChild(btn);
-  }
-  parent.appendChild(shapeRow);
-}
-
-function buildColorRow(parent: HTMLElement, controller: BoidsController): void {
-  const labelEl = document.createElement('div');
-  labelEl.className = 'param-label';
-  labelEl.innerHTML = '<span>Color</span>';
-  parent.appendChild(labelEl);
-  const colorRow = document.createElement('div');
-  colorRow.className = 'color-row';
-  const colorPresets = [
-    { hex: '#e0a040', r: 0.88, g: 0.63, b: 0.25, label: 'Amber' },
-    { hex: '#4090e0', r: 0.25, g: 0.56, b: 0.88, label: 'Blue'  },
-    { hex: '#50c878', r: 0.31, g: 0.78, b: 0.47, label: 'Green' },
-    { hex: '#e05080', r: 0.88, g: 0.31, b: 0.50, label: 'Rose'  },
-    { hex: '#ffffff', r: 1.00, g: 1.00, b: 1.00, label: 'White' },
-  ];
-  const swatches: HTMLButtonElement[] = [];
-  function applyColor(r: number, g: number, b: number): void {
-    controller.params.colorR = r;
-    controller.params.colorG = g;
-    controller.params.colorB = b;
-  }
-  function hexToRgb(hex: string): [number, number, number] {
-    const n = parseInt(hex.slice(1), 16);
-    return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
-  }
-  for (let i = 0; i < colorPresets.length; i++) {
-    const p = colorPresets[i];
-    const btn = document.createElement('button');
-    btn.className = 'color-swatch' + (i === 0 ? ' active' : '');
-    btn.style.background = p.hex;
-    btn.title = p.label;
-    btn.addEventListener('click', () => {
-      applyColor(p.r, p.g, p.b);
-      swatches.forEach((s, j) => s.classList.toggle('active', j === i));
-      colorPicker.value = p.hex;
-    });
-    swatches.push(btn);
-    colorRow.appendChild(btn);
-  }
-  const colorPicker = document.createElement('input');
-  colorPicker.type = 'color';
-  colorPicker.className = 'color-picker';
-  colorPicker.value = colorPresets[0].hex;
-  colorPicker.title = 'Custom color';
-  colorPicker.addEventListener('input', () => {
-    const [r, g, b] = hexToRgb(colorPicker.value);
-    applyColor(r, g, b);
-    swatches.forEach(s => s.classList.remove('active'));
+/** Full-width trace canvas for a single band. Shows min/max/current labels.
+ *  Height adapts to ~20% of the params-panel height (clamped to [TRACE_H, 160px]). */
+function makeTraceCanvas(
+  bandColor: string,
+  registerDisconnect: (fn: () => void) => void,
+): { canvas: HTMLCanvasElement; push: (v: number) => void } {
+  const TRACE_H = 40;
+  const rbc = new RingBufferCanvas({
+    render: makeTraceRenderer(bandColor),
+    initialHeight: TRACE_H,
+    onResize: (w, currentH) => {
+      const panelEl = rbc.canvas.closest?.('.params-panel') as HTMLElement | null;
+      if (!panelEl) return undefined;
+      const newH = Math.round(Math.min(160, Math.max(TRACE_H, panelEl.clientHeight * 0.20)));
+      return newH !== currentH ? newH : undefined;
+    },
   });
-  colorRow.appendChild(colorPicker);
-  parent.appendChild(colorRow);
+  registerDisconnect(() => rbc.disconnect());
+  return { canvas: rbc.canvas, push: (v) => rbc.push(v) };
 }
 
-function buildTrailsRow(
-  parent: HTMLElement,
-  controller: BoidsController,
-  addSlider: (
-    parent: HTMLElement, label: string,
-    min: number, max: number, step: number,
-    get: () => number, set: (v: number) => void,
-  ) => void,
-): void {
-  const trailRow = document.createElement('div');
-  trailRow.className = 'trail-row';
-  const trailLabel = document.createElement('span');
-  trailLabel.textContent = 'Trails';
-  const toggleWrap = document.createElement('label');
-  toggleWrap.className = 'toggle-switch';
-  const toggleInput = document.createElement('input');
-  toggleInput.type = 'checkbox';
-  toggleInput.checked = controller.trailsEnabled;
-  const toggleSlider = document.createElement('span');
-  toggleSlider.className = 'toggle-slider';
-  toggleWrap.appendChild(toggleInput);
-  toggleWrap.appendChild(toggleSlider);
-  trailRow.appendChild(trailLabel);
-  trailRow.appendChild(toggleWrap);
-  parent.appendChild(trailRow);
-  const decayWrapper = document.createElement('div');
-  decayWrapper.style.display = controller.trailsEnabled ? 'block' : 'none';
-  addSlider(decayWrapper, 'Trail Decay', 0.80, 0.99, 0.01,
-    () => controller.trailDecay,
-    v => { controller.trailDecay = v; },
-  );
-  parent.appendChild(decayWrapper);
-  toggleInput.addEventListener('change', () => {
-    controller.trailsEnabled = toggleInput.checked;
-    decayWrapper.style.display = toggleInput.checked ? 'block' : 'none';
-  });
-}
+// ── Drawer content builders ───────────────────────────────────────────────────
 
-// ── Reset button helper ───────────────────────────────────────────────────────
-// Returns a small ↺ button wired to a range slider. Invisible when at default,
-// muted when changed, accent on hover. Dispatches 'input' so the slider's own
-// listener handles value propagation.
-
+// makeResetBtn — local copy (boids-panel.ts keeps the canonical version)
 function makeResetBtn(slider: HTMLInputElement, defaultValue: number): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.textContent = '↺';
@@ -598,201 +102,6 @@ function makeResetBtn(slider: HTMLInputElement, defaultValue: number): HTMLButto
 
   return btn;
 }
-
-// ── Audio tab canvas constants ────────────────────────────────────────────────
-// Shared by makeMatrixTrace, makeTraceCanvas, buildBandTab, and buildTotalTab.
-
-const TRACE_LEN = 1000;
-const TRACE_W   = 184;
-const TRACE_H   = 32;
-const dpr       = window.devicePixelRatio || 1;
-
-const MAT_TRACE_LEN = 300;
-const MAT_TRACE_W   = 10;
-const MAT_TRACE_H   = 14;
-
-/** Band order used consistently across the matrix header, rows, and drawers. */
-const BAND_KEYS_ORDER: BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
-
-// ── Canvas utilities ──────────────────────────────────────────────────────────
-
-/** Mini sparkline used in the matrix trace column. Ring-buffer backed, redraws on push(). */
-function makeMatrixTrace(): { canvas: HTMLCanvasElement; push: (v: number) => void; disconnect: () => void } {
-  const buf = new Float32Array(MAT_TRACE_LEN);
-  let ptr = 0;
-  const canvas = document.createElement('canvas');
-  canvas.width  = MAT_TRACE_W * dpr;
-  canvas.height = MAT_TRACE_H * dpr;
-  canvas.style.cssText = `width:100%;height:${MAT_TRACE_H}px;display:block;border-radius:1px;`;
-
-  function draw(): void {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth   = dpr;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-    ctx.beginPath();
-    const H = canvas.height, W = canvas.width;
-    // Show as many history samples as there are CSS pixels, up to the buffer size.
-    const vLen = Math.min(MAT_TRACE_LEN, Math.max(2, Math.round(W / dpr)));
-    const startOff = MAT_TRACE_LEN - vLen;
-    // Interpolate one point per device pixel for a gapless line at any zoom level.
-    if (vLen <= Math.round(W / dpr)) {
-      const cssW = Math.round(W / dpr);
-      for (let x = 0; x < cssW; x++) {
-        const t  = (x / Math.max(1, cssW - 1)) * (vLen - 1);
-        const i0 = Math.floor(t);
-        const i1 = Math.min(vLen - 1, i0 + 1);
-        const v  = buf[(ptr + startOff + i0) % MAT_TRACE_LEN] * (1 - (t - i0))
-                 + buf[(ptr + startOff + i1) % MAT_TRACE_LEN] * (t - i0);
-        const px = x * dpr;
-        const y  = H - v * (H - 2) - 1;
-        if (x === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
-      }
-    } else {
-      for (let i = 0; i < vLen; i++) {
-        const idx = (ptr + startOff + i) % MAT_TRACE_LEN;
-        const x = (i / (vLen - 1)) * W;
-        const y = H - buf[idx] * (H - 2) - 1;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
-  }
-
-  function push(v: number): void {
-    buf[ptr] = v;
-    ptr = (ptr + 1) % MAT_TRACE_LEN;
-    draw();
-  }
-
-  const ro = new ResizeObserver(() => {
-    const w = canvas.clientWidth;
-    if (w > 0) { canvas.width = Math.round(w * dpr); draw(); }
-  });
-  ro.observe(canvas);
-
-  return { canvas, push, disconnect: () => ro.disconnect() };
-}
-
-/** Full-width trace canvas for a single band. Shows min/max/current labels.
- *  Height adapts to ~20% of the params-panel height (clamped to [TRACE_H, 160px]). */
-function makeTraceCanvas(bandColor: string): {
-  canvas: HTMLCanvasElement;
-  push: (v: number) => void;
-  draw: () => void;
-  disconnect: () => void;
-} {
-  const data = new Float32Array(TRACE_LEN);
-  let ptr = 0;
-  let traceH = TRACE_H; // updated by ResizeObserver when panel resizes vertically
-
-  const canvas = document.createElement('canvas');
-  canvas.width  = TRACE_W * dpr;
-  canvas.height = TRACE_H * dpr;
-  canvas.style.cssText = `width:100%;height:${TRACE_H}px;display:block;border-radius:2px;background:#06050a;margin-top:2px;`;
-
-  function draw(): void {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const W = Math.round(canvas.width / dpr);
-    const H = traceH;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    // Show as many history samples as CSS pixels wide; wider = more past, up to TRACE_LEN.
-    const vLen = Math.min(TRACE_LEN, Math.max(2, W));
-    const startOff = TRACE_LEN - vLen;
-
-    let trMin = Infinity, trMax = -Infinity;
-    for (let i = 0; i < vLen; i++) {
-      const v = data[(ptr + startOff + i) % TRACE_LEN];
-      if (v < trMin) trMin = v;
-      if (v > trMax) trMax = v;
-    }
-    if (!isFinite(trMin)) trMin = 0;
-    if (!isFinite(trMax)) trMax = 0;
-    const currentVal = data[(ptr - 1 + TRACE_LEN) % TRACE_LEN];
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(0, 1);     ctx.lineTo(W, 1);
-    ctx.moveTo(0, H - 1); ctx.lineTo(W, H - 1);
-    ctx.stroke();
-
-    const innerH = H - 2;
-    ctx.strokeStyle = bandColor;
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    // Interpolate one point per pixel so the line is gapless regardless of zoom level.
-    if (vLen <= W) {
-      for (let x = 0; x < W; x++) {
-        const t  = (x / Math.max(1, W - 1)) * (vLen - 1);
-        const i0 = Math.floor(t);
-        const i1 = Math.min(vLen - 1, i0 + 1);
-        const v  = data[(ptr + startOff + i0) % TRACE_LEN] * (1 - (t - i0))
-                 + data[(ptr + startOff + i1) % TRACE_LEN] * (t - i0);
-        const y  = H - v * innerH - 1;
-        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-    } else {
-      for (let i = 0; i < vLen; i++) {
-        const idx = (ptr + startOff + i) % TRACE_LEN;
-        const x = (i / (vLen - 1)) * W;
-        const y = H - data[idx] * innerH - 1;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    ctx.font = '9px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(trMax.toFixed(2), 2, 10);
-    ctx.fillText(trMin.toFixed(2), 2, H - 2);
-    const tipY = H - currentVal * innerH - 1;
-    const labelY = Math.max(9, Math.min(H - 3, tipY - 5));
-    ctx.fillStyle = bandColor;
-    ctx.fillText(currentVal.toFixed(2), W - 26, labelY);
-  }
-
-  function push(v: number): void {
-    data[ptr] = v;
-    ptr = (ptr + 1) % TRACE_LEN;
-    draw();
-  }
-
-  // Lazily discover the parent .params-panel once the canvas is in the DOM,
-  // then observe it for height changes so the trace grows with the panel.
-  let panelObserved = false;
-  const ro = new ResizeObserver(() => {
-    const w = canvas.clientWidth;
-    if (w > 0) canvas.width = Math.round(w * dpr);
-
-    const panelEl = canvas.closest?.('.params-panel') as HTMLElement | null;
-    if (panelEl && !panelObserved) { ro.observe(panelEl); panelObserved = true; }
-    if (panelEl) {
-      const newH = Math.round(Math.min(160, Math.max(TRACE_H, panelEl.clientHeight * 0.20)));
-      if (newH !== traceH) {
-        traceH = newH;
-        canvas.style.height = `${traceH}px`;
-        canvas.height = Math.round(traceH * dpr);
-      }
-    }
-    draw();
-  });
-  ro.observe(canvas);
-
-  return { canvas, push, draw, disconnect: () => ro.disconnect() };
-}
-
-// ── Drawer content builders ───────────────────────────────────────────────────
 
 /**
  * Builds the content shown in the per-band tab of an open drawer row.
@@ -916,10 +225,9 @@ function buildBandTab(
   body.appendChild(minMaxRow);
 
   // Trace canvas — registered so updateAudioViz() can push amplitude values
-  const { canvas: traceCanvas, push: pushTrace, disconnect: disconnectTrace } = makeTraceCanvas(color);
+  const { canvas: traceCanvas, push: pushTrace } = makeTraceCanvas(color, registerDisconnect);
   body.appendChild(traceCanvas);
   traceUpdaters.set(`${String(mapping.param)}::${mapping.band}`, pushTrace);
-  registerDisconnect(disconnectTrace);
 
   return body;
 }
@@ -935,6 +243,8 @@ function buildTotalTab(
   totalUpdaters: Map<string, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => void>,
   registerDisconnect: (fn: () => void) => void,
 ): { body: HTMLDivElement; registerUpdater: () => void } {
+  const dpr = window.devicePixelRatio || 1;
+  const TRACE_W   = 184;
   let STACKED_H = 40; // grows with panel height via stackRo
   const resolvedTextBody = getComputedStyle(document.documentElement)
     .getPropertyValue('--text-body').trim() || 'rgba(232,224,208,0.9)';
@@ -1185,7 +495,7 @@ function buildTotalTab(
 
 // ── Audio tab builder ─────────────────────────────────────────────────────────
 
-function buildAudioTab(
+export function buildAudioTab(
   container: HTMLElement,
   reactor: AudioReactor,
   updMaps: AudioUpdaterMaps,
@@ -1196,6 +506,8 @@ function buildAudioTab(
   // would overwrite the display:none set during tab body creation, causing Audio
   // content to bleed into the Params tab on initial render).
   container.style.overflowX = 'hidden';
+
+  const dpr = window.devicePixelRatio || 1;
 
   // ── Source row ────────────────────────────────────────────────────────
   const sourceSection = document.createElement('div');
@@ -1369,6 +681,8 @@ function buildAudioTab(
   function makeBandTrace(band: BandKey): { canvas: HTMLCanvasElement; push: (v: number) => void } {
     const buf = new Float32Array(TRACE_LEN);
     let ptr = 0;
+    const TRACE_W = 184;
+    const TRACE_H = 32;
     let trH = TRACE_H;
     let panelObserved = false;
 
@@ -1516,13 +830,13 @@ function buildAudioTab(
   mappingsSection.appendChild(matrixTable);
   container.appendChild(mappingsSection);
 
-  // Track which param row's drawer is currently open (null = none)
-  let openParam: string | null = null;
-  let drawerRow: HTMLTableRowElement | null = null;
-  let activeDrawerDisconnects: Array<() => void> = [];
+  // Drawer state — open/close/disconnect managed by DrawerController;
+  // drawerTr tracks the table row DOM element separately.
+  const drawer = new DrawerController();
+  let drawerTr: HTMLTableRowElement | null = null;
 
   // Persistent sparkline objects — survive rebuildMatrix() so ring buffers are not wiped
-  const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void }>();
+  const matTraceCache = new Map<string, { canvas: HTMLCanvasElement; push: (v: number) => void; disconnect: () => void }>();
 
   function rebuildMatrix(): void {
     updMaps.cellUpdaters.clear();
@@ -1530,8 +844,8 @@ function buildAudioTab(
     updMaps.traceUpdaters.clear();
     updMaps.matrixTraceUpdaters.clear();
     tbody.innerHTML = '';
-    openParam = null;
-    drawerRow = null;
+    drawer.close();
+    drawerTr = null;
 
     for (const paramKey of MAPPABLE_PARAMS) {
       const param = String(paramKey);
@@ -1543,8 +857,8 @@ function buildAudioTab(
 
       const tr = document.createElement('tr');
       tr.style.cssText = 'cursor:pointer;transition:background 0.1s;';
-      tr.addEventListener('mouseenter', () => { if (openParam !== param) tr.style.background = 'rgba(255,255,255,0.03)'; });
-      tr.addEventListener('mouseleave', () => { if (openParam !== param) tr.style.background = ''; });
+      tr.addEventListener('mouseenter', () => { if (!drawer.isOpen(param)) tr.style.background = 'rgba(255,255,255,0.03)'; });
+      tr.addEventListener('mouseleave', () => { if (!drawer.isOpen(param)) tr.style.background = ''; });
 
       // Param label cell — truncates with ellipsis; click opens/closes the drawer
       const nameTd = document.createElement('td');
@@ -1559,7 +873,7 @@ function buildAudioTab(
       nameTd.textContent = meta.label;
       nameTd.addEventListener('click', () => {
         if (!hasAny) return;
-        if (openParam === param) {
+        if (drawer.isOpen(param)) {
           closeDrawer();
         } else {
           const firstBand = [...activeMappings].sort(
@@ -1576,12 +890,16 @@ function buildAudioTab(
       if (hasAny) {
         // Reuse cached trace so the ring buffer survives rebuildMatrix() calls
         if (!matTraceCache.has(param)) {
-          matTraceCache.set(param, makeMatrixTrace());
+          matTraceCache.set(param, makeMatrixTrace(BAND_COLORS[
+            reactor.mappings.find(m => String(m.param) === param)!.band
+          ]));
         }
         const { canvas: traceCanvas, push } = matTraceCache.get(param)!;
         traceTd.appendChild(traceCanvas);
         updMaps.matrixTraceUpdaters.set(param, push);
       } else {
+        const old = matTraceCache.get(param);
+        if (old) old.disconnect();
         matTraceCache.delete(param);
       }
       tr.appendChild(traceTd);
@@ -1596,7 +914,8 @@ function buildAudioTab(
         const mapping = activeMappings.find(m => m.band === band) ?? null;
         td.addEventListener('click', () => {
           // Remember which drawer was open so we can restore it after rebuild
-          const wasOpenParam = openParam;
+          const wasOpenParam = drawer.isOpen(param) ? param
+            : MAPPABLE_PARAMS.map(String).find(p => drawer.isOpen(p)) ?? null;
 
           if (mapping) {
             // Filled dot → toggle OFF (remove mapping)
@@ -1688,7 +1007,6 @@ function buildAudioTab(
     const paramTr  = rows[paramIdx];
     if (!paramTr) return;
 
-    openParam = param;
     paramTr.style.background = 'var(--bg-surface)';
 
     // Build the drawer <tr>
@@ -1790,49 +1108,57 @@ function buildAudioTab(
       return btn;
     }
 
-    // Per-drawer ResizeObserver disconnects — stored on outer scope so closeDrawer can reach them
-    activeDrawerDisconnects = [];
-    const drawerRegister = (fn: () => void) => activeDrawerDisconnects.push(fn);
-
     // Band tabs — sorted by BAND_KEYS_ORDER so tabs always match matrix column order
     const sortedMappings = [...activeMappings].sort(
       (a, b) => BAND_KEYS_ORDER.indexOf(a.band) - BAND_KEYS_ORDER.indexOf(b.band)
     );
-    for (const m of sortedMappings) {
-      const btn  = makeTabBtn(`● ${m.band}`, m.band, BAND_COLORS[m.band], true);
-      tabs.appendChild(btn);
-      const body = buildBandTab(m, reactor, updMaps.traceUpdaters, drawerRegister);
-      body.style.display = 'none';
-      drawerTabBodies[m.band] = body;
-    }
 
-    // ∑ total tab (only when 2+ mappings)
-    if (multiMapping) {
-      const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)', false);
-      tabs.appendChild(totalBtn);
-      const { body: totalBody, registerUpdater } = buildTotalTab(param, reactor, updMaps.totalUpdaters, drawerRegister);
-      totalBody.style.display = 'none';
-      drawerTabBodies['∑'] = totalBody;
-      registerUpdater();
-    }
+    // Use DrawerController to manage disconnect lifecycle; DOM managed manually
+    drawer.open(param, () => {
+      const drawerDisconnects: Array<() => void> = [];
+      const drawerRegister = (fn: () => void) => drawerDisconnects.push(fn);
 
-    td.appendChild(tabs);
-    for (const body of Object.values(drawerTabBodies)) td.appendChild(body);
+      for (const m of sortedMappings) {
+        const btn  = makeTabBtn(`● ${m.band}`, m.band, BAND_COLORS[m.band], true);
+        tabs.appendChild(btn);
+        const body = buildBandTab(m, reactor, updMaps.traceUpdaters, drawerRegister);
+        body.style.display = 'none';
+        drawerTabBodies[m.band] = body;
+      }
+
+      // ∑ total tab (only when 2+ mappings)
+      if (multiMapping) {
+        const totalBtn = makeTabBtn('∑ total', '∑', 'var(--text-body)', false);
+        tabs.appendChild(totalBtn);
+        const { body: totalBody, registerUpdater } = buildTotalTab(param, reactor, updMaps.totalUpdaters, drawerRegister);
+        totalBody.style.display = 'none';
+        drawerTabBodies['∑'] = totalBody;
+        registerUpdater();
+      }
+
+      td.appendChild(tabs);
+      for (const body of Object.values(drawerTabBodies)) td.appendChild(body);
+
+      switchDrawerTab(activeTabKey);
+
+      return drawerDisconnects;
+    });
 
     tr.appendChild(td);
     // Insert after paramTr
     paramTr.insertAdjacentElement('afterend', tr);
-    drawerRow = tr;
-
-    switchDrawerTab(activeTabKey);
+    drawerTr = tr;
   }
 
   function closeDrawer(): void {
-    for (const d of activeDrawerDisconnects) d();
-    activeDrawerDisconnects = [];
-    if (drawerRow) {
-      drawerRow.remove();
-      drawerRow = null;
+    // Find the currently open param to clean up updaters and row highlight
+    const openParam = MAPPABLE_PARAMS.map(String).find(p => drawer.isOpen(p)) ?? null;
+
+    drawer.close();
+
+    if (drawerTr) {
+      drawerTr.remove();
+      drawerTr = null;
     }
     if (openParam) {
       updMaps.totalUpdaters.delete(openParam);
@@ -1844,7 +1170,6 @@ function buildAudioTab(
       const paramTr  = rows[paramIdx];
       if (paramTr) paramTr.style.background = '';
     }
-    openParam = null;
   }
 
   // ── Visualiser rAF loop (runs only when Audio tab is visible) ─────────
@@ -1874,7 +1199,10 @@ function buildAudioTab(
   }
 
   function stopViz(): void {
+    for (const entry of matTraceCache.values()) entry.disconnect();
+    matTraceCache.clear();
     cancelAnimationFrame(vizRafId);
+    drawer.dispose();
   }
 
   return { start: startViz, stop: stopViz };

@@ -224,34 +224,29 @@ export class BoidsController {
       });
 
       // Grid bind groups — one per ping-pong frame (reads from A or B)
-      this.gridBindGroups = [
-        device.createBindGroup({
-          layout: this.gridBindGroupLayout,
-          entries: [
-            { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[0] } }, // read A
-            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
-            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
-            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
-            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
-            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
-          ],
-        }),
-        device.createBindGroup({
-          layout: this.gridBindGroupLayout,
-          entries: [
-            { binding: 0, resource: { buffer: this.uniformBuffer } },
-            { binding: 1, resource: { buffer: this.particleBuffers[1] } }, // read B
-            { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
-            { binding: 3, resource: { buffer: this.cellCountsBuffer } },
-            { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-            { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
-            { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
-            { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
-          ],
-        }),
-      ];
+      this.gridBindGroups = this._buildBindGroupPair(
+        this.gridBindGroupLayout,
+        [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[0] } }, // read A
+          { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+          { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
+        ],
+        [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[1] } }, // read B
+          { binding: 2, resource: { buffer: this.particleCellIDsBuffer } },
+          { binding: 3, resource: { buffer: this.cellCountsBuffer } },
+          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+          { binding: 5, resource: { buffer: this.cellScatterIdxBuffer } },
+          { binding: 6, resource: { buffer: this.sortedIndicesBuffer } },
+          { binding: 7, resource: { buffer: this.sortedParticlesBuffer } },
+        ],
+      );
 
       // ── Image processor + force must be ready before bind groups ─────
       this.imageProcessor.init(device);
@@ -298,34 +293,30 @@ export class BoidsController {
       ],
     });
 
-    this.boidsBindGroups = [
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...this.imageForce.buildBindGroupEntries(),
-        ],
-      }),
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...this.imageForce.buildBindGroupEntries(),
-        ],
-      }),
-    ];
+    const forceEntriesPipelines = this.imageForce.buildBindGroupEntries();
+    this.boidsBindGroups = this._buildBindGroupPair(
+      this.boidsBindGroupLayout,
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntriesPipelines,
+      ],
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntriesPipelines,
+      ],
+    );
 
     const boidsPipelineLayout = device.createPipelineLayout({
       bindGroupLayouts: [this.boidsBindGroupLayout],
@@ -383,23 +374,26 @@ export class BoidsController {
     if (!this.gpu) return { success: false, error: 'GPU not initialized' };
     try {
       const { device } = this.gpu;
-      const prevCompute = this.computePipeline;
-      const prevRender = this.renderPipeline;
-      const prevBoidsBindGroupLayout = this.boidsBindGroupLayout;
-      const prevBoidsBindGroups = this.boidsBindGroups;
-      const prevBindGroup = this.renderParamsBindGroup;
+
+      // Snapshot current pipeline state for atomic rollback on failure
+      const snapshot = {
+        computePipeline:       this.computePipeline,
+        renderPipeline:        this.renderPipeline,
+        boidsBindGroupLayout:  this.boidsBindGroupLayout,
+        boidsBindGroups:       this.boidsBindGroups,
+        renderParamsBindGroup: this.renderParamsBindGroup,
+      };
+
       device.pushErrorScope('validation');
       const module = device.createShaderModule({ code });
       this._createBoidsPipelines(module);
       const gpuError = await device.popErrorScope();
+
       if (gpuError) {
-        this.computePipeline = prevCompute;
-        this.renderPipeline = prevRender;
-        this.boidsBindGroupLayout = prevBoidsBindGroupLayout;
-        this.boidsBindGroups = prevBoidsBindGroups;
-        this.renderParamsBindGroup = prevBindGroup;
+        Object.assign(this, snapshot);
         return { success: false, error: gpuError.message };
       }
+
       this.shaderSource = code;
       return { success: true, error: '' };
     } catch (e) {
@@ -445,81 +439,76 @@ export class BoidsController {
     this.gpu.device.queue.writeBuffer(this.obstacleBuffer, 0, buf);
   }
 
-  private tick = () => {
-    if (!this.running || !this.gpu) return;
+  private _packUniforms(aspect: number): ArrayBuffer {
+    const buf = new ArrayBuffer(112);
+    const v   = new DataView(buf);
+    v.setFloat32( 0, this.params.dt,                   true);
+    v.setFloat32( 4, this.params.attractionRadius,      true);
+    v.setFloat32( 8, this.params.repulsionRadius,       true);
+    v.setFloat32(12, this.params.attraction,            true);
+    v.setFloat32(16, this.params.repulsion,             true);
+    v.setFloat32(20, this.params.alignment,             true);
+    v.setFloat32(24, this.params.friction,              true);
+    v.setFloat32(28, this.params.maxSpeed,              true);
+    v.setUint32 (32, this.params.numParticles,          true);
+    v.setFloat32(36, this.mouseX,                       true);
+    v.setFloat32(40, this.mouseY,                       true);
+    v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,      true);
+    v.setFloat32(48, this.params.mouseRadius,           true);
+    v.setFloat32(52, this.params.coneAngle,             true);
+    v.setFloat32(56, aspect,                            true);
+    v.setFloat32(60, this.params.size,                  true);
+    v.setUint32 (64, this.params.shapeId,               true);
+    v.setFloat32(68, this.params.colorR,                true);
+    v.setFloat32(72, this.params.colorG,                true);
+    v.setFloat32(76, this.params.colorB,                true);
+    v.setFloat32(80, this.params.opacity,               true);
+    v.setUint32 (84, this.params.opacityMode,           true);
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    v.setUint32 (88, gridDim,                           true);
+    v.setUint32 (92, this.frame,                        true);
+    const imgParams = this.imageForce.getExtraParams();
+    v.setFloat32(96,  imgParams.imageStrength,          true);
+    v.setUint32 (100, imgParams.imageForceMode,         true);
+    v.setUint32 (104, imgParams.imageInvert,            true);
+    v.setFloat32(108, this.params.noise ?? 0.0,         true);
+    return buf;
+  }
 
-    // Capped mode: use RAF as the heartbeat, skip GPU work if called too early
-    if (Number.isFinite(this.maxFps)) {
-      const now = performance.now();
-      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
-        this.animId = requestAnimationFrame(this.tick);
-        return;
-      }
-      this.lastFrameTime = now;
-    }
+  private _buildBindGroupPair(
+    layout:   GPUBindGroupLayout,
+    entriesA: GPUBindGroupEntry[],
+    entriesB: GPUBindGroupEntry[],
+  ): GPUBindGroup[] {
+    const { device } = this.gpu!;
+    return [
+      device.createBindGroup({ layout, entries: entriesA }),
+      device.createBindGroup({ layout, entries: entriesB }),
+    ];
+  }
 
-    const { device, context, canvas } = this.gpu;
-
+  private _preFrameSetup(): { device: GPUDevice; context: GPUCanvasContext; canvas: HTMLCanvasElement; aspect: number } {
+    const { device, context, canvas } = this.gpu!;
     const resized = resizeCanvasToDisplaySize(canvas);
     if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
       this.overlayBindGroup = null;   // compositedTexture was re-allocated; rebuild on next use
-      this.prevCanvasWidth = canvas.width;
+      this.prevCanvasWidth  = canvas.width;
       this.prevCanvasHeight = canvas.height;
     }
-
-    // ── Webcam frame capture ──────────────────────────────────────────
     if (this.webcam.status === 'active') {
       this.webcam.tick(this.imageProcessor);
     }
+    const aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 1.0;
+    return { device, context, canvas, aspect };
+  }
 
-    const aspect = canvas.width > 0 && canvas.height > 0
-      ? canvas.width / canvas.height : 1.0;
-
-    const uniformArray = new ArrayBuffer(112);
-    const v = new DataView(uniformArray);
-    v.setFloat32( 0, this.params.dt,                   true);
-    v.setFloat32( 4, this.params.attractionRadius,      true);
-    v.setFloat32( 8, this.params.repulsionRadius,       true);
-    v.setFloat32(12, this.params.attraction,           true);
-    v.setFloat32(16, this.params.repulsion,            true);
-    v.setFloat32(20, this.params.alignment,            true);
-    v.setFloat32(24, this.params.friction,             true);
-    v.setFloat32(28, this.params.maxSpeed,             true);
-    v.setUint32 (32, this.params.numParticles,         true);
-    v.setFloat32(36, this.mouseX,                      true);
-    v.setFloat32(40, this.mouseY,                      true);
-    v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,     true);
-    v.setFloat32(48, this.params.mouseRadius,          true);
-    v.setFloat32(52, this.params.coneAngle,            true);
-    v.setFloat32(56, aspect,                           true);
-    v.setFloat32(60, this.params.size,                 true);
-    v.setUint32 (64, this.params.shapeId,              true);
-    v.setFloat32(68, this.params.colorR,               true);
-    v.setFloat32(72, this.params.colorG,               true);
-    v.setFloat32(76, this.params.colorB,               true);
-    v.setFloat32(80, this.params.opacity,              true);
-    v.setUint32 (84, this.params.opacityMode,          true);
-    // byte 88: gridDim — adaptive grid dimension based on attractionRadius
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
-    v.setUint32 (88, gridDim,                          true);
-    v.setUint32 (92, this.frame,                       true);  // tick — noise seed
-    const imgParams = this.imageForce.getExtraParams();
-    v.setFloat32(96, imgParams.imageStrength,  true);
-    v.setUint32 (100, imgParams.imageForceMode, true);
-    v.setUint32 (104, imgParams.imageInvert,    true);
-    v.setFloat32(108, this.params.noise ?? 0.0, true);
-    device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
-
-    const N = this.params.numParticles;
-    const gridSize = gridDim * gridDim;
+  private _runComputePasses(device: GPUDevice, N: number, gridDim: number, gridSize: number): void {
     const gridBG = this.gridBindGroups[this.frame % 2];
-
-    // ── 5-pass compute ────────────────────────────────────────────────
     const computeEncoder = device.createCommandEncoder();
-    const computePass = computeEncoder.beginComputePass();
+    const computePass    = computeEncoder.beginComputePass();
 
     // Pass 1: clearGrid — only clear active cells (gridDim×gridDim)
     computePass.setPipeline(this.clearGridPipeline);
@@ -553,7 +542,9 @@ export class BoidsController {
 
     computePass.end();
     device.queue.submit([computeEncoder.finish()]);
+  }
 
+  private _renderFrame(device: GPUDevice, context: GPUCanvasContext, N: number): void {
     // ── Render pass ───────────────────────────────────────────────────
     this.trailRenderer.render(
       device,
@@ -573,7 +564,7 @@ export class BoidsController {
         renderPass.setBindGroup(0, this.renderParamsBindGroup);
         renderPass.setVertexBuffer(0, this.particleBuffers[(this.frame + 1) % 2]);
         renderPass.setVertexBuffer(1, this.vertexBuffer);
-        renderPass.draw(6, this.params.numParticles);
+        renderPass.draw(6, N);
         renderPass.end();
       },
     );
@@ -603,6 +594,30 @@ export class BoidsController {
       pass.end();
       device.queue.submit([enc.finish()]);
     }
+  }
+
+  private tick = () => {
+    if (!this.running || !this.gpu) return;
+
+    // Capped mode: use RAF as the heartbeat, skip GPU work if called too early
+    if (Number.isFinite(this.maxFps)) {
+      const now = performance.now();
+      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
+        this.animId = requestAnimationFrame(this.tick);
+        return;
+      }
+      this.lastFrameTime = now;
+    }
+
+    const { device, context, aspect } = this._preFrameSetup();
+    device.queue.writeBuffer(this.uniformBuffer, 0, this._packUniforms(aspect));
+
+    const N       = this.params.numParticles;
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    const gridSize = gridDim * gridDim;
+
+    this._runComputePasses(device, N, gridDim, gridSize);
+    this._renderFrame(device, context, N);
 
     this.frame++;
     void device.queue.onSubmittedWorkDone().then(() => {
@@ -659,34 +674,29 @@ export class BoidsController {
     // replaced the active preset shader with the default boids.wgsl on every
     // canvas resize, changing physics and breaking webcam force consistency.
     const forceEntries = this.imageForce.buildBindGroupEntries();
-    this.boidsBindGroups = [
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...forceEntries,
-        ],
-      }),
-      device.createBindGroup({
-        layout: this.boidsBindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: this.uniformBuffer } },
-          { binding: 1, resource: { buffer: this.particleBuffers[1] } },
-          { binding: 2, resource: { buffer: this.particleBuffers[0] } },
-          { binding: 3, resource: { buffer: this.obstacleBuffer } },
-          { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
-          { binding: 5, resource: { buffer: this.cellCountsBuffer } },
-          { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
-          ...forceEntries,
-        ],
-      }),
-    ];
+    this.boidsBindGroups = this._buildBindGroupPair(
+      this.boidsBindGroupLayout,
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntries,
+      ],
+      [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: { buffer: this.particleBuffers[1] } },
+        { binding: 2, resource: { buffer: this.particleBuffers[0] } },
+        { binding: 3, resource: { buffer: this.obstacleBuffer } },
+        { binding: 4, resource: { buffer: this.cellOffsetsBuffer } },
+        { binding: 5, resource: { buffer: this.cellCountsBuffer } },
+        { binding: 6, resource: { buffer: this.sortedParticlesBuffer } },
+        ...forceEntries,
+      ],
+    );
   }
 
   destroy(): void {
