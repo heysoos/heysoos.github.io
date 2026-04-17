@@ -16,47 +16,31 @@
 |--------|------|----------------|
 | Create | `src/lib/webgpu/recorder.ts` | `SimRecorder` class — all recording logic |
 | Create | `src/lib/webgpu/recording-strip.ts` | `buildRecordingStrip()` — bottom-strip DOM + controls |
-| Modify | `src/components/simulations/boids/boids-controller.ts` | Extract `_doFrameWork()`, add public `tickOnce()` |
+| Modify | `src/components/simulations/boids/boids-controller.ts` | Add public `tickOnce()` (tick already decomposed into `_preFrameSetup`, `_packUniforms`, `_runComputePasses`, `_renderFrame`) |
 | Modify | `src/components/simulations/boids/boids-audio.ts` | Add `getStream()` to `AudioReactor` |
 | Modify | `src/components/Controls.astro` | Add record button with pulse CSS |
-| Modify | `src/pages/gallery/[...slug].astro` | Mount strip container, wire recorder + strip |
-| Modify | `package.json` | Add `mp4-muxer`, `webm-muxer`, `soundtouchjs` |
+| Modify | `src/lib/sim-page/sim-setup/boids.ts` | Return `{ reactor: AudioReactor }` instead of `void` |
+| Modify | `src/lib/sim-page/sim-setup/index.ts` | Return `{ hasPanel: boolean; audioReactor?: AudioReactor }` instead of `boolean` |
+| Modify | `src/pages/gallery/[...slug].astro` | Mount strip container, wire recorder + strip using returned `audioReactor` |
+| Modify | `package.json` | `mp4-muxer`, `webm-muxer`, `soundtouchjs` (already installed, needs commit) |
 
 ---
 
-## Task 1: Install Dependencies
+## Task 1: Commit Already-Installed Dependencies
 
-**Files:** `package.json`
+**Files:** `package.json`, `package-lock.json`
 
-- [ ] **Step 1: Install packages**
+The three packages (`mp4-muxer`, `webm-muxer`, `soundtouchjs`) are already present in `package.json` and installed in `node_modules` — they were installed but never committed.
 
-```bash
-cd "/c/Users/Heysoos/Documents/Pycharm Projects/website"
-npm install mp4-muxer webm-muxer soundtouchjs
-```
-
-- [ ] **Step 2: Verify imports resolve**
-
-Create a temporary file `src/lib/webgpu/_dep-check.ts` with:
-
-```typescript
-import { Muxer as Mp4Muxer, ArrayBufferTarget as Mp4Target } from 'mp4-muxer';
-import { Muxer as WebmMuxer, ArrayBufferTarget as WebmTarget } from 'webm-muxer';
-import { SoundTouch, SimpleFilter } from 'soundtouchjs';
-void Mp4Muxer; void Mp4Target; void WebmMuxer; void WebmTarget;
-void SoundTouch; void SimpleFilter;
-```
-
-Run: `npm run build 2>&1 | head -20`
-Expected: no "Cannot find module" errors (other errors are fine — this file won't be imported anywhere).
-
-- [ ] **Step 3: Delete the temp file**
+- [ ] **Step 1: Verify packages are in package.json**
 
 ```bash
-rm "src/lib/webgpu/_dep-check.ts"
+node -e "const p = require('./package.json'); const keys = Object.keys(p.dependencies || {}); console.log(keys.filter(k => ['mp4-muxer','webm-muxer','soundtouchjs'].includes(k)))"
 ```
 
-- [ ] **Step 4: Commit**
+Expected: `[ 'mp4-muxer', 'soundtouchjs', 'webm-muxer' ]`
+
+- [ ] **Step 2: Commit**
 
 ```bash
 git add package.json package-lock.json
@@ -69,184 +53,33 @@ git commit -m "chore: add mp4-muxer, webm-muxer, soundtouchjs dependencies"
 
 **Files:** Modify `src/components/simulations/boids/boids-controller.ts`
 
-The private `tick` method contains both GPU frame work and RAF scheduling. Extract the GPU work into `_doFrameWork()` so non-realtime recording can drive it frame-by-frame.
+The controller's `tick` method has already been decomposed into `_preFrameSetup()`, `_packUniforms(aspect)`, `_runComputePasses(device, N, gridDim, gridSize)`, and `_renderFrame(device, context, N)`. `tickOnce()` just calls these in the same sequence — without RAF/setTimeout scheduling.
 
-- [ ] **Step 1: Read the current tick method**
+- [ ] **Step 1: Read the current tick method to confirm structure**
 
-Read `src/components/simulations/boids/boids-controller.ts` lines 447–619 to confirm the current structure before editing.
+Read `src/components/simulations/boids/boids-controller.ts` around lines 599–634 to confirm the existing private method names match.
 
-- [ ] **Step 2: Extract `_doFrameWork()` and add `tickOnce()`**
+- [ ] **Step 2: Add `tickOnce()` after the `tick` arrow function**
 
-Replace the `private tick = () => { ... };` block (lines 447–619) with:
+After the closing `};` of `private tick = () => { ... };`, insert:
 
 ```typescript
-  /** Extracted GPU work — shared by tick() and tickOnce(). */
-  private _doFrameWork(): void {
-    const { device, context, canvas } = this.gpu!;
-
-    const resized = resizeCanvasToDisplaySize(canvas);
-    if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
-      this.trailRenderer.resize(device, canvas.width, canvas.height);
-      this.imageProcessor.resize(canvas.width, canvas.height);
-      this.rebuildBoidsBindGroups();
-      this.overlayBindGroup = null;
-      this.prevCanvasWidth = canvas.width;
-      this.prevCanvasHeight = canvas.height;
-    }
-
-    if (this.webcam.status === 'active') {
-      this.webcam.tick(this.imageProcessor);
-    }
-
-    const aspect = canvas.width > 0 && canvas.height > 0
-      ? canvas.width / canvas.height : 1.0;
-
-    const uniformArray = new ArrayBuffer(112);
-    const v = new DataView(uniformArray);
-    v.setFloat32( 0, this.params.dt,                   true);
-    v.setFloat32( 4, this.params.attractionRadius,      true);
-    v.setFloat32( 8, this.params.repulsionRadius,       true);
-    v.setFloat32(12, this.params.attraction,           true);
-    v.setFloat32(16, this.params.repulsion,            true);
-    v.setFloat32(20, this.params.alignment,            true);
-    v.setFloat32(24, this.params.friction,             true);
-    v.setFloat32(28, this.params.maxSpeed,             true);
-    v.setUint32 (32, this.params.numParticles,         true);
-    v.setFloat32(36, this.mouseX,                      true);
-    v.setFloat32(40, this.mouseY,                      true);
-    v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,     true);
-    v.setFloat32(48, this.params.mouseRadius,          true);
-    v.setFloat32(52, this.params.coneAngle,            true);
-    v.setFloat32(56, aspect,                           true);
-    v.setFloat32(60, this.params.size,                 true);
-    v.setUint32 (64, this.params.shapeId,              true);
-    v.setFloat32(68, this.params.colorR,               true);
-    v.setFloat32(72, this.params.colorG,               true);
-    v.setFloat32(76, this.params.colorB,               true);
-    v.setFloat32(80, this.params.opacity,              true);
-    v.setUint32 (84, this.params.opacityMode,          true);
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
-    v.setUint32 (88, gridDim,                          true);
-    v.setUint32 (92, this.frame,                       true);
-    const imgParams = this.imageForce.getExtraParams();
-    v.setFloat32(96, imgParams.imageStrength,  true);
-    v.setUint32 (100, imgParams.imageForceMode, true);
-    v.setUint32 (104, imgParams.imageInvert,    true);
-    v.setFloat32(108, this.params.noise ?? 0.0, true);
-    device.queue.writeBuffer(this.uniformBuffer, 0, uniformArray);
-
-    const N = this.params.numParticles;
-    const gridSize = gridDim * gridDim;
-    const gridBG = this.gridBindGroups[this.frame % 2];
-
-    const computeEncoder = device.createCommandEncoder();
-    const computePass = computeEncoder.beginComputePass();
-    computePass.setPipeline(this.clearGridPipeline);
-    computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(gridSize / 256));
-    computePass.setPipeline(this.gridAssignPipeline);
-    computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
-    computePass.setPipeline(this.prefixSumPipeline);
-    computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(1);
-    computePass.setPipeline(this.scatterPipeline);
-    computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
-    computePass.setPipeline(this.scatterDataPipeline);
-    computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
-    computePass.setPipeline(this.computePipeline);
-    computePass.setBindGroup(0, this.boidsBindGroups[this.frame % 2]);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
-    computePass.end();
-    device.queue.submit([computeEncoder.finish()]);
-
-    this.trailRenderer.render(
-      device,
-      context,
-      this.trailDecay,
-      this.trailsEnabled,
-      (encoder, targetView, loadOp) => {
-        const renderPass = encoder.beginRenderPass({
-          colorAttachments: [{
-            view: targetView,
-            clearValue: { r: 0.039, g: 0.031, b: 0.016, a: 1 },
-            loadOp,
-            storeOp: 'store',
-          }],
-        });
-        renderPass.setPipeline(this.renderPipeline);
-        renderPass.setBindGroup(0, this.renderParamsBindGroup);
-        renderPass.setVertexBuffer(0, this.particleBuffers[(this.frame + 1) % 2]);
-        renderPass.setVertexBuffer(1, this.vertexBuffer);
-        renderPass.draw(6, this.params.numParticles);
-        renderPass.end();
-      },
-    );
-
-    if (this.imageForce.isActive() && this.imageForce.showOverlay && this.overlayPipeline) {
-      if (!this.overlayBindGroup) {
-        this.overlayBindGroup = device.createBindGroup({
-          layout: this.overlayPipeline.getBindGroupLayout(0),
-          entries: [
-            { binding: 0, resource: this.imageProcessor.getOutputSampler() },
-            { binding: 1, resource: this.imageProcessor.getCompositedTexture().createView() },
-          ],
-        });
-      }
-      const enc  = device.createCommandEncoder();
-      const pass = enc.beginRenderPass({
-        colorAttachments: [{
-          view:    context.getCurrentTexture().createView(),
-          loadOp:  'load',
-          storeOp: 'store',
-        }],
-      });
-      pass.setPipeline(this.overlayPipeline);
-      pass.setBindGroup(0, this.overlayBindGroup);
-      pass.draw(6);
-      pass.end();
-      device.queue.submit([enc.finish()]);
-    }
-
-    this.frame++;
-  }
-
   /**
    * Runs exactly one simulation frame and resolves when the GPU is done.
    * Used by non-realtime recording to drive the frame loop manually.
    */
   tickOnce(): Promise<void> {
     if (!this.gpu) return Promise.resolve();
-    this._doFrameWork();
+    const { device, context, aspect } = this._preFrameSetup();
+    device.queue.writeBuffer(this.uniformBuffer, 0, this._packUniforms(aspect));
+    const N = this.params.numParticles;
+    const gridDim  = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    const gridSize = gridDim * gridDim;
+    this._runComputePasses(device, N, gridDim, gridSize);
+    this._renderFrame(device, context, N);
+    this.frame++;
     return this.gpu.device.queue.onSubmittedWorkDone();
   }
-
-  private tick = () => {
-    if (!this.running || !this.gpu) return;
-
-    if (Number.isFinite(this.maxFps)) {
-      const now = performance.now();
-      if (now - this.lastFrameTime < (1000 / this.maxFps) - 1) {
-        this.animId = requestAnimationFrame(this.tick);
-        return;
-      }
-      this.lastFrameTime = now;
-    }
-
-    this._doFrameWork();
-
-    void this.gpu.device.queue.onSubmittedWorkDone().then(() => {
-      if (!this.running) return;
-      this.tickCount++;
-      if (!Number.isFinite(this.maxFps)) {
-        this.animId = requestAnimationFrame(this.tick);
-      } else {
-        this.animId = window.setTimeout(this.tick, 0) as unknown as number;
-      }
-    });
-  };
 ```
 
 - [ ] **Step 3: Verify build**
@@ -257,19 +90,11 @@ npm run build 2>&1 | grep -i error | head -20
 
 Expected: no TypeScript errors in `boids-controller.ts`.
 
-- [ ] **Step 4: Verify simulation still works**
-
-```bash
-npm run dev
-```
-
-Open `http://localhost:4321/gallery/boids` in Chrome. Confirm boids simulate normally. Close dev server.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/components/simulations/boids/boids-controller.ts
-git commit -m "refactor(boids): extract _doFrameWork(), add public tickOnce() for non-realtime recording"
+git commit -m "feat(boids): add public tickOnce() for non-realtime recording"
 ```
 
 ---
@@ -280,7 +105,7 @@ git commit -m "refactor(boids): extract _doFrameWork(), add public tickOnce() fo
 
 - [ ] **Step 1: Add `getStream()` after `isActive()`**
 
-In `src/components/simulations/boids/boids-audio.ts`, after line 95 (`isActive()` method closing brace), add:
+In `src/components/simulations/boids/boids-audio.ts`, after the `isActive()` method closing brace (around line 95), add:
 
 ```typescript
   /** Returns the raw MediaStream from getUserMedia/getDisplayMedia, or null if not active. */
@@ -409,7 +234,7 @@ git commit -m "feat(controls): add record button with strip-open and recording C
 
 **Files:** Create `src/lib/webgpu/recorder.ts`
 
-This task implements the full realtime path (both WebM and MP4). No muxer library is used — `MediaRecorder` with `video/mp4` produces fragmented MP4 natively in Chrome/Edge.
+This task implements the full realtime path (both WebM and MP4). `MediaRecorder` with `video/mp4;codecs=avc1` produces fragmented MP4 natively in Chrome/Edge/Safari — no muxer library needed for realtime MP4.
 
 - [ ] **Step 1: Create the file**
 
@@ -455,8 +280,10 @@ export class SimRecorder {
   private _nrtFrameIndex = 0;
   private _nrtAudioMR: MediaRecorder | null = null;
   private _nrtAudioChunks: Blob[] = [];
-  private _nrtStopResolve: ((blob: Blob) => void) | null = null;
   private _nrtStartWallMs = 0;
+
+  /** Populated after a non-realtime recording; ratio > 1.5 means audio was significantly stretched. */
+  lastStretchRatio = 1.0;
 
   onStop?: (blob: Blob, opts: RecordingOptions) => void;
 
@@ -510,7 +337,10 @@ export class SimRecorder {
     if (opts.realtime) {
       blob = await this._stopRealtime(opts);
     } else {
-      blob = await this._stopNonRealtime();
+      this._nrtRunning = false;
+      // Wait briefly for encoder flush (already in flight from _runNonRealtimeLoop)
+      await new Promise<void>(res => setTimeout(res, 50));
+      blob = this._assembleNrtBlob();
     }
 
     this.onStop?.(blob, opts);
@@ -556,8 +386,7 @@ export class SimRecorder {
     mr.start(500); // collect chunks every 500 ms
   }
 
-  private _stopRealtime(opts: RecordingOptions): Promise<Blob> {
-    void opts;
+  private _stopRealtime(_opts: RecordingOptions): Promise<Blob> {
     return new Promise((resolve) => {
       this._mrStopResolve = resolve;
       this._mediaRecorder?.stop();
@@ -569,7 +398,6 @@ export class SimRecorder {
     const withAudio = !!opts.audioStream;
 
     if (opts.format === 'mp4') {
-      // Try native MP4 (fragmented MP4 — Chrome/Edge/Safari)
       const mp4Candidates = withAudio
         ? ['video/mp4;codecs=avc1,opus', 'video/mp4;codecs=avc1']
         : ['video/mp4;codecs=avc1'];
@@ -601,9 +429,9 @@ export class SimRecorder {
     throw new Error('Non-realtime recording not yet implemented.');
   }
 
-  private _stopNonRealtime(): Promise<Blob> {
+  private _assembleNrtBlob(): Blob {
     // Implemented in Task 7
-    return Promise.resolve(new Blob());
+    return new Blob();
   }
 }
 ```
@@ -678,7 +506,7 @@ function pill(label: string): HTMLButtonElement {
   return b;
 }
 
-function pillGroup<T extends string>(
+function pillGroup<T extends string | number>(
   options: { label: string; value: T }[],
   initial: T,
   onChange: (v: T) => void,
@@ -715,12 +543,12 @@ function deactivatePill(b: HTMLButtonElement): void {
   b.style.background = 'transparent';
 }
 
-function section(icon: string, label: string): { wrap: HTMLDivElement; body: HTMLDivElement } {
+function section(icon: string, lbl: string): { wrap: HTMLDivElement; body: HTMLDivElement } {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;padding:0 0.75rem;border-right:1px solid var(--bg-surface-border);';
   const header = document.createElement('div');
   header.style.cssText = 'font-size:0.55rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);white-space:nowrap;';
-  header.textContent = `${icon} ${label}`;
+  header.textContent = `${icon} ${lbl}`;
   const body = document.createElement('div');
   body.style.cssText = 'display:flex;align-items:center;gap:4px;';
   wrap.appendChild(header);
@@ -739,7 +567,7 @@ function miniSlider(min: number, max: number, value: number, step: number): HTML
   return s;
 }
 
-function label(text: string, color = 'var(--text-muted)'): HTMLSpanElement {
+function lbl(text: string, color = 'var(--text-muted)'): HTMLSpanElement {
   const s = document.createElement('span');
   s.style.cssText = `font-size:0.6rem;color:${color};white-space:nowrap;font-variant-numeric:tabular-nums;`;
   s.textContent = text;
@@ -845,18 +673,18 @@ export function buildRecordingStrip(
 
   const customSlider = miniSlider(1, 50, 20, 1);
   customSlider.style.display = 'none';
-  const customLabel = label('20 Mbps');
-  customLabel.style.display = 'none';
+  const customLbl = lbl('20 Mbps');
+  customLbl.style.display = 'none';
   customSlider.addEventListener('input', () => {
     const mbps = parseInt(customSlider.value);
-    customLabel.textContent = `${mbps} Mbps`;
+    customLbl.textContent = `${mbps} Mbps`;
     recOpts.videoBitsPerSecond = mbps * 1_000_000;
     updateWarnings();
   });
 
-  const qualBtns = qualPresets.map(({ label: lbl, key, bps }) => {
+  const qualBtns = qualPresets.map(({ label: qLabel, key, bps }) => {
     const b = document.createElement('button');
-    b.innerHTML = `${qualityDot(key)}<span style="font-size:0.6rem">${lbl}</span>`;
+    b.innerHTML = `${qualityDot(key)}<span style="font-size:0.6rem">${qLabel}</span>`;
     b.style.cssText = [
       'display:flex;align-items:center;',
       'padding:2px 6px',
@@ -877,11 +705,11 @@ export function buildRecordingStrip(
       b.style.color = 'var(--accent)';
       if (key === 'custom') {
         customSlider.style.display = '';
-        customLabel.style.display = '';
+        customLbl.style.display = '';
         recOpts.videoBitsPerSecond = parseInt(customSlider.value) * 1_000_000;
       } else {
         customSlider.style.display = 'none';
-        customLabel.style.display = 'none';
+        customLbl.style.display = 'none';
         recOpts.videoBitsPerSecond = bps;
       }
       updateWarnings();
@@ -890,29 +718,29 @@ export function buildRecordingStrip(
     return b;
   });
   qualSection.body.appendChild(customSlider);
-  qualSection.body.appendChild(customLabel);
+  qualSection.body.appendChild(customLbl);
   row.appendChild(qualSection.wrap);
 
   // MAX DURATION section
   const durSection = section('⏱', 'Max Duration');
   const durSlider = miniSlider(5, 300, 60, 5);
-  const durLabel = label('60s');
+  const durLbl = lbl('60s');
   const unlimitedChk = document.createElement('input');
   unlimitedChk.type = 'checkbox';
   unlimitedChk.style.cssText = 'accent-color:var(--accent);cursor:pointer;';
-  const unlimitedLbl = label('∞');
+  const unlimitedLbl = lbl('∞');
   durSlider.addEventListener('input', () => {
-    durLabel.textContent = `${durSlider.value}s`;
+    durLbl.textContent = `${durSlider.value}s`;
     recOpts.maxDuration = parseInt(durSlider.value);
   });
   unlimitedChk.addEventListener('change', () => {
     recOpts.maxDuration = unlimitedChk.checked ? 0 : parseInt(durSlider.value);
     durSlider.style.opacity = unlimitedChk.checked ? '0.35' : '';
     durSlider.style.pointerEvents = unlimitedChk.checked ? 'none' : '';
-    durLabel.style.opacity = unlimitedChk.checked ? '0.35' : '';
+    durLbl.style.opacity = unlimitedChk.checked ? '0.35' : '';
   });
   durSection.body.appendChild(durSlider);
-  durSection.body.appendChild(durLabel);
+  durSection.body.appendChild(durLbl);
   durSection.body.appendChild(unlimitedChk);
   durSection.body.appendChild(unlimitedLbl);
   row.appendChild(durSection.wrap);
@@ -920,13 +748,13 @@ export function buildRecordingStrip(
   // TRIM section
   const trimSection = section('✂', 'Trim Start');
   const trimSlider = miniSlider(0, 30, 0, 1);
-  const trimLabel = label('0s', 'var(--text-muted)');
+  const trimLbl = lbl('0s', 'var(--text-muted)');
   trimSlider.addEventListener('input', () => {
-    trimLabel.textContent = `${trimSlider.value}s`;
+    trimLbl.textContent = `${trimSlider.value}s`;
     recOpts.trimStart = parseInt(trimSlider.value);
   });
   trimSection.body.appendChild(trimSlider);
-  trimSection.body.appendChild(trimLabel);
+  trimSection.body.appendChild(trimLbl);
   row.appendChild(trimSection.wrap);
 
   // REALTIME + AUDIO section
@@ -935,7 +763,7 @@ export function buildRecordingStrip(
   realtimeChk.type = 'checkbox';
   realtimeChk.checked = true;
   realtimeChk.style.cssText = 'accent-color:var(--accent);cursor:pointer;';
-  const realtimeLbl = label('Realtime');
+  const realtimeLbl = lbl('Realtime');
   const supportsNRT = typeof VideoEncoder !== 'undefined';
   if (!supportsNRT) {
     realtimeChk.disabled = true;
@@ -953,7 +781,7 @@ export function buildRecordingStrip(
   audioChk.type = 'checkbox';
   audioChk.checked = true;
   audioChk.style.cssText = 'accent-color:var(--accent);cursor:pointer;margin-left:8px;';
-  const audioLbl = label('Audio');
+  const audioLbl = lbl('Audio');
   const audioWrap = document.createElement('span');
   audioWrap.style.display = 'none';
   audioWrap.appendChild(audioChk);
@@ -1115,14 +943,17 @@ export function buildRecordingStrip(
     setIdleBtn();
     timerEl.style.display = 'none';
     sizEl.style.display = 'none';
+    if (!recOpts.realtime && recorder.lastStretchRatio > 1.5) {
+      warnRow.textContent = `⚠ Audio quality was affected (${recorder.lastStretchRatio.toFixed(1)}× stretch). Lower target FPS for better results.`;
+      warnRow.style.display = '';
+    }
     opts.onRecordingStop?.();
   }
 
-  recorder.onStop = (blob, ropts) => {
-    // Called when maxDuration auto-stops
+  recorder.onStop = (_blob, _ropts) => {
+    // Called when maxDuration auto-stops — UI cleanup
     if (recorder.getState() === 'idle' && timerInterval) {
       void stopRecording();
-      downloadBlob(blob, `boids-${Date.now()}.${ropts.format}`);
     }
   };
 
@@ -1171,34 +1002,24 @@ git commit -m "feat(recorder): buildRecordingStrip() — bottom strip UI with al
 
 **Files:** Modify `src/lib/webgpu/recorder.ts`
 
-Replaces the stub `_runNonRealtimeLoop` and `_stopNonRealtime` with a real WebCodecs `VideoEncoder` + muxer implementation.
+Replaces the stub `_runNonRealtimeLoop` and `_assembleNrtBlob` with a real WebCodecs `VideoEncoder` + muxer implementation.
 
 - [ ] **Step 1: Add imports at the top of `recorder.ts`**
 
-Replace the opening of `src/lib/webgpu/recorder.ts` with:
+Replace the opening comment line of `src/lib/webgpu/recorder.ts` with:
 
 ```typescript
 // src/lib/webgpu/recorder.ts
 
 import { Muxer as Mp4Muxer, ArrayBufferTarget as Mp4Target } from 'mp4-muxer';
 import { Muxer as WebmMuxer, ArrayBufferTarget as WebmTarget } from 'webm-muxer';
-
-export interface RecordingOptions {
-// ... (rest unchanged)
 ```
 
-- [ ] **Step 2: Add non-realtime state fields to the class**
+- [ ] **Step 2: Add non-realtime muxer fields to the class**
 
-Inside `SimRecorder`, replace the non-realtime fields block:
+Inside `SimRecorder`, add these fields to the non-realtime fields block:
 
 ```typescript
-  // Non-realtime fields
-  private _nrtRunning = false;
-  private _nrtFrameIndex = 0;
-  private _nrtAudioMR: MediaRecorder | null = null;
-  private _nrtAudioChunks: Blob[] = [];
-  private _nrtStopResolve: ((blob: Blob) => void) | null = null;
-  private _nrtStartWallMs = 0;
   private _nrtVideoEncoder: VideoEncoder | null = null;
   private _nrtMp4Muxer: Mp4Muxer<Mp4Target> | null = null;
   private _nrtWebmMuxer: WebmMuxer<WebmTarget> | null = null;
@@ -1206,9 +1027,9 @@ Inside `SimRecorder`, replace the non-realtime fields block:
   private _nrtWebmTarget: WebmTarget | null = null;
 ```
 
-- [ ] **Step 3: Replace `_runNonRealtimeLoop` and `_stopNonRealtime`**
+- [ ] **Step 3: Replace `_runNonRealtimeLoop` stub**
 
-Replace the two stubbed methods with:
+Replace the stub method with:
 
 ```typescript
   private async _runNonRealtimeLoop(
@@ -1223,7 +1044,7 @@ Replace the two stubbed methods with:
     this._nrtFrameIndex = 0;
     this._nrtStartWallMs = performance.now();
 
-    // Initialise muxer + encoder
+    // Initialise muxer
     if (opts.format === 'mp4') {
       this._nrtMp4Target = new Mp4Target();
       this._nrtMp4Muxer = new Mp4Muxer({
@@ -1281,13 +1102,11 @@ Replace the two stubbed methods with:
       })();
     });
   }
+```
 
-  private _stopNonRealtime(): Promise<Blob> {
-    this._nrtRunning = false;
-    // The loop will exit on the next iteration check. Muxer finalized in _assembleNrtBlob().
-    return Promise.resolve(this._assembleNrtBlob());
-  }
+- [ ] **Step 4: Replace `_assembleNrtBlob` stub**
 
+```typescript
   private _assembleNrtBlob(): Blob {
     const opts = this._opts!;
     if (opts.format === 'mp4' && this._nrtMp4Muxer && this._nrtMp4Target) {
@@ -1305,37 +1124,6 @@ Replace the two stubbed methods with:
     return new Blob();
   }
 ```
-
-- [ ] **Step 4: Fix `stop()` to call `_assembleNrtBlob` correctly**
-
-The non-realtime stop flow is: `stop()` sets `_nrtRunning = false`, but the loop is async. We need to wait for the loop to exit before assembling the blob. Update `stop()`:
-
-```typescript
-  async stop(): Promise<Blob> {
-    if (this._state === 'idle') return new Blob();
-    this._state = 'idle';
-
-    if (this._durationTimer) { clearTimeout(this._durationTimer); this._durationTimer = null; }
-
-    const opts = this._opts!;
-    let blob: Blob;
-
-    if (opts.realtime) {
-      blob = await this._stopRealtime(opts);
-    } else {
-      // Signal loop to stop; wait for encoder flush by re-awaiting _nrtStopPromise
-      this._nrtRunning = false;
-      // Wait briefly for encoder flush (already in flight from _runNonRealtimeLoop)
-      await new Promise<void>(res => setTimeout(res, 50));
-      blob = this._assembleNrtBlob();
-    }
-
-    this.onStop?.(blob, opts);
-    return blob;
-  }
-```
-
-Note: The `stop()` → 50ms wait is a pragmatic coupling between stop and the async encoder flush. A production hardening would store the `_runNonRealtimeLoop` Promise and await it, but this requires a small refactor — defer to a follow-up.
 
 - [ ] **Step 5: Verify TypeScript**
 
@@ -1373,10 +1161,10 @@ Add this private method to the `SimRecorder` class:
     input: AudioBuffer,
     targetDurationSec: number,
   ): Promise<AudioBuffer> {
+    // @ts-ignore — soundtouchjs ships no types
     const { SoundTouch, SimpleFilter } = await import('soundtouchjs');
     const ratio = input.duration / targetDurationSec;
 
-    // Interleave all channels into a flat Float32Array
     const numCh = input.numberOfChannels;
     const len   = input.length;
     const interleaved = new Float32Array(len * numCh);
@@ -1402,14 +1190,13 @@ Add this private method to the `SimRecorder` class:
     };
 
     const st = new SoundTouch(input.sampleRate);
-    st.tempo = ratio; // > 1 speeds up, < 1 slows down
+    st.tempo = ratio;
     const filter = new SimpleFilter(source, st);
 
     const outLen = Math.round(len / ratio);
     const outputInterleaved = new Float32Array(outLen * numCh);
     filter.extract(outputInterleaved, outLen);
 
-    // Deinterleave into an AudioBuffer
     const offCtx = new OfflineAudioContext(numCh, outLen, input.sampleRate);
     const outBuf  = offCtx.createBuffer(numCh, outLen, input.sampleRate);
     for (let c = 0; c < numCh; c++) {
@@ -1422,9 +1209,7 @@ Add this private method to the `SimRecorder` class:
   }
 ```
 
-- [ ] **Step 2: Encode stretched AudioBuffer with AudioEncoder and add to muxer**
-
-Add this private method:
+- [ ] **Step 2: Add `_encodeAndMuxAudio()` helper**
 
 ```typescript
   private async _encodeAndMuxAudio(
@@ -1432,10 +1217,10 @@ Add this private method:
     muxer: Mp4Muxer<Mp4Target> | WebmMuxer<WebmTarget>,
     format: 'mp4' | 'webm',
   ): Promise<void> {
-    const codec     = format === 'mp4' ? 'mp4a.40.2' : 'opus';
+    const codec      = format === 'mp4' ? 'mp4a.40.2' : 'opus';
     const sampleRate = audioBuffer.sampleRate;
-    const numCh     = audioBuffer.numberOfChannels;
-    const frameSize = 1024; // standard for AAC and Opus
+    const numCh      = audioBuffer.numberOfChannels;
+    const frameSize  = 1024;
 
     await new Promise<void>((resolve, reject) => {
       const audioEncoder = new AudioEncoder({
@@ -1457,11 +1242,11 @@ Add this private method:
         }
         const ts = Math.round(offset * (1_000_000 / sampleRate));
         const audioData = new AudioData({
-          format:          'f32-interleaved',
+          format:           'f32-interleaved',
           sampleRate,
-          numberOfFrames:  frames,
+          numberOfFrames:   frames,
           numberOfChannels: numCh,
-          timestamp:       ts,
+          timestamp:        ts,
           data,
         });
         audioEncoder.encode(audioData);
@@ -1476,7 +1261,7 @@ Add this private method:
 
 - [ ] **Step 3: Wire audio into `_runNonRealtimeLoop`**
 
-In `_runNonRealtimeLoop`, just before the muxer + encoder initialisation block, add audio recorder start:
+Just before the muxer initialisation block in `_runNonRealtimeLoop`, add:
 
 ```typescript
     // Start parallel audio recording if requested
@@ -1489,10 +1274,9 @@ In `_runNonRealtimeLoop`, just before the muxer + encoder initialisation block, 
     }
 ```
 
-And update the muxer initialisation to include an audio track when `opts.audioStream` is present:
+Update the muxer initialisation to include an audio track when `opts.audioStream` is present:
 
 ```typescript
-    // Initialise muxer + encoder
     if (opts.format === 'mp4') {
       this._nrtMp4Target = new Mp4Target();
       this._nrtMp4Muxer = new Mp4Muxer({
@@ -1511,7 +1295,7 @@ And update the muxer initialisation to include an audio track when `opts.audioSt
     }
 ```
 
-Then after `await encoder.flush(); encoder.close();` and before `resolve()`, add audio processing:
+After `await encoder.flush(); encoder.close(); this._nrtVideoEncoder = null;` and before `resolve()`, add:
 
 ```typescript
           // Process audio if recorded
@@ -1529,10 +1313,10 @@ Then after `await encoder.flush(); encoder.close();` and before `resolve()`, add
             await decodeCtx.close();
 
             const videoDurationSec = this._nrtFrameIndex / targetFps;
-            const stretchRatio     = rawBuffer.duration / videoDurationSec;
+            this.lastStretchRatio  = rawBuffer.duration / videoDurationSec;
 
             let processedBuffer = rawBuffer;
-            if (Math.abs(stretchRatio - 1.0) > 0.02) {
+            if (Math.abs(this.lastStretchRatio - 1.0) > 0.02) {
               processedBuffer = await this._stretchAudio(rawBuffer, videoDurationSec);
             }
 
@@ -1541,97 +1325,145 @@ Then after `await encoder.flush(); encoder.close();` and before `resolve()`, add
           }
 ```
 
-- [ ] **Step 4: Expose stretch ratio for UI warning in strip**
-
-Add a public getter to `SimRecorder`:
-
-```typescript
-  /** Returns audio/video duration ratio from the last non-realtime recording. > 1.5 = warn. */
-  lastStretchRatio = 1.0;
-```
-
-And set it in `_runNonRealtimeLoop` where stretch ratio is computed:
-
-```typescript
-            this.lastStretchRatio = stretchRatio;
-```
-
-Then in `recording-strip.ts`, after stopping non-realtime, show a warning if `recorder.lastStretchRatio > 1.5`:
-
-In the `stopRecording()` function inside `buildRecordingStrip`, add after `downloadBlob`:
-
-```typescript
-    if (!recOpts.realtime && recorder.lastStretchRatio > 1.5) {
-      warnRow.textContent = `⚠ Audio quality was affected (${recorder.lastStretchRatio.toFixed(1)}× stretch). Lower target FPS for better results.`;
-      warnRow.style.display = '';
-    }
-```
-
-- [ ] **Step 5: Verify TypeScript**
+- [ ] **Step 4: Verify TypeScript**
 
 ```bash
 npm run build 2>&1 | grep -i error | head -20
 ```
 
-Expected: no errors. If `soundtouchjs` types are missing, add `// @ts-ignore` above the import line.
+Expected: no errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/webgpu/recorder.ts src/lib/webgpu/recording-strip.ts
+git add src/lib/webgpu/recorder.ts
 git commit -m "feat(recorder): non-realtime audio — soundtouchjs time-stretch + AudioEncoder mux"
 ```
 
 ---
 
-## Task 9: Wire Everything in `[...slug].astro`
+## Task 9: Expose AudioReactor and Wire Everything
 
-**Files:** Modify `src/pages/gallery/[...slug].astro`
+**Files:**
+- Modify `src/lib/sim-page/sim-setup/boids.ts` — return `{ reactor: AudioReactor }` instead of `void`
+- Modify `src/lib/sim-page/sim-setup/index.ts` — return `{ hasPanel: boolean; audioReactor?: AudioReactor }` instead of `boolean`
+- Modify `src/pages/gallery/[...slug].astro` — mount strip, wire recorder + strip
 
-- [ ] **Step 1: Add strip container div to the viewport**
+### Part A: Update `setupBoids` to return the reactor
 
-In `[...slug].astro`, inside `.sim-viewport`, add after the `#fps-display` div:
+- [ ] **Step 1: Change `setupBoids` return type in `boids.ts`**
 
-```html
-<div id="recording-strip-container"></div>
+In `src/lib/sim-page/sim-setup/boids.ts`, change the function signature from:
+
+```typescript
+export async function setupBoids(
+  ctrl: BoidsController,
+  panelContent: HTMLElement,
+  panel: HTMLElement,
+  shaderPanelEl: HTMLElement,
+): Promise<void> {
+  const reactor = new AudioReactor();
 ```
 
-- [ ] **Step 2: Add strip container CSS**
+To:
 
-In the `<style>` block, add:
+```typescript
+export async function setupBoids(
+  ctrl: BoidsController,
+  panelContent: HTMLElement,
+  panel: HTMLElement,
+  shaderPanelEl: HTMLElement,
+): Promise<{ reactor: AudioReactor }> {
+  const reactor = new AudioReactor();
+```
 
-```css
-  #recording-strip-container {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 15;
+And change the final line of the function (currently it has no return) to:
+
+```typescript
+  return { reactor };
+```
+
+Add `return { reactor };` just before the closing `}` of `setupBoids`.
+
+- [ ] **Step 2: Update `setupSim` in `index.ts`**
+
+In `src/lib/sim-page/sim-setup/index.ts`, change the import to include `AudioReactor`:
+
+```typescript
+import type { AudioReactor } from '../../../components/simulations/boids/boids-audio';
+```
+
+Change the return type from `Promise<boolean>` to `Promise<{ hasPanel: boolean; audioReactor?: AudioReactor }>`:
+
+```typescript
+export async function setupSim(
+  sim: string,
+  ctrl: AnyController,
+  panelContent: HTMLElement,
+  panel: HTMLElement,
+  shaderPanelEl: HTMLElement,
+): Promise<{ hasPanel: boolean; audioReactor?: AudioReactor }> {
+```
+
+Update each case to return the new shape:
+
+```typescript
+  switch (sim) {
+    case 'boids': {
+      const { reactor } = await setupBoids(ctrl as BoidsController, panelContent, panel, shaderPanelEl);
+      return { hasPanel: true, audioReactor: reactor };
+    }
+    case 'cppn':
+      await setupCPPN(ctrl as CPPNController, panelContent, panel);
+      return { hasPanel: true };
+    case 'nca':
+      setupNCA(ctrl as NCAController, panelContent, panel);
+      return { hasPanel: true };
+    default:
+      return { hasPanel: false };
   }
 ```
 
+### Part B: Wire in `[...slug].astro`
+
 - [ ] **Step 3: Add imports to the `<script>` block**
 
-At the top of the `<script>` section, add:
+At the top of the `<script>` section in `src/pages/gallery/[...slug].astro`, add:
 
 ```typescript
   import { SimRecorder } from '../../lib/webgpu/recorder';
   import { buildRecordingStrip } from '../../lib/webgpu/recording-strip';
 ```
 
-- [ ] **Step 4: Instantiate recorder and strip after `controller.start()`**
+- [ ] **Step 4: Add strip container div to the HTML**
 
-After the `controller.start()` call (around line 596), and before the FPS counter setup, add:
+In the Astro template (before `<script>`), inside the `sim-viewport` div, add after `<Controls simId={sim} />`:
+
+```html
+<div id="recording-strip-container" style="position:absolute;bottom:0;left:0;right:0;z-index:15;"></div>
+```
+
+- [ ] **Step 5: Wire the recorder after `setupSim`**
+
+In the `<script>` block, change the existing call:
 
 ```typescript
-        // ── Recording strip ─────────────────────────────────────────────────
-        const recorder   = new SimRecorder();
+        const hasPanel = await setupSim(sim, controller, panelContent, panel, shaderPanelEl);
+```
+
+To:
+
+```typescript
+        const { hasPanel, audioReactor } = await setupSim(sim, controller, panelContent, panel, shaderPanelEl);
+
+        // ── Recording strip ──────────────────────────────────────────────────
+        const recorder       = new SimRecorder();
         const stripContainer = document.getElementById('recording-strip-container') as HTMLElement;
-        const recordBtn  = controls?.querySelector('[data-action="record"]') as HTMLElement | null;
+        const recordBtn      = document.querySelector(`#controls-${sim} [data-action="record"]`) as HTMLElement | null;
 
         const recordingStrip = buildRecordingStrip(stripContainer, recorder, {
           controller,
-          audioReactor: sim === 'boids' ? (undefined as unknown as import('../../components/simulations/boids/boids-audio').AudioReactor) : undefined,
+          audioReactor,
           onRecordingStart: () => {
             recordBtn?.classList.add('recording');
             recordBtn?.classList.remove('strip-open');
@@ -1640,64 +1472,26 @@ After the `controller.start()` call (around line 596), and before the FPS counte
             recordBtn?.classList.remove('recording');
           },
         });
-```
 
-Note: The `audioReactor` is assigned later (after the boids block runs). Refine this in Step 5.
-
-- [ ] **Step 5: Pass audioReactor from the boids block**
-
-Inside the `if (sim === 'boids')` block, after `const reactor = new AudioReactor();`, call:
-
-```typescript
-          // Reconnect strip with reactor now that it exists
+        document.addEventListener('pagehide', () => {
           recordingStrip.teardown();
-          const recordingStripBoids = buildRecordingStrip(stripContainer, recorder, {
-            controller: boidsCtrl,
-            audioReactor: reactor,
-            onRecordingStart: () => {
-              recordBtn?.classList.add('recording');
-              recordBtn?.classList.remove('strip-open');
-            },
-            onRecordingStop: () => {
-              recordBtn?.classList.remove('recording');
-            },
-          });
-          // Replace the outer reference so the controls button uses the right strip
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).__activeStrip = recordingStripBoids;
-```
-
-And before the controls click listener, set a default:
-
-```typescript
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__activeStrip = recordingStrip;
+          if (recorder.getState() === 'recording') void recorder.stop();
+        }, { once: true });
 ```
 
 - [ ] **Step 6: Wire the record button in the controls click handler**
 
-In the `controls?.addEventListener('click', ...)` block, add a new branch after `action === 'settings'`:
+In the `controls?.addEventListener('click', ...)` block, add after `else if (action === 'settings' && hasPanel)`:
 
 ```typescript
           } else if (action === 'record') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const activeStrip = (window as any).__activeStrip;
-            activeStrip?.toggle();
+            recordingStrip.toggle();
             if (recorder.getState() === 'idle') {
               recordBtn?.classList.toggle('strip-open');
             }
 ```
 
-- [ ] **Step 7: Clean up on page hide**
-
-In the `document.addEventListener('pagehide', ...)` block, add:
-
-```typescript
-            recordingStrip.teardown();
-            if (recorder.getState() === 'recording') void recorder.stop();
-```
-
-- [ ] **Step 8: Verify build**
+- [ ] **Step 7: Verify build**
 
 ```bash
 npm run build 2>&1 | grep -i error | head -20
@@ -1705,11 +1499,11 @@ npm run build 2>&1 | grep -i error | head -20
 
 Expected: no errors.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/pages/gallery/[...slug].astro
-git commit -m "feat(gallery): wire SimRecorder + buildRecordingStrip into slug page"
+git add src/lib/sim-page/sim-setup/boids.ts src/lib/sim-page/sim-setup/index.ts src/pages/gallery/[...slug].astro
+git commit -m "feat(gallery): wire SimRecorder + buildRecordingStrip, expose AudioReactor from setupBoids"
 ```
 
 ---
@@ -1722,23 +1516,23 @@ Open `http://localhost:4321/gallery/boids` in **Chrome** for each test.
 
 - [ ] **Test 1: Controls bar button — strip toggle**
 
-Click the ● record button. Strip slides up from bottom. Click again — strip hides.
-Expected: smooth CSS transition, `strip-open` class on button when open.
+Click the ● record button. Strip appears from bottom. Click again — strip hides.
+Expected: `strip-open` class on button when open; strip hidden when closed.
 
 - [ ] **Test 2: Realtime WebM recording**
 
 Open strip → format = WebM, quality = Low, FPS = 30, duration = 10s, trim = 0, realtime = ✓.
-Click START RECORDING. Timer counts up. At 10s auto-stops and a `.webm` file downloads.
+Click REC. Timer counts up. At 10s auto-stops and a `.webm` file downloads.
 Open the file in Chrome — should play back boids video with no UI overlay.
 
 - [ ] **Test 3: Realtime MP4 recording**
 
-Format = MP4, 5s max, click START → let it auto-stop. `.mp4` downloads.
-Open in VLC or QuickTime — should play correctly.
+Format = MP4, 5s max, click REC → let it auto-stop. `.mp4` downloads.
+Open in VLC or Chrome — should play correctly.
 
 - [ ] **Test 4: Trim start**
 
-Format = WebM, max = 20s, trim = 5s. Click START, wait 20s. Download should contain ~15s of footage (first 5s discarded).
+Format = WebM, max = 20s, trim = 5s. Click REC, wait 20s. Download should contain ~15s of footage (first 5s discarded).
 
 - [ ] **Test 5: Audio recording**
 
@@ -1747,7 +1541,7 @@ Check Audio. Start a 5s WebM recording while making noise. Download and play —
 
 - [ ] **Test 6: Non-realtime recording (Chrome only)**
 
-Uncheck Realtime. FPS = 30, 5s max. Click START — simulation slows on screen. After it completes, `.webm` downloads. Play the file — should be exactly 30fps for 5 seconds.
+Uncheck Realtime. FPS = 30, 5s max. Click REC — simulation slows on screen. After it completes, `.webm` downloads. Play the file — should be exactly 30fps for 5 seconds.
 
 - [ ] **Test 7: Non-realtime + audio (Chrome only)**
 
@@ -1755,12 +1549,12 @@ Realtime unchecked, audio checked. 5s. Download and play — audio and video sho
 
 - [ ] **Test 8: MP4 not supported warning (Firefox)**
 
-Open in Firefox. MP4 pill should still be clickable; attempting to start MP4 recording should show `⚠ MP4 recording is not supported in this browser` warning in the strip. WebM should work normally.
+Open in Firefox. Clicking REC with MP4 format should show `⚠ MP4 recording is not supported in this browser` in the strip. WebM should work normally.
 
 - [ ] **Step 9: Commit test completion**
 
 ```bash
-git add .
+git add -A
 git commit -m "feat: video recorder — realtime + non-realtime, WebM + MP4, audio, bottom strip UI"
 ```
 
@@ -1768,7 +1562,7 @@ git commit -m "feat: video recorder — realtime + non-realtime, WebM + MP4, aud
 
 ## Notes
 
-- **`_stopNonRealtime` timing gap:** The 50ms await in `stop()` for non-realtime is pragmatic. If the encoder flush takes longer than 50ms (very large frames), the muxer may not be fully finalised. A cleaner solution (storing the loop Promise and awaiting it) can be done as a follow-up.
-- **`__activeStrip` pattern:** Using `window.__activeStrip` is a workaround for the boids-specific strip rebuild. A cleaner architecture would pass the strip as a mutable ref object. Acceptable for now since only boids uses recording.
+- **`_stopNonRealtime` timing gap:** The 50ms await in `stop()` for non-realtime is pragmatic. If the encoder flush takes longer than 50ms, the muxer may not be fully finalised. A follow-up can store the loop Promise and await it properly.
+- **`setupBoids` return value:** Changing `setupBoids` to return `{ reactor }` is a clean improvement over the old `window.__activeStrip` workaround — the reactor is always available when the strip is built.
 - **Firefox + MP4:** Firefox does not support `video/mp4` in `MediaRecorder`. The error is surfaced in the strip UI.
-- **Safari non-realtime:** WebCodecs is available in Safari 16.4+. If issues arise, the non-realtime checkbox can be disabled on Safari detection as a follow-up.
+- **`sim-canvas` coupling:** `buildRecordingStrip` reads the canvas via `document.getElementById('sim-canvas')`. This is intentional — it matches the ID in `[...slug].astro` and keeps the strip implementation simple.
