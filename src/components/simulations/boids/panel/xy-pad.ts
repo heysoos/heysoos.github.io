@@ -246,8 +246,8 @@ export function buildXYPad(
   // ── Audio trace state ────────────────────────────────────────────────────────
   const history: TracePoint[] = [];
   const TRACE_WINDOW_MS = 6500;
-  let _lastDrawTs = 0;
-  const DRAW_INTERVAL = 50; // ~20 fps — trace smoothness doesn't need 60 fps
+  let _lastUpdateTs = 0;
+  const UPDATE_INTERVAL = 50; // ~20 fps — gates both history push and canvas redraw
 
   // Canvas dimensions are kept in sync via ResizeObserver only — no layout reads in rAF.
   const canvasRO = new ResizeObserver((entries) => {
@@ -386,16 +386,21 @@ export function buildXYPad(
     const totalMag = Math.min(1, totalAmp);
     const dotColor = totalMag > 0.04 ? blendColor(bandAmps) : undefined;
 
-    // Update dot to follow modulated position with band color
+    // Always update dot position — it follows audio modulation in real time
     redraw(dotColor);
+
+    // Gate history and canvas redraw at ~20fps to keep segment count bounded
+    const nowTs = performance.now();
+    if (nowTs - _lastUpdateTs < UPDATE_INTERVAL) return;
+    _lastUpdateTs = nowTs;
 
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
 
-    history.push({ x: nx, y: ny, bandAmps, mag: totalMag, ts: performance.now() });
+    history.push({ x: nx, y: ny, bandAmps, mag: totalMag, ts: nowTs });
 
     // Prune old entries
-    const cutoff = performance.now() - TRACE_WINDOW_MS;
+    const cutoff = nowTs - TRACE_WINDOW_MS;
     let pruneIdx = 0;
     while (pruneIdx < history.length && history[pruneIdx].ts < cutoff) pruneIdx++;
     if (pruneIdx > 0) history.splice(0, pruneIdx);
@@ -412,11 +417,7 @@ export function buildXYPad(
       }
     }
 
-    const nowTs = performance.now();
-    if (nowTs - _lastDrawTs >= DRAW_INTERVAL) {
-      _lastDrawTs = nowTs;
-      drawTrace(basePx, basePy, dotColor);
-    }
+    drawTrace(basePx, basePy, dotColor);
   }
 
   container.appendChild(surf);

@@ -118,8 +118,6 @@ export class BoidsController {
   private overlayBindGroup: GPUBindGroup | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
-  private _roW = 0;
-  private _roH = 0;
 
   params: BoidsParams = { ...DEFAULT_PARAMS };
   trailsEnabled = false;
@@ -271,13 +269,17 @@ export class BoidsController {
       });
       canvas.addEventListener('mouseleave', () => { this.mouseActive = false; });
 
-      // ResizeObserver keeps _roW/_roH up to date so _preFrameSetup never reads clientWidth.
+      // ResizeObserver writes canvas dimensions directly — no layout reads in the GPU rAF loop.
       const canvasRO = new ResizeObserver((entries) => {
         const entry = entries[0];
         if (!entry) return;
         const dpr = window.devicePixelRatio || 1;
-        this._roW = Math.floor(entry.contentRect.width  * dpr);
-        this._roH = Math.floor(entry.contentRect.height * dpr);
+        const w = Math.floor(entry.contentRect.width  * dpr);
+        const h = Math.floor(entry.contentRect.height * dpr);
+        if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+          canvas.width  = w;
+          canvas.height = h;
+        }
       });
       canvasRO.observe(canvas);
 
@@ -501,12 +503,7 @@ export class BoidsController {
 
   private _preFrameSetup(): { device: GPUDevice; context: GPUCanvasContext; canvas: HTMLCanvasElement; aspect: number } {
     const { device, context, canvas } = this.gpu!;
-    // Apply pending resize from ResizeObserver — no layout-forcing clientWidth read in the rAF loop.
-    const tw = this._roW, th = this._roH;
-    if (tw > 0 && th > 0 && (canvas.width !== tw || canvas.height !== th)) {
-      canvas.width  = tw;
-      canvas.height = th;
-    }
+    // canvas dimensions are managed by the ResizeObserver in init() — no DOM reads here.
     const resized = canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight;
     if (resized) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
