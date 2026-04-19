@@ -1,5 +1,5 @@
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
+import { createBuffer, createUniformBuffer } from '../../../lib/webgpu/utils';
 import shaderCode from './boids.wgsl?raw';
 import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
@@ -118,6 +118,8 @@ export class BoidsController {
   private overlayBindGroup: GPUBindGroup | null = null;
   private prevCanvasWidth = 0;
   private prevCanvasHeight = 0;
+  private _roW = 0;
+  private _roH = 0;
 
   params: BoidsParams = { ...DEFAULT_PARAMS };
   trailsEnabled = false;
@@ -268,6 +270,16 @@ export class BoidsController {
         this.mouseActive = true;
       });
       canvas.addEventListener('mouseleave', () => { this.mouseActive = false; });
+
+      // ResizeObserver keeps _roW/_roH up to date so _preFrameSetup never reads clientWidth.
+      const canvasRO = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const dpr = window.devicePixelRatio || 1;
+        this._roW = Math.floor(entry.contentRect.width  * dpr);
+        this._roH = Math.floor(entry.contentRect.height * dpr);
+      });
+      canvasRO.observe(canvas);
 
       return true;
     } catch (e) {
@@ -489,8 +501,14 @@ export class BoidsController {
 
   private _preFrameSetup(): { device: GPUDevice; context: GPUCanvasContext; canvas: HTMLCanvasElement; aspect: number } {
     const { device, context, canvas } = this.gpu!;
-    const resized = resizeCanvasToDisplaySize(canvas);
-    if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
+    // Apply pending resize from ResizeObserver — no layout-forcing clientWidth read in the rAF loop.
+    const tw = this._roW, th = this._roH;
+    if (tw > 0 && th > 0 && (canvas.width !== tw || canvas.height !== th)) {
+      canvas.width  = tw;
+      canvas.height = th;
+    }
+    const resized = canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight;
+    if (resized) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
