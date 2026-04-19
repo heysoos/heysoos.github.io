@@ -135,7 +135,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   var spatial_force = vec2f(0.0);  // screen space
   var align_force   = vec2f(0.0);  // clip space
 
-  // Adaptive grid: cell size = 2.0 / gridDim (set each frame so cell ≈ attractionRadius)
+  // Adaptive grid: cell size = 2.0 / gridDim (set each frame so cell ≈ max(attractionRadius, repulsionRadius))
   let gDim = i32(params.gridDim);
   let cellW = 2.0 / f32(gDim);
 
@@ -143,8 +143,8 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let myCellX = i32(clamp(u32((pos.x + 1.0) / cellW), 0u, params.gridDim - 1u));
   let myCellY = i32(clamp(u32((pos.y + 1.0) / cellW), 0u, params.gridDim - 1u));
 
-  // Search radius in cells — with adaptive grid, attractionRadius ≈ cellW, so searchR ≈ 1
-  let searchR = max(1i, i32(ceil(params.attractionRadius / cellW)));
+  // Search radius in cells — covers whichever radius is larger
+  let searchR = max(1i, i32(ceil(max(params.attractionRadius, params.repulsionRadius) / cellW)));
 
   for (var dy = -searchR; dy <= searchR; dy++) {
     for (var dx = -searchR; dx <= searchR; dx++) {

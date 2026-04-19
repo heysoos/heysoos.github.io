@@ -464,7 +464,7 @@ export class BoidsController {
     v.setFloat32(76, this.params.colorB,                true);
     v.setFloat32(80, this.params.opacity,               true);
     v.setUint32 (84, this.params.opacityMode,           true);
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / Math.max(this.params.attractionRadius, this.params.repulsionRadius))));
     v.setUint32 (88, gridDim,                           true);
     v.setUint32 (92, this.frame,                        true);
     const imgParams = this.imageForce.getExtraParams();
@@ -613,7 +613,7 @@ export class BoidsController {
     device.queue.writeBuffer(this.uniformBuffer, 0, this._packUniforms(aspect));
 
     const N       = this.params.numParticles;
-    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / this.params.attractionRadius)));
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / Math.max(this.params.attractionRadius, this.params.repulsionRadius))));
     const gridSize = gridDim * gridDim;
 
     this._runComputePasses(device, N, gridDim, gridSize);
