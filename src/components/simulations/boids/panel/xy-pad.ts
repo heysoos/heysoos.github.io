@@ -297,9 +297,12 @@ export function buildXYPad(
       ctx2d.strokeStyle = color;
       ctx2d.globalAlpha = opacity;
       ctx2d.lineWidth   = lineW;
+      ctx2d.shadowBlur  = 8;
+      ctx2d.shadowColor = color;
       ctx2d.moveTo(p0.x * width, (1 - p0.y) * height);
       ctx2d.lineTo(p1.x * width, (1 - p1.y) * height);
       ctx2d.stroke();
+      ctx2d.shadowBlur  = 0;
     }
 
     ctx2d.globalAlpha = 1;
