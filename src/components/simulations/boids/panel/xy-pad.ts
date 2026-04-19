@@ -143,7 +143,8 @@ export function buildXYPad(
     'border-radius:50%',
     'background:var(--accent)',
     'box-shadow:0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)',
-    'transform:translate(-50%,50%)',
+    'left:0',
+    'bottom:0',
     'pointer-events:none',
   ].join(';');
   surf.appendChild(dot);
@@ -166,14 +167,19 @@ export function buildXYPad(
   // ── Position update ──────────────────────────────────────────────────────────
   let _lastNx = -1, _lastNy = -1, _lastColor = '';
   let _lastTx = '', _lastTy = '';
+  let padW = 0, padH = 0;
+  const DOT_R = 4.5; // half of 9px dot — used to center the dot on its logical position
 
   function redraw(audioColor?: string): void {
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
     const color = audioColor ?? 'var(--accent)';
     if (nx !== _lastNx || ny !== _lastNy || color !== _lastColor) {
-      dot.style.left       = `${nx * 100}%`;
-      dot.style.bottom     = `${ny * 100}%`;
+      // Use transform (compositor-only) instead of left/bottom to avoid layout invalidation.
+      // Dot anchored at left:0;bottom:0 — transform moves its center to (nx*padW, ny*padH).
+      if (padW > 0 && padH > 0) {
+        dot.style.transform = `translate(${nx * padW - DOT_R}px,${DOT_R - ny * padH}px)`;
+      }
       dot.style.background = color;
       dot.style.boxShadow  = audioColor
         ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
@@ -249,16 +255,21 @@ export function buildXYPad(
   let _lastUpdateTs = 0;
   const UPDATE_INTERVAL = 50; // ~20 fps — gates both history push and canvas redraw
 
-  // Canvas dimensions are kept in sync via ResizeObserver only — no layout reads in rAF.
+  // Canvas dimensions and dot position are kept in sync via ResizeObserver only.
   const canvasRO = new ResizeObserver((entries) => {
     const entry = entries[0];
     if (!entry) return;
     const w = Math.round(entry.contentRect.width);
     const h = Math.round(entry.contentRect.height);
+    padW = entry.contentRect.width;
+    padH = entry.contentRect.height;
     if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width  = w;
       canvas.height = h;
     }
+    // Re-position dot now that we have accurate pixel dimensions.
+    _lastNx = -1;
+    redraw();
   });
   canvasRO.observe(canvas);
 
