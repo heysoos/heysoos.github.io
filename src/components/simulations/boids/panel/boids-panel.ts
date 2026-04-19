@@ -235,13 +235,18 @@ export function buildBoidsPanel(
   // Reads controller.params (already audio-modulated) to update indicator bars
   // in the Params tab and amplitude bars + traces in the Audio tab.
   let audioWasActive = false;
+  let shownIndicatorParams = new Set<string>();
   function updateAudioViz(baseParams?: Record<string, number>): void {
     const reactor = opts.reactor;
     if (!reactor) return;
 
     if (!reactor.isActive()) {
       if (audioWasActive) {
-        for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
+        for (const param of shownIndicatorParams) {
+          const ind = updMaps.paramIndicators.get(param);
+          if (ind) ind.wrap.style.display = 'none';
+        }
+        shownIndicatorParams.clear();
         for (const [, u] of updMaps.cellUpdaters) u(0);
         for (const fn of padTraceUpdaters) fn(null, [], undefined);
         audioWasActive = false;
@@ -249,9 +254,6 @@ export function buildBoidsPanel(
       return;
     }
     audioWasActive = true;
-
-    // Reset all param indicators to hidden; active mappings will re-show them below
-    for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
 
     const snapshot = reactor.analyze();
 
@@ -286,7 +288,8 @@ export function buildBoidsPanel(
       fn(snapshot, reactor.mappings, baseParams);
     }
 
-    // Param indicators in the Params tab
+    // Param indicators in the Params tab — dirty-flag display, scaleX for width (no layout)
+    const nextShown = new Set<string>();
     for (const m of reactor.mappings) {
       if (!m.enabled) continue;
       const meta = PARAM_META[m.param as string];
@@ -296,11 +299,17 @@ export function buildBoidsPanel(
       const fraction = range > 0 ? Math.max(0, Math.min(1, (currentVal - meta.min) / range)) : 0;
       const ind = updMaps.paramIndicators.get(m.param as string);
       if (ind) {
-        ind.wrap.style.display = 'block';
-        ind.fill.style.width   = `${fraction * 100}%`;
+        const param = m.param as string;
+        nextShown.add(param);
+        if (!shownIndicatorParams.has(param)) ind.wrap.style.display = 'block';
+        ind.fill.style.transform  = `scaleX(${fraction})`;
         ind.fill.style.background = BAND_COLORS[m.band];
       }
     }
+    for (const param of shownIndicatorParams) {
+      if (!nextShown.has(param)) { const ind = updMaps.paramIndicators.get(param); if (ind) ind.wrap.style.display = 'none'; }
+    }
+    shownIndicatorParams = nextShown;
   }
 
   return {
