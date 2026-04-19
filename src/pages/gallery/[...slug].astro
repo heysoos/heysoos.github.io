@@ -481,10 +481,10 @@ const sim = project.data.simulation;
     gap: 3px;
     position: absolute;
     z-index: 1;
-    padding: 2px 4px;
+    padding: 2px 5px;
     border-radius: 3px;
-    font-size: 0.6rem;
-    color: var(--text-muted);
+    font-size: 0.72rem;
+    color: var(--text-body);
     pointer-events: none;
     background: rgba(10, 8, 4, 0.82);
     backdrop-filter: blur(4px);
@@ -492,21 +492,23 @@ const sim = project.data.simulation;
   }
 
   .params-panel :global(.chip-y-label) {
-    top: 4px;
+    top: 50%;
     left: 4px;
+    transform: translateY(-50%);
   }
 
   .params-panel :global(.chip-x-label) {
     bottom: 4px;
-    right: 4px;
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   .params-panel :global(.val-x),
   .params-panel :global(.val-y) {
     position: absolute;
     z-index: 3;
-    font-size: 0.58rem;
-    color: var(--text-muted);
+    font-size: 0.72rem;
+    color: var(--accent);
     pointer-events: none;
     font-variant-numeric: tabular-nums;
   }

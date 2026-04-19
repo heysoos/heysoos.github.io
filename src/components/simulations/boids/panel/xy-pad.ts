@@ -101,9 +101,6 @@ function makeChip(def: XYPadDef, position: 'top-left' | 'bottom-right'): HTMLEle
     'background:rgba(10,8,4,0.82)',
     'backdrop-filter:blur(4px)',
     '-webkit-backdrop-filter:blur(4px)',
-    position === 'top-left'
-      ? 'top:4px;left:4px'
-      : 'bottom:4px;right:4px',
   ].join(';');
 
   chip.appendChild(makeSvgIcon(def.iconId));
@@ -120,9 +117,9 @@ export function buildXYPad(
   xDef: XYPadDef,
   yDef: XYPadDef,
   controller: BoidsController,
-): { el: HTMLElement; updateTrace(snapshot: BandSnapshot, mappings: AudioMapping[]): void } {
+): { el: HTMLElement; updateTrace(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>): void } {
 
-  const params = controller.params as Record<string, number>;
+  const params = controller.params as unknown as Record<string, number>;
 
   // ── Surface ──────────────────────────────────────────────────────────────────
   const surf = document.createElement('div');
@@ -168,12 +165,15 @@ export function buildXYPad(
   surf.appendChild(valY);
 
   // ── Position update ──────────────────────────────────────────────────────────
-  function redraw(): void {
+  function redraw(audioColor?: string): void {
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
-    // x: 0→left, 1→right; y: 0→bottom, 1→top (inverted in CSS y-axis)
-    dot.style.left   = `${nx * 100}%`;
-    dot.style.bottom = `${ny * 100}%`;
+    dot.style.left       = `${nx * 100}%`;
+    dot.style.bottom     = `${ny * 100}%`;
+    dot.style.background = audioColor ?? 'var(--accent)';
+    dot.style.boxShadow  = audioColor
+      ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
+      : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
     valX.textContent = fmt3sig(params[xDef.paramKey]);
     valY.textContent = fmt3sig(params[yDef.paramKey]);
   }
@@ -247,7 +247,7 @@ export function buildXYPad(
     }
   }
 
-  function drawTrace(): void {
+  function drawTrace(basePx?: number, basePy?: number, dotColor?: string): void {
     if (!ctx2d) return;
     const { width, height } = canvas;
     ctx2d.clearRect(0, 0, width, height);
@@ -309,11 +309,48 @@ export function buildXYPad(
     ctx2d.shadowBlur  = 0;
 
     ctx2d.globalAlpha = 1;
+
+    // Anchor + connector: base position (before audio modulation) → actual dot
+    if (basePx !== undefined && basePy !== undefined) {
+      const ax = basePx * width;
+      const ay = (1 - basePy) * height;
+      const dx = toNorm(params[xDef.paramKey], xDef) * width;
+      const dy = (1 - toNorm(params[yDef.paramKey], yDef)) * height;
+
+      // Dashed connector line
+      ctx2d.globalAlpha = 0.4;
+      ctx2d.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx2d.lineWidth   = 1;
+      ctx2d.setLineDash([3, 4]);
+      ctx2d.beginPath();
+      ctx2d.moveTo(ax, ay);
+      ctx2d.lineTo(dx, dy);
+      ctx2d.stroke();
+      ctx2d.setLineDash([]);
+
+      // Anchor ring
+      ctx2d.globalAlpha = 0.55;
+      ctx2d.strokeStyle = dotColor ?? 'rgba(255,255,255,0.8)';
+      ctx2d.lineWidth   = 1.5;
+      ctx2d.beginPath();
+      ctx2d.arc(ax, ay, 4, 0, Math.PI * 2);
+      ctx2d.stroke();
+
+      ctx2d.globalAlpha = 1;
+    }
   }
 
   // ── updateTrace (called externally from rAF loop) ─────────────────────────────
-  function updateTrace(snapshot: BandSnapshot, mappings: AudioMapping[]): void {
+  function updateTrace(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>): void {
     syncCanvasSize();
+
+    if (snapshot === null) {
+      // Audio off: clear trace, reset dot to accent color
+      history.length = 0;
+      if (ctx2d) ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      redraw();
+      return;
+    }
 
     // Find active mappings that target either pad param
     const activeMappings = mappings.filter(
@@ -327,14 +364,17 @@ export function buildXYPad(
     for (const m of activeMappings) {
       const amp = snapshot[m.band] * (m.gain ?? 1);
       totalAmp += amp;
-      if (m.band === 'bass')     bandAmps.bass     += amp;
-      else if (m.band === 'mid') bandAmps.mid      += amp;
+      if (m.band === 'bass')          bandAmps.bass     += amp;
+      else if (m.band === 'mid')      bandAmps.mid      += amp;
       else if (m.band === 'presence') bandAmps.presence += amp;
-      else if (m.band === 'hi')  bandAmps.hi       += amp;
-      // 'volume' band counts toward totalAmp but not individual bands (no color bucket)
+      else if (m.band === 'hi')       bandAmps.hi       += amp;
     }
 
     const totalMag = Math.min(1, totalAmp);
+    const dotColor = totalMag > 0.04 ? blendColor(bandAmps) : undefined;
+
+    // Update dot to follow modulated position with band color
+    redraw(dotColor);
 
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
@@ -347,7 +387,19 @@ export function buildXYPad(
     while (pruneIdx < history.length && history[pruneIdx].ts < cutoff) pruneIdx++;
     if (pruneIdx > 0) history.splice(0, pruneIdx);
 
-    drawTrace();
+    // Base position for anchor (if baseParams provided)
+    let basePx: number | undefined;
+    let basePy: number | undefined;
+    if (baseParams) {
+      const bxRaw = baseParams[xDef.paramKey];
+      const byRaw = baseParams[yDef.paramKey];
+      if (bxRaw !== undefined && byRaw !== undefined) {
+        basePx = toNorm(bxRaw, xDef);
+        basePy = toNorm(byRaw, yDef);
+      }
+    }
+
+    drawTrace(basePx, basePy, dotColor);
   }
 
   container.appendChild(surf);

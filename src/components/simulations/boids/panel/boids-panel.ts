@@ -243,6 +243,7 @@ export function buildBoidsPanel(
 
     if (!reactor.isActive()) {
       for (const [, u] of updMaps.cellUpdaters) u(0);
+      for (const fn of padTraceUpdaters) fn(null, [], undefined);
       return;
     }
 
@@ -276,7 +277,7 @@ export function buildBoidsPanel(
 
     // XY pad audio traces
     for (const fn of padTraceUpdaters) {
-      fn(snapshot, reactor.mappings);
+      fn(snapshot, reactor.mappings, baseParams);
     }
 
     // Param indicators in the Params tab
@@ -450,7 +451,7 @@ function buildTrailsRow(parent: HTMLElement, controller: BoidsController): void 
 function buildForcesPads(
   parent: HTMLElement,
   controller: BoidsController,
-): Array<(snapshot: BandSnapshot, mappings: AudioMapping[]) => void> {
+): Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> {
   const grid = document.createElement('div');
   grid.className = 'pads-grid';
   parent.appendChild(grid);
@@ -478,7 +479,7 @@ function buildForcesPads(
     },
   ];
 
-  const updaters: Array<(snapshot: BandSnapshot, mappings: AudioMapping[]) => void> = [];
+  const updaters: Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> = [];
 
   for (const { xDef, yDef } of pads) {
     const { updateTrace } = buildXYPad(grid, xDef, yDef, controller);
