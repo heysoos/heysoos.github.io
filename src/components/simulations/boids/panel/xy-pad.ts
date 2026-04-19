@@ -76,12 +76,12 @@ function blendColor(bandAmps: TracePoint['bandAmps']): string {
 
 // ── DOM builder ───────────────────────────────────────────────────────────────
 
-function makeSvgIcon(iconId: string): SVGSVGElement {
+function makeSvgIcon(iconId: string, size = 18): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '12');
-  svg.setAttribute('height', '12');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
   svg.setAttribute('viewBox', '0 0 24 24');
-  svg.style.color = 'currentColor';
+  svg.style.cssText = 'flex-shrink:0;display:block;';
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   use.setAttribute('href', `#${iconId}`);
   svg.appendChild(use);
@@ -94,19 +94,18 @@ function makeChip(def: XYPadDef, position: 'top-left' | 'bottom-right'): HTMLEle
   chip.style.cssText = [
     'display:flex',
     'align-items:center',
-    'gap:3px',
+    'gap:4px',
     'position:absolute',
-    'z-index:1',
-    'pointer-events:none',
-    'background:rgba(10,8,4,0.82)',
-    'backdrop-filter:blur(4px)',
-    '-webkit-backdrop-filter:blur(4px)',
+    'z-index:3',
   ].join(';');
 
   chip.appendChild(makeSvgIcon(def.iconId));
-  const span = document.createElement('span');
-  span.textContent = def.label;
-  chip.appendChild(span);
+
+  const label = document.createElement('span');
+  label.className = 'chip-label';
+  label.textContent = def.label;
+  chip.appendChild(label);
+
   return chip;
 }
 

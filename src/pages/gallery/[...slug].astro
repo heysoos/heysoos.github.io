@@ -478,27 +478,39 @@ const sim = project.data.simulation;
   .params-panel :global(.axis-chip) {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     position: absolute;
-    z-index: 1;
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-size: 0.72rem;
+    z-index: 3;
+    padding: 4px;
+    border-radius: 4px;
     color: var(--text-body);
-    pointer-events: none;
-    background: rgba(10, 8, 4, 0.82);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    opacity: 0.55;
+    cursor: default;
+    transition: opacity 0.15s;
+  }
+
+  .params-panel :global(.axis-chip:hover) {
+    opacity: 1;
+  }
+
+  .params-panel :global(.chip-label) {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    display: none;
+  }
+
+  .params-panel :global(.axis-chip:hover .chip-label) {
+    display: inline;
   }
 
   .params-panel :global(.chip-y-label) {
     top: 50%;
-    left: 4px;
+    left: 2px;
     transform: translateY(-50%);
   }
 
   .params-panel :global(.chip-x-label) {
-    bottom: 4px;
+    bottom: 2px;
     left: 50%;
     transform: translateX(-50%);
   }
