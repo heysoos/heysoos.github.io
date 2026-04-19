@@ -164,17 +164,26 @@ export function buildXYPad(
   surf.appendChild(valY);
 
   // ── Position update ──────────────────────────────────────────────────────────
+  let _lastNx = -1, _lastNy = -1, _lastColor = '';
+  let _lastTx = '', _lastTy = '';
+
   function redraw(audioColor?: string): void {
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
-    dot.style.left       = `${nx * 100}%`;
-    dot.style.bottom     = `${ny * 100}%`;
-    dot.style.background = audioColor ?? 'var(--accent)';
-    dot.style.boxShadow  = audioColor
-      ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
-      : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
-    valX.textContent = fmt3sig(params[xDef.paramKey]);
-    valY.textContent = fmt3sig(params[yDef.paramKey]);
+    const color = audioColor ?? 'var(--accent)';
+    if (nx !== _lastNx || ny !== _lastNy || color !== _lastColor) {
+      dot.style.left       = `${nx * 100}%`;
+      dot.style.bottom     = `${ny * 100}%`;
+      dot.style.background = color;
+      dot.style.boxShadow  = audioColor
+        ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
+        : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
+      _lastNx = nx; _lastNy = ny; _lastColor = color;
+    }
+    const tx = fmt3sig(params[xDef.paramKey]);
+    const ty = fmt3sig(params[yDef.paramKey]);
+    if (tx !== _lastTx) { valX.textContent = tx; _lastTx = tx; }
+    if (ty !== _lastTy) { valY.textContent = ty; _lastTy = ty; }
   }
   redraw();
 
@@ -237,24 +246,20 @@ export function buildXYPad(
   // ── Audio trace state ────────────────────────────────────────────────────────
   const history: TracePoint[] = [];
   const TRACE_WINDOW_MS = 6500;
+  let _lastDrawTs = 0;
+  const DRAW_INTERVAL = 50; // ~20 fps — trace smoothness doesn't need 60 fps
 
-  // Canvas size cache — only reads offsetWidth when ResizeObserver signals a change
-  let cachedW = 0;
-  let cachedH = 0;
-
-  function syncCanvasSize(): void {
-    if (cachedW > 0 && cachedH > 0 && canvas.width === cachedW && canvas.height === cachedH) return;
-    const w = canvas.offsetWidth;
-    const h = canvas.offsetHeight;
+  // Canvas dimensions are kept in sync via ResizeObserver only — no layout reads in rAF.
+  const canvasRO = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    const w = Math.round(entry.contentRect.width);
+    const h = Math.round(entry.contentRect.height);
     if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width  = w;
       canvas.height = h;
-      cachedW = w;
-      cachedH = h;
     }
-  }
-
-  const canvasRO = new ResizeObserver(() => { cachedW = 0; });
+  });
   canvasRO.observe(canvas);
 
   function drawTrace(basePx?: number, basePy?: number, dotColor?: string): void {
@@ -360,8 +365,6 @@ export function buildXYPad(
       return;
     }
 
-    syncCanvasSize();
-
     // Find active mappings that target either pad param
     const activeMappings = mappings.filter(
       m => m.enabled && (m.param === xDef.paramKey || m.param === yDef.paramKey)
@@ -409,7 +412,11 @@ export function buildXYPad(
       }
     }
 
-    drawTrace(basePx, basePy, dotColor);
+    const nowTs = performance.now();
+    if (nowTs - _lastDrawTs >= DRAW_INTERVAL) {
+      _lastDrawTs = nowTs;
+      drawTrace(basePx, basePy, dotColor);
+    }
   }
 
   container.appendChild(surf);

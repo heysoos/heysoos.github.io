@@ -239,11 +239,9 @@ export function buildBoidsPanel(
     const reactor = opts.reactor;
     if (!reactor) return;
 
-    // Reset all param indicators to hidden
-    for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
-
     if (!reactor.isActive()) {
       if (audioWasActive) {
+        for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
         for (const [, u] of updMaps.cellUpdaters) u(0);
         for (const fn of padTraceUpdaters) fn(null, [], undefined);
         audioWasActive = false;
@@ -251,6 +249,9 @@ export function buildBoidsPanel(
       return;
     }
     audioWasActive = true;
+
+    // Reset all param indicators to hidden; active mappings will re-show them below
+    for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
 
     const snapshot = reactor.analyze();
 

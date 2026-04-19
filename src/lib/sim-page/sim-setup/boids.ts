@@ -40,7 +40,9 @@ export async function setupBoids(
       reactor.applyMappings(ctrl.params, snapshot);
       isApplyingAudio = false;
     }
-    panelControls?.updateAudioViz(baseParams as Record<string, number>);
+    if (panel.style.display !== 'none') {
+      panelControls?.updateAudioViz(baseParams as Record<string, number>);
+    }
     mappingRafId = requestAnimationFrame(mappingLoop);
   })();
 
