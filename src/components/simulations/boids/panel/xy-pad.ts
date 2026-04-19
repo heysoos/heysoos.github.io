@@ -76,7 +76,7 @@ function blendColor(bandAmps: TracePoint['bandAmps']): string {
 
 // ── DOM builder ───────────────────────────────────────────────────────────────
 
-function makeSvgIcon(iconId: string, size = 18): SVGSVGElement {
+function makeSvgIcon(iconId: string, size = 25): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('width', String(size));
   svg.setAttribute('height', String(size));
@@ -197,12 +197,14 @@ export function buildXYPad(
 
   function onMouseUp(): void {
     dragging = false;
+    surf.classList.remove('dragging');
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
   }
 
   surf.addEventListener('mousedown', (e: MouseEvent) => {
     dragging = true;
+    surf.classList.add('dragging');
     applyPointer(e.clientX, e.clientY);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -236,15 +238,24 @@ export function buildXYPad(
   const history: TracePoint[] = [];
   const TRACE_WINDOW_MS = 6500;
 
-  // Resize canvas to match display size
+  // Canvas size cache — only reads offsetWidth when ResizeObserver signals a change
+  let cachedW = 0;
+  let cachedH = 0;
+
   function syncCanvasSize(): void {
+    if (cachedW > 0 && cachedH > 0 && canvas.width === cachedW && canvas.height === cachedH) return;
     const w = canvas.offsetWidth;
     const h = canvas.offsetHeight;
-    if (canvas.width !== w || canvas.height !== h) {
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width  = w;
       canvas.height = h;
+      cachedW = w;
+      cachedH = h;
     }
   }
+
+  const canvasRO = new ResizeObserver(() => { cachedW = 0; });
+  canvasRO.observe(canvas);
 
   function drawTrace(basePx?: number, basePy?: number, dotColor?: string): void {
     if (!ctx2d) return;
@@ -341,8 +352,6 @@ export function buildXYPad(
 
   // ── updateTrace (called externally from rAF loop) ─────────────────────────────
   function updateTrace(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>): void {
-    syncCanvasSize();
-
     if (snapshot === null) {
       // Audio off: clear trace, reset dot to accent color
       history.length = 0;
@@ -350,6 +359,8 @@ export function buildXYPad(
       redraw();
       return;
     }
+
+    syncCanvasSize();
 
     // Find active mappings that target either pad param
     const activeMappings = mappings.filter(

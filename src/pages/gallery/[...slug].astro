@@ -493,6 +493,10 @@ const sim = project.data.simulation;
     opacity: 1;
   }
 
+  .params-panel :global(.pad-surf.dragging .axis-chip) {
+    opacity: 0.55;
+  }
+
   .params-panel :global(.chip-label) {
     font-size: 0.72rem;
     white-space: nowrap;
@@ -501,6 +505,10 @@ const sim = project.data.simulation;
 
   .params-panel :global(.axis-chip:hover .chip-label) {
     display: inline;
+  }
+
+  .params-panel :global(.pad-surf.dragging .axis-chip:hover .chip-label) {
+    display: none;
   }
 
   .params-panel :global(.chip-y-label) {

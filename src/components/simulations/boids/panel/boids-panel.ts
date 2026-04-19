@@ -234,6 +234,7 @@ export function buildBoidsPanel(
   // Called from the mapping loop in slug.astro every rAF.
   // Reads controller.params (already audio-modulated) to update indicator bars
   // in the Params tab and amplitude bars + traces in the Audio tab.
+  let audioWasActive = false;
   function updateAudioViz(baseParams?: Record<string, number>): void {
     const reactor = opts.reactor;
     if (!reactor) return;
@@ -242,10 +243,14 @@ export function buildBoidsPanel(
     for (const [, ind] of updMaps.paramIndicators) ind.wrap.style.display = 'none';
 
     if (!reactor.isActive()) {
-      for (const [, u] of updMaps.cellUpdaters) u(0);
-      for (const fn of padTraceUpdaters) fn(null, [], undefined);
+      if (audioWasActive) {
+        for (const [, u] of updMaps.cellUpdaters) u(0);
+        for (const fn of padTraceUpdaters) fn(null, [], undefined);
+        audioWasActive = false;
+      }
       return;
     }
+    audioWasActive = true;
 
     const snapshot = reactor.analyze();
 
