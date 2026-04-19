@@ -17,6 +17,64 @@ const sim = project.data.simulation;
 ---
 
 <SimLayout title={project.data.title} description={project.data.description}>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <!-- Attraction: bold inward chevrons, two particles converging -->
+  <symbol id="ic-attract" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+    <polyline points="8,9 12,12 8,15"/>
+    <polyline points="16,9 12,12 16,15"/>
+  </symbol>
+  <!-- Repulsion: radial burst from centre dot -->
+  <symbol id="ic-repulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <line x1="12" y1="4" x2="12" y2="7"/>
+    <line x1="12" y1="17" x2="12" y2="20"/>
+    <line x1="4" y1="12" x2="7" y2="12"/>
+    <line x1="17" y1="12" x2="20" y2="12"/>
+    <line x1="6.34" y1="6.34" x2="8.46" y2="8.46"/>
+    <line x1="15.54" y1="15.54" x2="17.66" y2="17.66"/>
+    <line x1="17.66" y1="6.34" x2="15.54" y2="8.46"/>
+    <line x1="6.34" y1="17.66" x2="8.46" y2="15.54"/>
+  </symbol>
+  <!-- Alignment: three parallel arrows -->
+  <symbol id="ic-align" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="4" y1="7" x2="16" y2="7"/>
+    <polyline points="13,4 16,7 13,10"/>
+    <line x1="4" y1="12" x2="18" y2="12"/>
+    <polyline points="15,9 18,12 15,15"/>
+    <line x1="4" y1="17" x2="16" y2="17"/>
+    <polyline points="13,14 16,17 13,20"/>
+  </symbol>
+  <!-- Noise: zigzag waveform -->
+  <symbol id="ic-noise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="2,12 5,6 8,18 11,8 14,16 17,4 20,12 22,12"/>
+  </symbol>
+  <!-- Max Speed: arrow with motion streak lines -->
+  <symbol id="ic-speed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="5" y1="9" x2="14" y2="9"/>
+    <line x1="3" y1="12" x2="14" y2="12"/>
+    <line x1="5" y1="15" x2="14" y2="15"/>
+    <polyline points="14,8 20,12 14,16"/>
+  </symbol>
+  <!-- Friction: wavy line over ground strokes -->
+  <symbol id="ic-friction" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4,10 Q7,7 10,10 Q13,13 16,10 Q19,7 22,10"/>
+    <line x1="4" y1="14" x2="20" y2="14"/>
+    <line x1="6" y1="17" x2="8" y2="14"/>
+    <line x1="10" y1="17" x2="12" y2="14"/>
+    <line x1="14" y1="17" x2="16" y2="14"/>
+    <line x1="18" y1="17" x2="20" y2="14"/>
+  </symbol>
+  <!-- Radius: concentric dashed circles with particles -->
+  <symbol id="ic-radius" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="5" stroke-dasharray="2 2"/>
+    <circle cx="12" cy="12" r="8.5" stroke-dasharray="2 2"/>
+    <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+    <circle cx="5" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+  </symbol>
+</svg>
   <div class="sim-page">
     <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
       <canvas id="sim-canvas"></canvas>
@@ -375,6 +433,116 @@ const sim = project.data.simulation;
   .params-panel :global(.edit-shader-btn:hover) {
     border-color: var(--accent);
     color: var(--accent);
+  }
+
+  /* ── XY PAD FORCES GRID ────────────────────────────────────────────────────── */
+
+  .params-panel :global(.pads-grid) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .params-panel :global(.pad-surf) {
+    position: relative;
+    aspect-ratio: 1;
+    width: 100%;
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    cursor: crosshair;
+    overflow: hidden;
+  }
+
+  .params-panel :global(.pad-canvas) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  .params-panel :global(.pad-dot) {
+    position: absolute;
+    z-index: 2;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 7px var(--accent-glow), 0 0 0 1.5px var(--bg-surface);
+    transform: translate(-50%, 50%);
+    pointer-events: none;
+  }
+
+  .params-panel :global(.axis-chip) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: absolute;
+    z-index: 3;
+    padding: 4px;
+    border-radius: 4px;
+    color: var(--text-body);
+    opacity: 0.55;
+    cursor: default;
+    transition: opacity 0.15s;
+  }
+
+  .params-panel :global(.axis-chip:hover) {
+    opacity: 1;
+  }
+
+  .params-panel :global(.pad-surf.dragging .axis-chip) {
+    opacity: 0.55;
+  }
+
+  .params-panel :global(.chip-label) {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    display: none;
+  }
+
+  .params-panel :global(.axis-chip:hover .chip-label) {
+    display: inline;
+  }
+
+  .params-panel :global(.pad-surf.dragging .axis-chip:hover .chip-label) {
+    display: none;
+  }
+
+  .params-panel :global(.chip-y-label) {
+    top: 50%;
+    left: 2px;
+    transform: translateY(-50%);
+  }
+
+  .params-panel :global(.chip-x-label) {
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .params-panel :global(.val-x),
+  .params-panel :global(.val-y) {
+    position: absolute;
+    z-index: 3;
+    font-size: 0.72rem;
+    color: var(--accent);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .params-panel :global(.val-x) {
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .params-panel :global(.val-y) {
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
   }
 
   /* ── SHADER EDITOR PANEL ─────────────────────────────────────────────────── */

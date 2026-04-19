@@ -38,6 +38,7 @@ export const PARAM_META: Record<string, { label: string; min: number; max: numbe
   repulsion:        { label: 'Repulsion',         min: 0,     max: 5.0  },
   alignment:        { label: 'Alignment',         min: 0,     max: 1.0  },
   friction:         { label: 'Friction',          min: 0,     max: 10.0 },
+  noise:            { label: 'Noise',             min: 0,     max: 0.5  },
   maxSpeed:         { label: 'Max Speed',         min: 0.01,  max: 1.0  },
   coneAngle:        { label: 'Vision Cone',       min: -1.0,  max: 0.99 },
   dt:               { label: 'Time Step',         min: 0.001, max: 0.1  },
