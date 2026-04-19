@@ -98,6 +98,9 @@ function makeChip(def: XYPadDef, position: 'top-left' | 'bottom-right'): HTMLEle
     'position:absolute',
     'z-index:1',
     'pointer-events:none',
+    'background:rgba(10,8,4,0.82)',
+    'backdrop-filter:blur(4px)',
+    '-webkit-backdrop-filter:blur(4px)',
     position === 'top-left'
       ? 'top:4px;left:4px'
       : 'bottom:4px;right:4px',
@@ -131,6 +134,7 @@ export function buildXYPad(
   canvas.className = 'pad-canvas';
   canvas.style.cssText = 'position:absolute;inset:0;z-index:0;width:100%;height:100%;';
   surf.appendChild(canvas);
+  const ctx2d = canvas.getContext('2d');
 
   // ── Dot ──────────────────────────────────────────────────────────────────────
   const dot = document.createElement('div');
@@ -244,7 +248,6 @@ export function buildXYPad(
   }
 
   function drawTrace(): void {
-    const ctx2d = canvas.getContext('2d');
     if (!ctx2d) return;
     const { width, height } = canvas;
     ctx2d.clearRect(0, 0, width, height);
@@ -285,6 +288,7 @@ export function buildXYPad(
       glowStart--;
     }
 
+    ctx2d.shadowBlur  = 8;
     for (let i = glowStart; i < history.length - 1; i++) {
       const p0 = history[i];
       const p1 = history[i + 1];
@@ -297,13 +301,12 @@ export function buildXYPad(
       ctx2d.strokeStyle = color;
       ctx2d.globalAlpha = opacity;
       ctx2d.lineWidth   = lineW;
-      ctx2d.shadowBlur  = 8;
       ctx2d.shadowColor = color;
       ctx2d.moveTo(p0.x * width, (1 - p0.y) * height);
       ctx2d.lineTo(p1.x * width, (1 - p1.y) * height);
       ctx2d.stroke();
-      ctx2d.shadowBlur  = 0;
     }
+    ctx2d.shadowBlur  = 0;
 
     ctx2d.globalAlpha = 1;
   }
@@ -322,7 +325,7 @@ export function buildXYPad(
     const bandAmps = { bass: 0, mid: 0, presence: 0, hi: 0 };
 
     for (const m of activeMappings) {
-      const amp = snapshot[m.band] * (m.gain ?? 1);
+      const amp = snapshot[m.band] * m.gain;
       totalAmp += amp;
       if (m.band === 'bass')     bandAmps.bass     += amp;
       else if (m.band === 'mid') bandAmps.mid      += amp;
