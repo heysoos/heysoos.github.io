@@ -325,7 +325,7 @@ export function buildXYPad(
     const bandAmps = { bass: 0, mid: 0, presence: 0, hi: 0 };
 
     for (const m of activeMappings) {
-      const amp = snapshot[m.band] * m.gain;
+      const amp = snapshot[m.band] * (m.gain ?? 1);
       totalAmp += amp;
       if (m.band === 'bass')     bandAmps.bass     += amp;
       else if (m.band === 'mid') bandAmps.mid      += amp;
