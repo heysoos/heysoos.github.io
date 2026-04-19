@@ -6,9 +6,11 @@ import { openImageEditorOverlay  } from '../../../../lib/webgpu/image-editor/ima
 import {
   type AudioReactor,
   type BandSnapshot,
+  type AudioMapping,
   BAND_COLORS,
   PARAM_META,
 } from '../boids-audio';
+import { buildXYPad, type XYPadDef } from './xy-pad';
 import { buildAudioTab, type AudioUpdaterMaps } from './audio-tab';
 import { createRangeSlider } from './range-slider';
 import { pillStyle } from './panel-styles';
@@ -198,53 +200,7 @@ export function buildBoidsPanel(
 
   // ── Forces ────────────────────────────────────────────────────────────────
   addSection(paramsBody, 'Forces');
-  createRangeSlider(paramsBody, {
-    label: 'Attraction Radius', min: 0.02, max: 0.6, step: 0.01,
-    get: () => controller.params.attractionRadius,
-    set: v => { controller.params.attractionRadius = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('attractionRadius', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Repulsion Radius', min: 0.01, max: 0.3, step: 0.005,
-    get: () => controller.params.repulsionRadius,
-    set: v => { controller.params.repulsionRadius = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('repulsionRadius', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Attraction', min: 0, max: 2.0, step: 0.01,
-    get: () => controller.params.attraction,
-    set: v => { controller.params.attraction = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('attraction', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Repulsion', min: 0, max: 5.0, step: 0.05,
-    get: () => controller.params.repulsion,
-    set: v => { controller.params.repulsion = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('repulsion', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Alignment', min: 0, max: 1.0, step: 0.01,
-    get: () => controller.params.alignment,
-    set: v => { controller.params.alignment = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('alignment', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Friction', min: 0, max: 10.0, step: 0.1,
-    get: () => controller.params.friction,
-    set: v => { controller.params.friction = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('friction', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Max Speed', min: 0.01, max: 1.0, step: 0.01,
-    get: () => controller.params.maxSpeed,
-    set: v => { controller.params.maxSpeed = v; },
-    onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('maxSpeed', { wrap: w, fill: f }),
-  });
-  createRangeSlider(paramsBody, {
-    label: 'Noise', min: 0, max: 0.5, step: 0.005,
-    get: () => controller.params.noise ?? 0,
-    set: v => { controller.params.noise = v; },
-  });
+  const padTraceUpdaters = buildForcesPads(paramsBody, controller);
 
   // ── Perception ────────────────────────────────────────────────────────────
   addSection(paramsBody, 'Perception');
@@ -316,6 +272,11 @@ export function buildBoidsPanel(
       const range = meta.max - meta.min;
       const normalized = range > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / range)) : 0;
       u(normalized);
+    }
+
+    // XY pad audio traces
+    for (const fn of padTraceUpdaters) {
+      fn(snapshot, reactor.mappings);
     }
 
     // Param indicators in the Params tab
@@ -482,6 +443,49 @@ function buildTrailsRow(parent: HTMLElement, controller: BoidsController): void 
     controller.trailsEnabled = toggleInput.checked;
     decayWrapper.style.display = toggleInput.checked ? 'block' : 'none';
   });
+}
+
+// ── Forces XY pads ────────────────────────────────────────────────────────────
+
+function buildForcesPads(
+  parent: HTMLElement,
+  controller: BoidsController,
+): Array<(snapshot: BandSnapshot, mappings: AudioMapping[]) => void> {
+  const grid = document.createElement('div');
+  grid.className = 'pads-grid';
+  parent.appendChild(grid);
+
+  const pads: Array<{ xDef: XYPadDef; yDef: XYPadDef }> = [
+    // TL: Attraction (Y) × Repulsion (X)
+    {
+      yDef: { paramKey: 'attraction',   label: 'Attraction', iconId: 'ic-attract', min: 0,    max: 2.0, scale: 'linear' },
+      xDef: { paramKey: 'repulsion',    label: 'Repulsion',  iconId: 'ic-repulse', min: 0,    max: 5.0, scale: 'linear' },
+    },
+    // TR: Attr Radius (Y) × Rep Radius (X)
+    {
+      yDef: { paramKey: 'attractionRadius', label: 'Attr Radius', iconId: 'ic-radius', min: 0.02, max: 0.6,  scale: 'log' },
+      xDef: { paramKey: 'repulsionRadius',  label: 'Rep Radius',  iconId: 'ic-radius', min: 0.01, max: 0.3,  scale: 'log' },
+    },
+    // BL: Alignment (Y) × Noise (X)
+    {
+      yDef: { paramKey: 'alignment', label: 'Alignment', iconId: 'ic-align', min: 0, max: 1.0, scale: 'linear' },
+      xDef: { paramKey: 'noise',     label: 'Noise',     iconId: 'ic-noise', min: 0, max: 0.5, scale: 'linear' },
+    },
+    // BR: Max Speed (Y) × Friction (X)
+    {
+      yDef: { paramKey: 'maxSpeed', label: 'Max Speed', iconId: 'ic-speed',    min: 0.01, max: 1.0,  scale: 'linear' },
+      xDef: { paramKey: 'friction', label: 'Friction',  iconId: 'ic-friction', min: 0,    max: 10.0, scale: 'linear' },
+    },
+  ];
+
+  const updaters: Array<(snapshot: BandSnapshot, mappings: AudioMapping[]) => void> = [];
+
+  for (const { xDef, yDef } of pads) {
+    const { updateTrace } = buildXYPad(grid, xDef, yDef, controller);
+    updaters.push(updateTrace);
+  }
+
+  return updaters;
 }
 
 // ── Reset button helper ───────────────────────────────────────────────────────
