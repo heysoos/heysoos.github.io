@@ -116,7 +116,7 @@ fn decodeForce(s: vec4f) -> vec2f {
   return dir;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }

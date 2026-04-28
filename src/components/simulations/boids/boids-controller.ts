@@ -514,12 +514,12 @@ export class BoidsController {
     // Pass 1: clearGrid — only clear active cells (gridDim×gridDim)
     computePass.setPipeline(this.clearGridPipeline);
     computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(gridSize / 256));
+    computePass.dispatchWorkgroups(Math.ceil(gridSize / 64));
 
     // Pass 2: gridAssign
     computePass.setPipeline(this.gridAssignPipeline);
     computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+    computePass.dispatchWorkgroups(Math.ceil(N / 64));
 
     // Pass 3: prefixSum
     computePass.setPipeline(this.prefixSumPipeline);
@@ -529,17 +529,17 @@ export class BoidsController {
     // Pass 4: scatter
     computePass.setPipeline(this.scatterPipeline);
     computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+    computePass.dispatchWorkgroups(Math.ceil(N / 64));
 
     // Pass 5: scatterData — copy particle data into cell-sorted order
     computePass.setPipeline(this.scatterDataPipeline);
     computePass.setBindGroup(0, gridBG);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+    computePass.dispatchWorkgroups(Math.ceil(N / 64));
 
     // Pass 6: boids update
     computePass.setPipeline(this.computePipeline);
     computePass.setBindGroup(0, this.boidsBindGroups[this.frame % 2]);
-    computePass.dispatchWorkgroups(Math.ceil(N / 256));
+    computePass.dispatchWorkgroups(Math.ceil(N / 64));
 
     computePass.end();
     device.queue.submit([computeEncoder.finish()]);

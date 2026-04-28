@@ -53,9 +53,9 @@ struct Particle {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 1: clearGrid — zero active cells before each frame
-// Dispatch: ceil(gridDim² / 256)
+// Dispatch: ceil(gridDim² / 64)
 // ─────────────────────────────────────────────────────────────────────────────
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn clearGrid(@builtin(global_invocation_id) id: vec3u) {
   let i = id.x;
   if (i >= params.gridDim * params.gridDim) { return; }
@@ -65,9 +65,9 @@ fn clearGrid(@builtin(global_invocation_id) id: vec3u) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 2: gridAssign — compute cell ID for each particle, count per cell
-// Dispatch: ceil(numParticles / 256)
+// Dispatch: ceil(numParticles / 64)
 // ─────────────────────────────────────────────────────────────────────────────
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn gridAssign(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }
@@ -106,9 +106,9 @@ fn prefixSum(@builtin(global_invocation_id) id: vec3u) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 4: scatter — place each particle into its sorted position
-// Dispatch: ceil(numParticles / 256)
+// Dispatch: ceil(numParticles / 64)
 // ─────────────────────────────────────────────────────────────────────────────
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }
@@ -122,9 +122,9 @@ fn scatter(@builtin(global_invocation_id) id: vec3u) {
 // Pass 5: scatterData — copy particle data into cell-sorted order
 // Enables sequential memory access in the boids compute pass instead of
 // scattered reads via sortedIndices[k] → particlesA[i].
-// Dispatch: ceil(numParticles / 256)
+// Dispatch: ceil(numParticles / 64)
 // ─────────────────────────────────────────────────────────────────────────────
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn scatterData(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }
