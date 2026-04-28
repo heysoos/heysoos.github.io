@@ -773,6 +773,7 @@ const sim = project.data.simulation;
   import { CPPNController } from "../../components/simulations/cppn/cppn-controller";
   import { PanelManager } from "../../lib/sim-page/panel-manager";
   import { createFpsCounter } from "../../lib/sim-page/fps-counter";
+  import { attachBench } from "../../lib/sim-page/bench";
   import { setupSim } from "../../lib/sim-page/sim-setup/index";
 
   const viewport      = document.getElementById("sim-viewport") as HTMLElement;
@@ -815,6 +816,10 @@ const sim = project.data.simulation;
           controller as unknown as { maxFps: number; tickCount: number },
         );
         document.addEventListener('pagehide', () => fpsCounter.dispose(), { once: true });
+
+        if (sim === 'boids') {
+          attachBench(controller as unknown as Parameters<typeof attachBench>[0]);
+        }
 
         const hasPanel = await setupSim(sim, controller, panelContent, panel, shaderPanelEl);
 

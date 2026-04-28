@@ -107,6 +107,7 @@ export class BoidsController {
   private lastFrameTime = 0;
   maxFps = Infinity;
   tickCount = 0;
+  onFrameComplete: ((timestampMs: number) => void) | null = null;
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
@@ -623,6 +624,7 @@ export class BoidsController {
     void device.queue.onSubmittedWorkDone().then(() => {
       if (!this.running) return;
       this.tickCount++;
+      this.onFrameComplete?.(performance.now());
       if (!Number.isFinite(this.maxFps)) {
         // Display rate (checked): RAF → vsync-locked to display Hz
         this.animId = requestAnimationFrame(this.tick);
