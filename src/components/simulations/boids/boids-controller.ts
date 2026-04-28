@@ -1,5 +1,5 @@
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { createBuffer, createUniformBuffer, resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
+import { createBuffer, createUniformBuffer } from '../../../lib/webgpu/utils';
 import shaderCode from './boids.wgsl?raw';
 import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
@@ -278,6 +278,20 @@ export class BoidsController {
       });
       canvas.addEventListener('mouseleave', () => { this.mouseActive = false; });
 
+      // ResizeObserver writes canvas dimensions directly — no layout reads in the GPU rAF loop.
+      const canvasRO = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.floor(entry.contentRect.width  * dpr);
+        const h = Math.floor(entry.contentRect.height * dpr);
+        if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+          canvas.width  = w;
+          canvas.height = h;
+        }
+      });
+      canvasRO.observe(canvas);
+
       return true;
     } catch (e) {
       console.error('BoidsController init error:', e);
@@ -506,8 +520,9 @@ export class BoidsController {
 
   private _preFrameSetup(): { device: GPUDevice; context: GPUCanvasContext; canvas: HTMLCanvasElement; aspect: number } {
     const { device, context, canvas } = this.gpu!;
-    const resized = resizeCanvasToDisplaySize(canvas);
-    if (resized || canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight) {
+    // canvas dimensions are managed by the ResizeObserver in init() — no DOM reads here.
+    const resized = canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight;
+    if (resized) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group

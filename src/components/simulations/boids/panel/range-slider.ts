@@ -92,7 +92,7 @@ export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): v
     const indWrap = document.createElement('div');
     indWrap.style.cssText = 'height:2px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;margin-top:2px;display:none;';
     const indFill = document.createElement('div');
-    indFill.style.cssText = 'height:100%;width:0%;border-radius:1px;';
+    indFill.style.cssText = 'height:100%;width:100%;transform:scaleX(0);transform-origin:left center;border-radius:1px;';
     indWrap.appendChild(indFill);
     row.appendChild(indWrap);
     opts.onIndicatorCreate(indWrap, indFill);

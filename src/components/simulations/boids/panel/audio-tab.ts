@@ -284,7 +284,7 @@ function buildTotalTab(
   const rangeTrack = document.createElement('div');
   rangeTrack.style.cssText = 'height:5px;background:var(--bg-surface-border);border-radius:3px;overflow:hidden;';
   const rangeFill = document.createElement('div');
-  rangeFill.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--text-body));opacity:0.5;border-radius:3px;';
+  rangeFill.style.cssText = 'height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,var(--accent),var(--text-body));opacity:0.5;border-radius:3px;';
   rangeTrack.appendChild(rangeFill);
   const rangeCursor = document.createElement('div');
   rangeCursor.style.cssText = 'position:absolute;top:-1px;width:2px;height:7px;background:var(--text-body);border-radius:1px;box-shadow:0 0 3px var(--text-body);transform:translateX(-1px);left:0%;';
@@ -354,7 +354,7 @@ function buildTotalTab(
     const barWrap = document.createElement('div');
     barWrap.style.cssText = 'flex:1;height:3px;background:var(--bg-surface-border);border-radius:2px;';
     const barFill = document.createElement('div');
-    barFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[m.band]};border-radius:2px;`;
+    barFill.style.cssText = `height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:${BAND_COLORS[m.band]};border-radius:2px;`;
     barWrap.appendChild(barFill);
     const valEl = document.createElement('span');
     valEl.style.cssText = `font-size:0.5rem;color:${BAND_COLORS[m.band]};min-width:32px;text-align:right;font-variant-numeric:tabular-nums;`;
@@ -441,50 +441,65 @@ function buildTotalTab(
     ctx.globalAlpha = 1;
   }
 
+  let _lastTotalTextTs = 0;
+  const TOTAL_TEXT_INTERVAL = 50; // ~20fps gate for textContent + canvas redraw
+
   function registerUpdater(): void {
     totalUpdaters.set(param, (snapshot: BandSnapshot, baseVal: number, modulatedVal: number) => {
-      // Live value header
-      const delta = modulatedVal - baseVal;
-      liveVal.textContent   = modulatedVal.toFixed(3);
-      baseValEl.textContent = `base ${baseVal.toFixed(3)}`;
-      deltaEl.textContent   = (delta >= 0 ? '+' : '') + delta.toFixed(3);
-      deltaEl.style.color   = delta >= 0 ? '#80d060' : '#e05060';
-
-      // Range bar
+      // ── Per-frame: compositor-only writes + ring buffer pushes ────────────
       const rangeSpan = meta.max - meta.min;
       const fraction  = rangeSpan > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / rangeSpan)) : 0;
-      rangeFill.style.width   = `${fraction * 100}%`;
-      rangeCursor.style.left  = `${fraction * 100}%`;
-      rangeCurLbl.textContent = modulatedVal.toFixed(3);
 
-      // Per-band contributions
+      rangeFill.style.transform = `scaleX(${fraction})`;
+      rangeCursor.style.left    = `${fraction * 100}%`;
+
+      // Compute and store per-band data once; reuse for both transform writes and (throttled) text writes
+      const contribValues: number[] = [];
       mappings.forEach((m, i) => {
         const signal      = Math.min(1, snapshot[m.band] * (m.gain ?? 1));
         const mappingMeta = PARAM_META[String(m.param)];
         let contribution: number;
         let barFraction: number;
-        // Keep modeEl in sync — mode may have changed via the band tab's mode button
-        contribRows[i].modeEl.textContent = contribModeLabel(m.mode);
         if (m.mode === 'add' || m.mode === 'subtract') {
           const sign   = m.mode === 'subtract' ? -1 : 1;
           contribution = sign * signal * m.depth * (m.max - m.min);
           barFraction  = Math.min(1, Math.abs(contribution) / Math.max(0.001, mappingMeta.max - mappingMeta.min));
-          contribRows[i].valEl.textContent = (contribution >= 0 ? '+' : '') + contribution.toFixed(3);
         } else {
           contribution = 1 + signal * m.depth;
           barFraction  = Math.min(1, (contribution - 1) / 2);
-          contribRows[i].valEl.textContent = `×${contribution.toFixed(3)}`;
         }
-        (contribRows[i].fill as HTMLElement).style.width = `${barFraction * 100}%`;
+        contribValues.push(contribution);
+        (contribRows[i].fill as HTMLElement).style.transform = `scaleX(${barFraction})`;
 
-        // Push to per-band ring buffer (normalised amplitude)
         bandBuffers[i][tracePtr] = signal;
       });
 
-      // Combined: normalise modulated value to 0–1 within param range
-      const normModulated = rangeSpan > 0 ? Math.max(0, Math.min(1, (modulatedVal - meta.min) / rangeSpan)) : 0;
-      combinedBuffer[tracePtr] = normModulated;
+      combinedBuffer[tracePtr] = fraction;
       tracePtr = (tracePtr + 1) % TRACE_LEN;
+
+      // ── Throttled (~20fps): textContent + canvas redraw ───────────────────
+      // Each textContent write triggers a per-element text layout pass; gating
+      // them keeps the drawer cheap when audio modulates params at 60fps.
+      const nowTs = performance.now();
+      if (nowTs - _lastTotalTextTs < TOTAL_TEXT_INTERVAL) return;
+      _lastTotalTextTs = nowTs;
+
+      const delta = modulatedVal - baseVal;
+      liveVal.textContent     = modulatedVal.toFixed(3);
+      baseValEl.textContent   = `base ${baseVal.toFixed(3)}`;
+      deltaEl.textContent     = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+      deltaEl.style.color     = delta >= 0 ? '#80d060' : '#e05060';
+      rangeCurLbl.textContent = modulatedVal.toFixed(3);
+
+      mappings.forEach((m, i) => {
+        contribRows[i].modeEl.textContent = contribModeLabel(m.mode);
+        const contribution = contribValues[i];
+        if (m.mode === 'add' || m.mode === 'subtract') {
+          contribRows[i].valEl.textContent = (contribution >= 0 ? '+' : '') + contribution.toFixed(3);
+        } else {
+          contribRows[i].valEl.textContent = `×${contribution.toFixed(3)}`;
+        }
+      });
 
       drawStackedTrace();
     });
@@ -971,14 +986,14 @@ export function buildAudioTab(
         const liveBar = document.createElement('div');
         liveBar.style.cssText = `width:${mapping ? '12px' : '0'};height:2px;background:var(--bg-surface-border);border-radius:1px;overflow:hidden;`;
         const liveFill = document.createElement('div');
-        liveFill.style.cssText = `height:100%;width:0%;background:${BAND_COLORS[band]};border-radius:1px;`;
+        liveFill.style.cssText = `height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:${BAND_COLORS[band]};border-radius:1px;`;
         liveBar.appendChild(liveFill);
         cellDiv.appendChild(liveBar);
 
         if (mapping) {
           const key = `${param}::${band}`;
           updMaps.cellUpdaters.set(key, (amplitude: number) => {
-            liveFill.style.width = `${Math.round(amplitude * 100)}%`;
+            liveFill.style.transform = `scaleX(${Math.max(0, Math.min(1, amplitude))})`;
           });
         }
 

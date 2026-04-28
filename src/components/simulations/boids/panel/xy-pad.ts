@@ -143,7 +143,8 @@ export function buildXYPad(
     'border-radius:50%',
     'background:var(--accent)',
     'box-shadow:0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)',
-    'transform:translate(-50%,50%)',
+    'left:0',
+    'bottom:0',
     'pointer-events:none',
   ].join(';');
   surf.appendChild(dot);
@@ -164,19 +165,42 @@ export function buildXYPad(
   surf.appendChild(valY);
 
   // ── Position update ──────────────────────────────────────────────────────────
+  let _lastNx = -1, _lastNy = -1, _lastColor = '';
+  let _lastTx = '', _lastTy = '';
+  let padW = 0, padH = 0;
+  const DOT_R = 4.5; // half of 9px dot — used to center the dot on its logical position
+
   function redraw(audioColor?: string): void {
+    // Position dirty check — compositor-only transform write
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
-    dot.style.left       = `${nx * 100}%`;
-    dot.style.bottom     = `${ny * 100}%`;
-    dot.style.background = audioColor ?? 'var(--accent)';
-    dot.style.boxShadow  = audioColor
-      ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
-      : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
-    valX.textContent = fmt3sig(params[xDef.paramKey]);
-    valY.textContent = fmt3sig(params[yDef.paramKey]);
+    if (nx !== _lastNx || ny !== _lastNy) {
+      if (padW > 0 && padH > 0) {
+        dot.style.transform = `translate(${nx * padW - DOT_R}px,${DOT_R - ny * padH}px)`;
+      }
+      _lastNx = nx; _lastNy = ny;
+    }
+    // Color dirty check — separated so background/boxShadow don't write on every position change
+    const color = audioColor ?? 'var(--accent)';
+    if (color !== _lastColor) {
+      dot.style.background = color;
+      dot.style.boxShadow  = audioColor
+        ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
+        : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
+      _lastColor = color;
+    }
+  }
+
+  // Value readout text updates — separated from redraw() so audio-modulated
+  // 60fps position updates don't trigger text layout passes every frame.
+  function updateValueText(): void {
+    const tx = fmt3sig(params[xDef.paramKey]);
+    const ty = fmt3sig(params[yDef.paramKey]);
+    if (tx !== _lastTx) { valX.textContent = tx; _lastTx = tx; }
+    if (ty !== _lastTy) { valY.textContent = ty; _lastTy = ty; }
   }
   redraw();
+  updateValueText();
 
   // ── Drag logic ───────────────────────────────────────────────────────────────
   let dragging = false;
@@ -188,6 +212,7 @@ export function buildXYPad(
     params[xDef.paramKey] = fromNorm(nx, xDef);
     params[yDef.paramKey] = fromNorm(1 - ny, yDef);  // flip: top = high y
     redraw();
+    updateValueText();
   }
 
   function onMouseMove(e: MouseEvent): void {
@@ -237,24 +262,26 @@ export function buildXYPad(
   // ── Audio trace state ────────────────────────────────────────────────────────
   const history: TracePoint[] = [];
   const TRACE_WINDOW_MS = 6500;
+  let _lastUpdateTs = 0;
+  const UPDATE_INTERVAL = 50; // ~20 fps — gates both history push and canvas redraw
 
-  // Canvas size cache — only reads offsetWidth when ResizeObserver signals a change
-  let cachedW = 0;
-  let cachedH = 0;
-
-  function syncCanvasSize(): void {
-    if (cachedW > 0 && cachedH > 0 && canvas.width === cachedW && canvas.height === cachedH) return;
-    const w = canvas.offsetWidth;
-    const h = canvas.offsetHeight;
+  // Canvas dimensions and dot position are kept in sync via ResizeObserver only.
+  const canvasRO = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    const w = Math.round(entry.contentRect.width);
+    const h = Math.round(entry.contentRect.height);
+    padW = entry.contentRect.width;
+    padH = entry.contentRect.height;
     if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width  = w;
       canvas.height = h;
-      cachedW = w;
-      cachedH = h;
     }
-  }
-
-  const canvasRO = new ResizeObserver(() => { cachedW = 0; });
+    // Re-position dot now that we have accurate pixel dimensions.
+    _lastNx = -1;
+    redraw();
+    updateValueText();
+  });
   canvasRO.observe(canvas);
 
   function drawTrace(basePx?: number, basePy?: number, dotColor?: string): void {
@@ -360,8 +387,6 @@ export function buildXYPad(
       return;
     }
 
-    syncCanvasSize();
-
     // Find active mappings that target either pad param
     const activeMappings = mappings.filter(
       m => m.enabled && (m.param === xDef.paramKey || m.param === yDef.paramKey)
@@ -383,16 +408,25 @@ export function buildXYPad(
     const totalMag = Math.min(1, totalAmp);
     const dotColor = totalMag > 0.04 ? blendColor(bandAmps) : undefined;
 
-    // Update dot to follow modulated position with band color
+    // Always update dot position — it follows audio modulation in real time
     redraw(dotColor);
+
+    // Gate history, canvas redraw, and text readout updates at ~20fps.
+    // Text updates trigger per-element layout passes, so throttling them
+    // here (instead of running every audio frame) is a Layout-cost fix.
+    const nowTs = performance.now();
+    if (nowTs - _lastUpdateTs < UPDATE_INTERVAL) return;
+    _lastUpdateTs = nowTs;
+
+    updateValueText();
 
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
 
-    history.push({ x: nx, y: ny, bandAmps, mag: totalMag, ts: performance.now() });
+    history.push({ x: nx, y: ny, bandAmps, mag: totalMag, ts: nowTs });
 
     // Prune old entries
-    const cutoff = performance.now() - TRACE_WINDOW_MS;
+    const cutoff = nowTs - TRACE_WINDOW_MS;
     let pruneIdx = 0;
     while (pruneIdx < history.length && history[pruneIdx].ts < cutoff) pruneIdx++;
     if (pruneIdx > 0) history.splice(0, pruneIdx);

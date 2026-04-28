@@ -23,6 +23,8 @@ export class RingBufferCanvas {
   private ro:      ResizeObserver;
   private render:  RingBufferCanvasOpts['render'];
   private onResize?: RingBufferCanvasOpts['onResize'];
+  private _dirty  = false;
+  private _rafId  = 0;
 
   constructor(opts: RingBufferCanvasOpts) {
     const dpr = Math.round(window.devicePixelRatio ?? 1);
@@ -53,7 +55,7 @@ export class RingBufferCanvas {
   push(value: number): void {
     this.data[this.ptr] = value;
     this.ptr = (this.ptr + 1) % TRACE_LEN;
-    this.draw();
+    this._scheduleDraw();
   }
 
   pushMultiple(values: Float32Array): void {
@@ -61,7 +63,16 @@ export class RingBufferCanvas {
       this.data[this.ptr] = values[i];
       this.ptr = (this.ptr + 1) % TRACE_LEN;
     }
-    this.draw();
+    this._scheduleDraw();
+  }
+
+  private _scheduleDraw(): void {
+    this._dirty = true;
+    if (this._rafId !== 0) return;
+    this._rafId = requestAnimationFrame(() => {
+      this._rafId = 0;
+      if (this._dirty) { this._dirty = false; this.draw(); }
+    });
   }
 
   draw(): void {
@@ -76,11 +87,12 @@ export class RingBufferCanvas {
   clear(): void {
     this.data.fill(0);
     this.ptr = 0;
-    this.draw();
+    this._scheduleDraw();
   }
 
   disconnect(): void {
     this.ro.disconnect();
+    if (this._rafId !== 0) { cancelAnimationFrame(this._rafId); this._rafId = 0; }
   }
 }
 
