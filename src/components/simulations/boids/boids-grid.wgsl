@@ -87,20 +87,56 @@ fn gridAssign(@builtin(global_invocation_id) id: vec3u) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Pass 3: prefixSum — exclusive scan of cellCounts → cellOffsets + cellScatterIdx
 //
-// Sequential single-thread scan over active gridDim² cells.
-// At max 4096 iterations this is negligible GPU work.
+// Single-workgroup parallel scan: 256 threads × TILE_SIZE=16 elements each
+// covers gridSize ≤ 4096 (MAX_GRID_DIM² = 64² = 4096). Three phases:
+//   1. Each thread sums its tile sequentially → partials[tid]
+//   2. Hillis-Steele inclusive scan across partials[256] (log2(256)=8 steps)
+//   3. Each thread writes per-element exclusive prefix from its tile base
 //
-// Dispatch: 1 workgroup of 1 thread
+// Dispatch: 1 workgroup (256 threads).
 // ─────────────────────────────────────────────────────────────────────────────
-@compute @workgroup_size(1)
-fn prefixSum(@builtin(global_invocation_id) id: vec3u) {
+const PREFIX_WG_SIZE: u32 = 256u;
+const PREFIX_TILE:    u32 = 16u;  // PREFIX_WG_SIZE * PREFIX_TILE = 4096 = MAX gridSize
+
+var<workgroup> partials: array<u32, 256>;
+
+@compute @workgroup_size(256)
+fn prefixSum(@builtin(local_invocation_id) lid: vec3u) {
+  let tid      = lid.x;
   let gridSize = params.gridDim * params.gridDim;
-  var sum = 0u;
-  for (var i = 0u; i < gridSize; i++) {
-    let count = atomicLoad(&cellCounts[i]);
-    cellOffsets[i] = sum;
-    atomicStore(&cellScatterIdx[i], sum);
-    sum += count;
+  let base     = tid * PREFIX_TILE;
+
+  // Phase 1: per-thread sum of the 16-element tile
+  var local_sum = 0u;
+  for (var i = 0u; i < PREFIX_TILE; i++) {
+    let idx = base + i;
+    if (idx < gridSize) {
+      local_sum += atomicLoad(&cellCounts[idx]);
+    }
+  }
+  partials[tid] = local_sum;
+  workgroupBarrier();
+
+  // Phase 2: Hillis-Steele inclusive scan across partials[]
+  // After log2(WG_SIZE) iterations, partials[i] = sum(partials_initial[0..=i])
+  for (var step = 1u; step < PREFIX_WG_SIZE; step = step << 1u) {
+    let v = select(0u, partials[tid - step], tid >= step);
+    workgroupBarrier();
+    partials[tid] = partials[tid] + v;
+    workgroupBarrier();
+  }
+  // Convert inclusive → exclusive at the *tile* boundary
+  let prefix = select(0u, partials[tid - 1u], tid > 0u);
+
+  // Phase 3: per-element exclusive prefix within this thread's tile
+  var run = prefix;
+  for (var i = 0u; i < PREFIX_TILE; i++) {
+    let idx = base + i;
+    if (idx < gridSize) {
+      cellOffsets[idx] = run;
+      atomicStore(&cellScatterIdx[idx], run);
+      run = run + atomicLoad(&cellCounts[idx]);
+    }
   }
 }
 
