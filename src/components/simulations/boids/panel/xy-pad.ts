@@ -171,27 +171,36 @@ export function buildXYPad(
   const DOT_R = 4.5; // half of 9px dot — used to center the dot on its logical position
 
   function redraw(audioColor?: string): void {
+    // Position dirty check — compositor-only transform write
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
-    const color = audioColor ?? 'var(--accent)';
-    if (nx !== _lastNx || ny !== _lastNy || color !== _lastColor) {
-      // Use transform (compositor-only) instead of left/bottom to avoid layout invalidation.
-      // Dot anchored at left:0;bottom:0 — transform moves its center to (nx*padW, ny*padH).
+    if (nx !== _lastNx || ny !== _lastNy) {
       if (padW > 0 && padH > 0) {
         dot.style.transform = `translate(${nx * padW - DOT_R}px,${DOT_R - ny * padH}px)`;
       }
+      _lastNx = nx; _lastNy = ny;
+    }
+    // Color dirty check — separated so background/boxShadow don't write on every position change
+    const color = audioColor ?? 'var(--accent)';
+    if (color !== _lastColor) {
       dot.style.background = color;
       dot.style.boxShadow  = audioColor
         ? `0 0 8px ${audioColor},0 0 0 1.5px var(--bg-surface)`
         : '0 0 7px var(--accent-glow),0 0 0 1.5px var(--bg-surface)';
-      _lastNx = nx; _lastNy = ny; _lastColor = color;
+      _lastColor = color;
     }
+  }
+
+  // Value readout text updates — separated from redraw() so audio-modulated
+  // 60fps position updates don't trigger text layout passes every frame.
+  function updateValueText(): void {
     const tx = fmt3sig(params[xDef.paramKey]);
     const ty = fmt3sig(params[yDef.paramKey]);
     if (tx !== _lastTx) { valX.textContent = tx; _lastTx = tx; }
     if (ty !== _lastTy) { valY.textContent = ty; _lastTy = ty; }
   }
   redraw();
+  updateValueText();
 
   // ── Drag logic ───────────────────────────────────────────────────────────────
   let dragging = false;
@@ -203,6 +212,7 @@ export function buildXYPad(
     params[xDef.paramKey] = fromNorm(nx, xDef);
     params[yDef.paramKey] = fromNorm(1 - ny, yDef);  // flip: top = high y
     redraw();
+    updateValueText();
   }
 
   function onMouseMove(e: MouseEvent): void {
@@ -270,6 +280,7 @@ export function buildXYPad(
     // Re-position dot now that we have accurate pixel dimensions.
     _lastNx = -1;
     redraw();
+    updateValueText();
   });
   canvasRO.observe(canvas);
 
@@ -400,10 +411,14 @@ export function buildXYPad(
     // Always update dot position — it follows audio modulation in real time
     redraw(dotColor);
 
-    // Gate history and canvas redraw at ~20fps to keep segment count bounded
+    // Gate history, canvas redraw, and text readout updates at ~20fps.
+    // Text updates trigger per-element layout passes, so throttling them
+    // here (instead of running every audio frame) is a Layout-cost fix.
     const nowTs = performance.now();
     if (nowTs - _lastUpdateTs < UPDATE_INTERVAL) return;
     _lastUpdateTs = nowTs;
+
+    updateValueText();
 
     const nx = toNorm(params[xDef.paramKey], xDef);
     const ny = toNorm(params[yDef.paramKey], yDef);
