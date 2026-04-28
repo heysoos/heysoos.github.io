@@ -148,7 +148,7 @@ export class BoidsController {
         initialData[i * 4 + 2] = (Math.random() - 0.5) * 0.1;
         initialData[i * 4 + 3] = (Math.random() - 0.5) * 0.1;
       }
-      const particleUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX;
+      const particleUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST;
       this.particleBuffers = [
         createBuffer(device, initialData, particleUsage),
         createBuffer(device, initialData, particleUsage),

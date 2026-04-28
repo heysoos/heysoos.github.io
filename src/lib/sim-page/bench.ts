@@ -44,7 +44,12 @@ function clampInt(v: string | null, dflt: number, lo: number, hi: number): numbe
 export function runBench(controller: BenchTarget, opts: BenchOpts): Promise<BenchResult> {
   return new Promise((resolve) => {
     controller.params.numParticles = opts.particles;
-    controller.maxFps = Infinity;
+    // The controller's tick uses requestAnimationFrame when maxFps is Infinity
+    // (vsync-locked, ~60Hz on most displays) and setTimeout(0) when finite.
+    // We need the unthrottled setTimeout path, so set a very high finite cap —
+    // the per-frame check `now - lastFrameTime < 1000/maxFps - 1` is always
+    // false at this rate, so it never actually throttles.
+    controller.maxFps = 99999;
     controller.reset();
 
     const total = opts.warmup + opts.frames;
