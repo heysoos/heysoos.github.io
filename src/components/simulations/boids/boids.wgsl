@@ -159,11 +159,9 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       for (var k = start; k < end; k++) {
         let other = sortedParticles[k];
         var diff = other.pos - pos;
-        // Minimum image convention: use shortest path across periodic boundaries
-        if (diff.x >  1.0) { diff.x -= 2.0; }
-        if (diff.x < -1.0) { diff.x += 2.0; }
-        if (diff.y >  1.0) { diff.y -= 2.0; }
-        if (diff.y < -1.0) { diff.y += 2.0; }
+        // Minimum image convention: wrap diff into [-1,1] across the period-2 torus
+        // — branchless equivalent of four `if (diff.* > 1)` / `< -1` checks.
+        diff -= round(diff * 0.5) * 2.0;
         // Aspect-correct for isotropic screen-space distances
         let diffS = vec2f(diff.x * params.aspect, diff.y);
         let r = length(diffS);
