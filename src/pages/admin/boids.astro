@@ -1,479 +1,283 @@
 ---
-// Dev-only admin page. Write-to-disk API only exists during `npm run dev`.
-import AdminLayout from '../../layouts/AdminLayout.astro';
+// Dev-only admin page for editing Boids presets. Mirrors the gallery
+// /gallery/boids page structure (same DOM, same CSS, same helpers) and
+// adds a 4th "Presets" tab to buildBoidsPanel for save / write-to-disk.
+// The save endpoint is a Vite middleware in astro.config.mjs and only
+// exists during `npm run dev` — admin pages are silently non-functional
+// in production.
+import SimLayout from '../../layouts/SimLayout.astro';
+import Controls from '../../components/Controls.astro';
+import '../../styles/sim-page.css';
 ---
 
-<AdminLayout title="Boids Admin">
-  <div slot="canvas-overlay" id="admin-shader-panel" class="admin-shader-panel" style="display:none;">
-    <div class="shader-panel-header">
-      <span>Shader Editor</span>
-      <button id="admin-shader-close" class="shader-panel-close">×</button>
-    </div>
-    <div id="admin-shader-wrap" class="shader-editor-wrap"></div>
-    <div class="shader-panel-footer">
-      <div class="shader-btn-row">
-        <button id="admin-shader-apply" class="shader-apply-btn">Apply</button>
-        <button id="admin-shader-reset" class="shader-reset-btn">Reset to Default</button>
+<SimLayout title="Boids Admin">
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="ic-attract" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+    <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+    <polyline points="8,9 12,12 8,15"/>
+    <polyline points="16,9 12,12 16,15"/>
+  </symbol>
+  <symbol id="ic-repulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <line x1="12" y1="4" x2="12" y2="7"/>
+    <line x1="12" y1="17" x2="12" y2="20"/>
+    <line x1="4" y1="12" x2="7" y2="12"/>
+    <line x1="17" y1="12" x2="20" y2="12"/>
+    <line x1="6.34" y1="6.34" x2="8.46" y2="8.46"/>
+    <line x1="15.54" y1="15.54" x2="17.66" y2="17.66"/>
+    <line x1="17.66" y1="6.34" x2="15.54" y2="8.46"/>
+    <line x1="6.34" y1="17.66" x2="8.46" y2="15.54"/>
+  </symbol>
+  <symbol id="ic-align" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="4" y1="7" x2="16" y2="7"/>
+    <polyline points="13,4 16,7 13,10"/>
+    <line x1="4" y1="12" x2="18" y2="12"/>
+    <polyline points="15,9 18,12 15,15"/>
+    <line x1="4" y1="17" x2="16" y2="17"/>
+    <polyline points="13,14 16,17 13,20"/>
+  </symbol>
+  <symbol id="ic-noise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="2,12 5,6 8,18 11,8 14,16 17,4 20,12 22,12"/>
+  </symbol>
+  <symbol id="ic-speed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="5" y1="9" x2="14" y2="9"/>
+    <line x1="3" y1="12" x2="14" y2="12"/>
+    <line x1="5" y1="15" x2="14" y2="15"/>
+    <polyline points="14,8 20,12 14,16"/>
+  </symbol>
+  <symbol id="ic-friction" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4,10 Q7,7 10,10 Q13,13 16,10 Q19,7 22,10"/>
+    <line x1="4" y1="14" x2="20" y2="14"/>
+    <line x1="6" y1="17" x2="8" y2="14"/>
+    <line x1="10" y1="17" x2="12" y2="14"/>
+    <line x1="14" y1="17" x2="16" y2="14"/>
+    <line x1="18" y1="17" x2="20" y2="14"/>
+  </symbol>
+  <symbol id="ic-radius" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="5" stroke-dasharray="2 2"/>
+    <circle cx="12" cy="12" r="8.5" stroke-dasharray="2 2"/>
+    <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+    <circle cx="5" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+  </symbol>
+</svg>
+  <div class="sim-viewport" id="sim-viewport" data-sim="boids">
+    <canvas id="sim-canvas"></canvas>
+    <Controls simId="boids" />
+    <div id="params-panel" class="params-panel">
+      <div class="panel-drag-handle">
+        <svg width="20" height="8" viewBox="0 0 20 8" fill="currentColor" opacity="0.45">
+          <circle cx="3" cy="2" r="1.5"/><circle cx="10" cy="2" r="1.5"/><circle cx="17" cy="2" r="1.5"/>
+          <circle cx="3" cy="6" r="1.5"/><circle cx="10" cy="6" r="1.5"/><circle cx="17" cy="6" r="1.5"/>
+        </svg>
       </div>
-      <div id="admin-shader-errors" class="shader-errors" style="display:none;"></div>
+      <div id="panel-content" class="panel-content"></div>
+    </div>
+    <div id="shader-panel" class="shader-panel" style="display:none;">
+      <div class="shader-panel-header">
+        <span>Shader Editor</span>
+        <button class="shader-panel-close" id="shader-panel-close">×</button>
+      </div>
+      <div class="shader-editor-wrap" id="shader-editor-wrap"></div>
+      <div class="shader-panel-footer">
+        <div class="shader-btn-row">
+          <button class="shader-apply-btn" id="shader-apply">Apply</button>
+          <button class="shader-reset-btn" id="shader-reset">Reset to Default</button>
+        </div>
+        <div class="shader-errors" id="shader-errors" style="display:none;"></div>
+      </div>
+    </div>
+    <div id="fps-display" class="fps-display">
+      <span id="fps-value">-- fps</span>
+      <div class="fps-popup" id="fps-popup">
+        <label class="fps-row">
+          <input type="checkbox" id="fps-unlimited" checked>
+          <span>Display rate</span>
+        </label>
+        <div class="fps-slider-row" id="fps-slider-row">
+          <span id="fps-slider-label">60</span>
+          <input type="range" id="fps-slider" min="10" max="360" step="5" value="60">
+          <span style="color:var(--text-muted);font-size:0.6rem">fps cap</span>
+        </div>
+      </div>
+    </div>
+    <div id="sim-fallback" class="fallback" style="display:none;">
+      <p>WebGPU is not supported in your browser.</p>
+      <p>Try Chrome, Edge, or Firefox Nightly.</p>
     </div>
   </div>
-</AdminLayout>
-
-<style>
-  /* Floating shader panel — mirrors gallery .shader-panel */
-  .admin-shader-panel {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    width: min(520px, calc(100% - 2rem));
-    max-height: calc(100% - 4rem);
-    background: var(--bg-nav);
-    border: 1px solid var(--bg-surface-border);
-    border-radius: var(--border-radius);
-    backdrop-filter: blur(8px);
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-    resize: both;
-    overflow: hidden;
-    min-width: 280px;
-    min-height: 200px;
-  }
-
-  .shader-panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid var(--bg-surface-border);
-    font-size: 0.65rem;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
-
-  .shader-panel-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0;
-  }
-  .shader-panel-close:hover { color: var(--text-primary); }
-
-  .shader-editor-wrap {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    font-size: 0.72rem;
-  }
-
-  .shader-editor-wrap :global(.cm-editor) { height: 100%; min-height: 200px; }
-  .shader-editor-wrap :global(.cm-scroller) { overflow: auto; font-family: monospace; font-size: 0.72rem; }
-
-  .shader-panel-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.6rem 0.75rem;
-    border-top: 1px solid var(--bg-surface-border);
-    flex-shrink: 0;
-  }
-
-  .shader-btn-row { display: flex; gap: 0.4rem; }
-
-  .shader-apply-btn,
-  .shader-reset-btn {
-    padding: 0.3rem 0.75rem;
-    border-radius: 4px;
-    border: 1px solid var(--bg-surface-border);
-    background: transparent;
-    color: var(--text-body);
-    font-size: 0.72rem;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .shader-apply-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .shader-reset-btn:hover { border-color: var(--text-muted); }
-
-  .shader-errors {
-    font-family: monospace;
-    font-size: 0.68rem;
-    color: #e05060;
-    white-space: pre-wrap;
-    max-height: 80px;
-    overflow-y: auto;
-    width: 100%;
-  }
-</style>
+</SimLayout>
 
 <script>
   import { BoidsController } from '../../components/simulations/boids/boids-controller';
   import { buildBoidsPanel } from '../../components/simulations/boids/panel';
   import { BOIDS_PRESETS } from '../../data/boids-presets';
-  import type { BoidsPreset } from '../../data/boids-presets';
-  import { EditorView, basicSetup } from 'codemirror';
-  import { StreamLanguage } from '@codemirror/language';
-  import { cpp } from '@codemirror/legacy-modes/mode/clike';
+  import { PanelManager } from '../../lib/sim-page/panel-manager';
+  import { createFpsCounter } from '../../lib/sim-page/fps-counter';
+  import { attachBench } from '../../lib/sim-page/bench';
+  import { bindBoidsAudio } from '../../lib/sim-page/boids-audio-binding';
+  import { createShaderEditor, type ShaderEditorHandle } from '../../lib/sim-page/shader-editor';
+  import { buildAdminPresetsTab, type AdminPresetsTabHandle } from '../../lib/sim-page/admin-presets-tab';
 
-  // ── Sim init ───────────────────────────────────────────────────────
-  const canvas = document.getElementById('admin-canvas') as HTMLCanvasElement;
-  const fallback = document.getElementById('admin-fallback') as HTMLElement;
+  // ── Element refs ───────────────────────────────────────────────────
+  const viewport      = document.getElementById('sim-viewport') as HTMLElement;
+  const canvas        = document.getElementById('sim-canvas') as HTMLCanvasElement;
+  const fallback      = document.getElementById('sim-fallback') as HTMLElement;
+  const panel         = document.getElementById('params-panel') as HTMLElement;
+  const panelContent  = document.getElementById('panel-content') as HTMLElement;
+  const shaderPanelEl = document.getElementById('shader-panel') as HTMLElement;
+
+  // Panel drag/resize — same key namespace as gallery so layout settings
+  // round-trip per simulation.
+  const panelManager = new PanelManager(panel, viewport, 'boids-admin');
+  panelManager.init();
+  document.addEventListener('pagehide', () => panelManager.dispose(), { once: true });
+
   const ctrl = new BoidsController();
-  const ok = await ctrl.init(canvas);
+  let playing = true;
 
-  if (!ok) {
+  try {
+    const ok = await ctrl.init(canvas);
+    if (!ok) {
+      canvas.style.display = 'none';
+      fallback.style.display = 'flex';
+    } else {
+      // Apply default preset before bindBoidsAudio snapshots base params.
+      const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
+      if (defaultPreset) {
+        Object.assign(ctrl.params, defaultPreset.params);
+        ctrl.trailsEnabled = defaultPreset.trailsEnabled;
+        ctrl.trailDecay = defaultPreset.trailDecay;
+        if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
+      }
+      ctrl.start();
+
+      // FPS counter (same wiring as gallery slug page).
+      const fpsCounter = createFpsCounter(
+        document.getElementById('fps-value') as HTMLElement,
+        document.getElementById('fps-unlimited') as HTMLInputElement,
+        document.getElementById('fps-slider') as HTMLInputElement,
+        document.getElementById('fps-slider-label') as HTMLElement,
+        document.getElementById('fps-slider-row') as HTMLElement,
+        ctrl as unknown as { maxFps: number; tickCount: number },
+      );
+      document.addEventListener('pagehide', () => fpsCounter.dispose(), { once: true });
+
+      // Boids-only benchmark hook (Shift+B in the canvas).
+      attachBench(ctrl as unknown as Parameters<typeof attachBench>[0]);
+
+      // Audio reactor + base-param Proxy + rAF mapping loop.
+      const audioBinding = bindBoidsAudio(ctrl);
+
+      // ── Panel state ────────────────────────────────────────────────
+      let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
+      // Tracked across rebuilds so Save/delete/star/Write-to-disk don't snap
+      // the user back to Params. Updated whenever buildBoidsPanel fires
+      // onTabChange and read on the next rebuildPanel.
+      let activeTab = 'Params';
+
+      // Drive panel viz from a single rAF.
+      (function vizLoop() {
+        panelControls?.updateAudioViz(audioBinding.getBaseParams());
+        requestAnimationFrame(vizLoop);
+      })();
+
+      // Shader editor: create once. Reused across all panel rebuilds.
+      const shaderEditor: ShaderEditorHandle = createShaderEditor(
+        shaderPanelEl.querySelector('#shader-editor-wrap') as HTMLElement,
+        shaderPanelEl.querySelector('#shader-errors') as HTMLElement,
+        shaderPanelEl.querySelector('#shader-apply') as HTMLButtonElement,
+        shaderPanelEl.querySelector('#shader-reset') as HTMLButtonElement,
+        shaderPanelEl.querySelector('#shader-panel-close') as HTMLButtonElement,
+        shaderPanelEl,
+        {
+          initialCode: ctrl.shaderSource,
+          onApply: async (code) => {
+            const result = await ctrl.reloadShader(code);
+            // The editor doc no longer matches any loaded preset's shaderFile,
+            // so the pre-fill from preset load would now cause the next Save
+            // to overwrite an existing shared file. Clear it.
+            presetsTab.setPendingShaderFile('');
+            return result;
+          },
+          onReset: () => ctrl.defaultShaderSource,
+          onClose: () => { /* shader-editor helper hides shaderPanelEl itself */ },
+        },
+      );
+
+      // Presets tab: create once, mounted into the extraTab body each panel rebuild.
+      // Persistent state (presets list, dirty flag, pending shader file) survives.
+      const presetsTab: AdminPresetsTabHandle = buildAdminPresetsTab(
+        BOIDS_PRESETS,
+        BOIDS_PRESETS.find(p => p.isDefault)?.id,
+        {
+          controller: ctrl,
+          getCurrentShader: () => shaderEditor.getDoc(),
+          setEditorDoc: (code) => shaderEditor.setDoc(code),
+          onPresetChange: (_presets, activeId) => {
+            // Defer so the Presets tab's own render() finishes first, then
+            // rebuild the Params panel to sync slider values + active pill.
+            queueMicrotask(() => rebuildPanel(activeId));
+          },
+        },
+      );
+
+      function rebuildPanel(activeId: string | undefined): void {
+        panelControls?.teardown();
+        panelContent.innerHTML = '';
+        panelControls = buildBoidsPanel(panelContent, ctrl, {
+          presets: presetsTab.getPresets(),
+          activePresetId: activeId,
+          reactor: audioBinding.reactor,
+          initialTab: activeTab,
+          onTabChange: (name) => { activeTab = name; },
+          onShaderEdit: () => {
+            const isOpen = shaderPanelEl.style.display !== 'none';
+            shaderPanelEl.style.display = isOpen ? 'none' : 'flex';
+          },
+          onPresetLoad: async (preset) => {
+            Object.assign(ctrl.params, preset.params);
+            ctrl.trailsEnabled = preset.trailsEnabled;
+            ctrl.trailDecay = preset.trailDecay;
+            const next = preset.shader ?? ctrl.defaultShaderSource;
+            await ctrl.reloadShader(next);
+            shaderEditor.setDoc(next);
+            presetsTab.setPendingShaderFile(preset.shaderFile ?? '');
+            rebuildPanel(preset.id);
+          },
+          extraTab: {
+            name: 'Presets',
+            build: (body) => presetsTab.mount(body),
+          },
+        });
+      }
+
+      rebuildPanel(BOIDS_PRESETS.find(p => p.isDefault)?.id);
+
+      // ── Sim controls (play/pause/reset/fullscreen/settings) ────────
+      const controls = document.getElementById('controls-boids');
+      controls?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        if (action === 'play-pause') {
+          if (playing) { ctrl.stop(); btn.querySelector('.ctrl-icon')!.textContent = '▶'; }
+          else { ctrl.start(); btn.querySelector('.ctrl-icon')!.textContent = '⏸'; }
+          playing = !playing;
+        } else if (action === 'reset') {
+          ctrl.reset();
+        } else if (action === 'fullscreen') {
+          viewport.requestFullscreen();
+        } else if (action === 'settings') {
+          const isOpen = panel.style.display !== 'none';
+          panel.style.display = isOpen ? 'none' : 'flex';
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Simulation failed to start:', e);
     canvas.style.display = 'none';
     fallback.style.display = 'flex';
-  } else {
-    const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
-    if (defaultPreset) {
-      Object.assign(ctrl.params, defaultPreset.params);
-      ctrl.trailsEnabled = defaultPreset.trailsEnabled;
-      ctrl.trailDecay = defaultPreset.trailDecay;
-      if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
-    }
-    ctrl.start();
   }
-
-  // ── Play/pause + reset ─────────────────────────────────────────────
-  let playing = true;
-  document.getElementById('btn-play-pause')!.addEventListener('click', (e) => {
-    const btn = e.currentTarget as HTMLButtonElement;
-    if (playing) { ctrl.stop(); btn.textContent = '▶'; }
-    else { ctrl.start(); btn.textContent = '⏸'; }
-    playing = !playing;
-  });
-  document.getElementById('btn-reset')!.addEventListener('click', () => ctrl.reset());
-
-  // ── Tab switching ─────────────────────────────────────────────────
-  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
-  const tabPanes = document.querySelectorAll<HTMLElement>('.tab-pane');
-
-  function switchTab(name: string): void {
-    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    tabPanes.forEach(p => { p.style.display = p.id === `tab-${name}` ? 'flex' : 'none'; });
-  }
-
-  tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab!)));
-
-  // ── Floating shader panel ─────────────────────────────────────────
-  const adminShaderPanel = document.getElementById('admin-shader-panel') as HTMLElement;
-  const shaderErrors = document.getElementById('admin-shader-errors') as HTMLElement;
-  let shaderEditorOpen = false;
-
-  const editorView = new EditorView({
-    doc: ctrl.shaderSource,
-    extensions: [
-      basicSetup,
-      StreamLanguage.define(cpp),
-      EditorView.theme({
-        '&': { background: 'var(--bg-primary)' },
-        '.cm-content': { color: 'var(--text-body)', caretColor: 'var(--accent)' },
-        '.cm-gutters': {
-          background: 'var(--bg-surface)',
-          color: 'var(--text-muted)',
-          borderRight: '1px solid var(--bg-surface-border)',
-        },
-        '.cm-activeLineGutter': { background: 'var(--bg-surface)' },
-        '.cm-activeLine': { background: 'rgba(255,255,255,0.03)' },
-        '.cm-selectionBackground': { background: 'rgba(224,160,64,0.2) !important' },
-      }),
-    ],
-    parent: document.getElementById('admin-shader-wrap') as HTMLElement,
-  });
-
-  document.getElementById('admin-shader-close')!.addEventListener('click', () => {
-    shaderEditorOpen = false;
-    adminShaderPanel.style.display = 'none';
-  });
-
-  // ── Drag shader panel by header ───────────────────────────────────
-  const shaderPanelHeader = adminShaderPanel.querySelector('.shader-panel-header') as HTMLElement;
-  shaderPanelHeader.style.cursor = 'grab';
-  let dragging = false, dragX = 0, dragY = 0, panelX = 0, panelY = 0;
-  shaderPanelHeader.addEventListener('mousedown', (e) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    dragging = true;
-    dragX = e.clientX; dragY = e.clientY;
-    const rect = adminShaderPanel.getBoundingClientRect();
-    const parentRect = (adminShaderPanel.parentElement as HTMLElement).getBoundingClientRect();
-    panelX = rect.left - parentRect.left;
-    panelY = rect.top - parentRect.top;
-    shaderPanelHeader.style.cursor = 'grabbing';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    adminShaderPanel.style.left = `${panelX + e.clientX - dragX}px`;
-    adminShaderPanel.style.top = `${panelY + e.clientY - dragY}px`;
-  });
-  document.addEventListener('mouseup', () => {
-    if (dragging) { dragging = false; shaderPanelHeader.style.cursor = 'grab'; }
-  });
-
-  document.getElementById('admin-shader-apply')!.addEventListener('click', async () => {
-    const applyBtn = document.getElementById('admin-shader-apply') as HTMLButtonElement;
-    const result = await ctrl.reloadShader(editorView.state.doc.toString());
-    if (result.success) {
-      shaderErrors.style.display = 'none';
-      shaderErrors.textContent = '';
-      applyBtn.textContent = 'Applied ✓';
-      applyBtn.style.borderColor = 'var(--accent)';
-      applyBtn.style.color = 'var(--accent)';
-      setTimeout(() => {
-        applyBtn.textContent = 'Apply';
-        applyBtn.style.borderColor = '';
-        applyBtn.style.color = '';
-      }, 1500);
-    } else {
-      shaderErrors.textContent = result.error || 'Unknown error';
-      shaderErrors.style.display = 'block';
-    }
-  });
-
-  document.getElementById('admin-shader-reset')!.addEventListener('click', async () => {
-    editorView.dispatch({
-      changes: { from: 0, to: editorView.state.doc.length, insert: ctrl.shaderSource },
-    });
-    await ctrl.reloadShader(ctrl.shaderSource);
-    shaderErrors.style.display = 'none';
-  });
-
-  // ── Preset state ──────────────────────────────────────────────────
-  let adminPresets: BoidsPreset[] = JSON.parse(JSON.stringify(BOIDS_PRESETS));
-  let activePresetId: string | undefined = adminPresets.find(p => p.isDefault)?.id;
-
-  // ── Params tab (rebuilt on preset load to sync sliders + pills) ───
-  const paramsContainer = document.getElementById('tab-params') as HTMLElement;
-
-  function buildAdminPanel(activeId?: string): void {
-    paramsContainer.innerHTML = '';
-    buildBoidsPanel(paramsContainer, ctrl, {
-      presets: adminPresets,
-      activePresetId: activeId,
-      onShaderEdit: () => {
-        shaderEditorOpen = !shaderEditorOpen;
-        adminShaderPanel.style.display = shaderEditorOpen ? 'flex' : 'none';
-      },
-      onPresetLoad: async (preset) => {
-        activePresetId = preset.id;
-        Object.assign(ctrl.params, preset.params);
-        ctrl.trailsEnabled = preset.trailsEnabled;
-        ctrl.trailDecay = preset.trailDecay;
-        await ctrl.reloadShader(preset.shader ?? ctrl.defaultShaderSource);
-        editorView.dispatch({
-          changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.defaultShaderSource },
-        });
-        // Pre-fill shaderFile input with the loaded preset's file stem
-        const sfInput = presetsContainer.querySelector<HTMLInputElement>('input[placeholder*="filename"]');
-        if (sfInput) sfInput.value = preset.shaderFile ?? '';
-        buildAdminPanel(preset.id);
-        renderPresetList();
-      },
-    });
-  }
-
-  // ── Presets tab ───────────────────────────────────────────────────
-  const presetsContainer = document.getElementById('tab-presets') as HTMLElement;
-
-  async function writeToDisk(): Promise<void> {
-    const writeBtn = document.getElementById('write-to-disk');
-    try {
-      const res = await fetch('/api/admin/save-presets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adminPresets),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      if (writeBtn) {
-        writeBtn.textContent = '✓ Written';
-        writeBtn.style.borderColor = 'var(--accent)';
-        setTimeout(() => { writeBtn.textContent = '↓ Write to disk'; }, 2000);
-      }
-    } catch (err) {
-      if (writeBtn) {
-        writeBtn.textContent = '✗ Error';
-        writeBtn.style.borderColor = '#e05060';
-        writeBtn.style.color = '#e05060';
-        setTimeout(() => {
-          writeBtn.textContent = '↓ Write to disk';
-          writeBtn.style.borderColor = 'var(--accent)';
-          writeBtn.style.color = 'var(--accent)';
-        }, 2000);
-      }
-      console.error('Write to disk failed:', err);
-    }
-  }
-
-  function renderPresetList(): void {
-    presetsContainer.innerHTML = '';
-
-    const list = document.createElement('div');
-    list.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
-
-    for (const preset of adminPresets) {
-      const isActive = preset.id === activePresetId;
-      const row = document.createElement('div');
-      row.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:4px;cursor:pointer;border:1px solid ${isActive ? 'var(--accent)' : 'var(--bg-surface-border)'};`;
-
-      const name = document.createElement('span');
-      name.style.cssText = `flex:1;font-size:0.75rem;color:${isActive ? 'var(--accent)' : 'var(--text-body)'};`;
-      name.textContent = preset.name + (preset.isDefault ? ' ★' : '');
-      name.title = 'Double-click to rename';
-
-      // Double-click to rename inline.
-      // A click timer delays the single-click action so dblclick can cancel it
-      // before renderPresetList() destroys the DOM.
-      let clickTimer: ReturnType<typeof setTimeout> | null = null;
-
-      name.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        if (clickTimer !== null) { clearTimeout(clickTimer); clickTimer = null; }
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = preset.name;
-        input.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;color:var(--text-body);font-size:0.75rem;min-width:0;';
-        input.addEventListener('click', (ev) => ev.stopPropagation());
-        row.replaceChild(input, name);
-        input.focus();
-        input.select();
-        function commit() {
-          const newName = input.value.trim();
-          if (newName) preset.name = newName;
-          renderPresetList();
-        }
-        input.addEventListener('blur', commit);
-        input.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter') input.blur();
-          if (ev.key === 'Escape') renderPresetList();
-        });
-      });
-
-      const starBtn = document.createElement('button');
-      starBtn.textContent = '★';
-      starBtn.title = 'Set as default';
-      starBtn.style.cssText = `background:none;border:none;cursor:pointer;font-size:0.7rem;color:${preset.isDefault ? 'var(--accent)' : 'var(--text-muted)'};padding:0;`;
-      starBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        adminPresets.forEach(p => { p.isDefault = p.id === preset.id; });
-        renderPresetList();
-        buildAdminPanel(activePresetId);
-      });
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.textContent = '✕';
-      deleteBtn.title = 'Delete';
-      deleteBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--text-muted);padding:0;';
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        adminPresets = adminPresets.filter(p => p.id !== preset.id);
-        if (activePresetId === preset.id) activePresetId = undefined;
-        renderPresetList();
-        buildAdminPanel(activePresetId);
-      });
-
-      row.addEventListener('click', () => {
-        if (clickTimer !== null) return; // dblclick in progress — let it handle this
-        clickTimer = setTimeout(() => {
-          clickTimer = null;
-          activePresetId = preset.id;
-          Object.assign(ctrl.params, preset.params);
-          ctrl.trailsEnabled = preset.trailsEnabled;
-          ctrl.trailDecay = preset.trailDecay;
-          ctrl.reloadShader(preset.shader ?? ctrl.defaultShaderSource);
-          editorView.dispatch({
-            changes: { from: 0, to: editorView.state.doc.length, insert: preset.shader ?? ctrl.defaultShaderSource },
-          });
-          buildAdminPanel(preset.id);
-          renderPresetList();
-        }, 220);
-      });
-
-      row.appendChild(name);
-      row.appendChild(starBtn);
-      row.appendChild(deleteBtn);
-      list.appendChild(row);
-    }
-
-    presetsContainer.appendChild(list);
-
-    const divider = document.createElement('div');
-    divider.style.cssText = 'height:1px;background:var(--bg-surface-border);margin:0.5rem 0;flex-shrink:0;';
-    presetsContainer.appendChild(divider);
-
-    const saveRow = document.createElement('div');
-    saveRow.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.placeholder = 'preset name...';
-    nameInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.72rem;';
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save';
-    saveBtn.style.cssText = 'padding:0.25rem 0.6rem;border:1px solid var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-body);font-size:0.72rem;cursor:pointer;white-space:nowrap;';
-    // Shader file row
-    const shaderFileRow = document.createElement('div');
-    shaderFileRow.style.cssText = 'display:flex;gap:4px;align-items:center;';
-    const shaderFileLabel = document.createElement('span');
-    shaderFileLabel.textContent = 'Shader file:';
-    shaderFileLabel.style.cssText = 'font-size:0.65rem;color:var(--text-muted);white-space:nowrap;';
-    const shaderFileInput = document.createElement('input');
-    shaderFileInput.type = 'text';
-    shaderFileInput.placeholder = 'filename (no ext) — required for custom shaders';
-    shaderFileInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.65rem;';
-    shaderFileInput.title = 'Name of .wgsl file in boids-shaders/. Share a name to reuse an existing shader. Required when saving with a custom shader.';
-    shaderFileRow.appendChild(shaderFileLabel);
-    shaderFileRow.appendChild(shaderFileInput);
-    presetsContainer.appendChild(shaderFileRow);
-
-    saveBtn.addEventListener('click', () => {
-      const rawName = nameInput.value.trim();
-      if (!rawName) return;
-      const id = rawName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      const currentShader = editorView.state.doc.toString();
-      const isCustomShader = currentShader !== ctrl.defaultShaderSource;
-      const shaderFileStem = shaderFileInput.value.trim().replace(/\.wgsl$/, '').replace(/[^a-z0-9-]/gi, '-') || undefined;
-      if (isCustomShader && !shaderFileStem) {
-        shaderFileInput.style.borderColor = '#e05060';
-        shaderFileInput.focus();
-        shaderFileInput.placeholder = 'required — enter a filename';
-        setTimeout(() => {
-          shaderFileInput.style.borderColor = '';
-          shaderFileInput.placeholder = 'filename (no ext) — required for custom shaders';
-        }, 2500);
-        return;
-      }
-      const newPreset: BoidsPreset = {
-        id: adminPresets.some(p => p.id === id) ? `${id}-${Date.now()}` : id,
-        name: rawName,
-        params: { ...ctrl.params },
-        trailsEnabled: ctrl.trailsEnabled,
-        trailDecay: ctrl.trailDecay,
-        ...(isCustomShader ? { shader: currentShader, shaderFile: shaderFileStem } : {}),
-      };
-      adminPresets.push(newPreset);
-      activePresetId = newPreset.id;
-      nameInput.value = '';
-      shaderFileInput.value = '';
-      renderPresetList();
-      buildAdminPanel(newPreset.id);
-    });
-    saveRow.appendChild(nameInput);
-    saveRow.appendChild(saveBtn);
-    presetsContainer.appendChild(saveRow);
-
-    const writeBtn = document.createElement('button');
-    writeBtn.textContent = '↓ Write to disk';
-    writeBtn.id = 'write-to-disk';
-    writeBtn.style.cssText = 'margin-top:0.25rem;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;flex-shrink:0;';
-    writeBtn.addEventListener('click', writeToDisk);
-    presetsContainer.appendChild(writeBtn);
-  }
-
-  // ── Init ──────────────────────────────────────────────────────────
-  buildAdminPanel(activePresetId);
-  renderPresetList();
 </script>

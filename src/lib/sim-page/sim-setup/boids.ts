@@ -1,8 +1,8 @@
 // src/lib/sim-page/sim-setup/boids.ts
 import type { BoidsController } from '../../../components/simulations/boids/boids-controller';
 import { buildBoidsPanel } from '../../../components/simulations/boids/panel';
-import { AudioReactor } from '../../../components/simulations/boids/boids-audio';
 import { BOIDS_PRESETS } from '../../../data/boids-presets';
+import { bindBoidsAudio } from '../boids-audio-binding';
 import { createShaderEditor, type ShaderEditorHandle } from '../shader-editor';
 
 export async function setupBoids(
@@ -11,43 +11,19 @@ export async function setupBoids(
   panel: HTMLElement,
   shaderPanelEl: HTMLElement,
 ): Promise<void> {
-  const reactor = new AudioReactor();
+  const { reactor, getBaseParams } = bindBoidsAudio(ctrl);
 
   let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const baseParams: Record<string, number> = { ...(ctrl.params as any) };
-  let isApplyingAudio = false;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const trackedParams = new Proxy(ctrl.params as any, {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    set(target: any, prop: string, value: any): boolean {
-      target[prop] = value;
-      if (!isApplyingAudio) baseParams[prop] = value;
-      return true;
-    },
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (ctrl as any).params = trackedParams;
-
-  let mappingRafId = 0;
-  (function mappingLoop() {
-    if (reactor.isActive()) {
-      isApplyingAudio = true;
-      Object.assign(ctrl.params, baseParams);
-      const snapshot = reactor.analyze();
-      reactor.applyMappings(ctrl.params, snapshot);
-      isApplyingAudio = false;
-    }
-    panelControls?.updateAudioViz(baseParams as Record<string, number>);
-    mappingRafId = requestAnimationFrame(mappingLoop);
+  // Drive panel viz from the same rAF that bindBoidsAudio runs internally.
+  // bindBoidsAudio already updates ctrl.params each frame; we just need to
+  // pump the panel updaters with the latest base snapshot.
+  let vizRafId = 0;
+  (function vizLoop() {
+    panelControls?.updateAudioViz(getBaseParams());
+    vizRafId = requestAnimationFrame(vizLoop);
   })();
-
-  document.addEventListener('pagehide', () => {
-    cancelAnimationFrame(mappingRafId);
-    reactor.stop();
-  }, { once: true });
+  document.addEventListener('pagehide', () => cancelAnimationFrame(vizRafId), { once: true });
 
   const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
   if (defaultPreset) {
