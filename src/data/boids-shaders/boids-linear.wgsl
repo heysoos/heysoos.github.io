@@ -116,7 +116,7 @@ fn decodeForce(s: vec4f) -> vec2f {
   return dir;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(64)
 fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let index = id.x;
   if (index >= params.numParticles) { return; }
@@ -159,34 +159,32 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       for (var k = start; k < end; k++) {
         let other = sortedParticles[k];
         var diff = other.pos - pos;
-        // Minimum image convention: use shortest path across periodic boundaries
-        if (diff.x >  1.0) { diff.x -= 2.0; }
-        if (diff.x < -1.0) { diff.x += 2.0; }
-        if (diff.y >  1.0) { diff.y -= 2.0; }
-        if (diff.y < -1.0) { diff.y += 2.0; }
+        // Minimum image convention: wrap diff into [-1,1] across the period-2 torus
+        // — branchless equivalent of four `if (diff.* > 1)` / `< -1` checks.
+        diff -= round(diff * 0.5) * 2.0;
         // Aspect-correct for isotropic screen-space distances
         let diffS = vec2f(diff.x * params.aspect, diff.y);
-        let r = length(diffS);
-        if (r < 0.0001) { continue; }
+        let rSq = dot(diffS, diffS);
+        // r is floored at ~1e-4 so dir is well-defined for self/coincident
+        // (where notCoincident below masks the contribution to zero anyway).
+        let r   = sqrt(rSq + 1.0e-8);
+        let dir = diffS / r;
 
-        let dir = diffS / r;  // unit direction in screen space
+        // Branchless FOV: safe-speed avoids div-by-zero without an `if`.
+        let speedSafe = max(speedS, 1.0e-4);
+        let pointing  = dot(velS / speedSafe, dir);
 
-        // Field-of-view check using screen-space velocity direction
-        var pointing = 0.0;
-        if (speedS > 0.0001) {
-          pointing = dot(velS / speedS, dir);
-        }
+        // Branchless range + FOV gates as 0/1 masks (step(e,x) = 1 iff x>=e).
+        // notCoincident drops self / coincident-position pairs (rSq < 1e-8).
+        let notCoincident = step(1.0e-8, rSq);
+        let attractGate   = step(r, params.attractionRadius)
+                            * step(params.coneAngle, pointing)
+                            * notCoincident;
+        let repulseGate   = step(r, params.repulsionRadius) * notCoincident;
 
-        // Attraction radius: cohesion + velocity alignment (respects field of view)
-        if (r < params.attractionRadius && pointing > params.coneAngle) {
-          spatial_force += params.attraction * dir;
-          align_force   += params.alignment * (other.vel - vel);
-        }
-
-        // Repulsion radius: short-range repulsion (omnidirectional)
-        if (r < params.repulsionRadius) {
-          spatial_force -= params.repulsion * dir;
-        }
+        spatial_force += attractGate * params.attraction * dir;
+        align_force   += attractGate * params.alignment * (other.vel - vel);
+        spatial_force -= repulseGate * params.repulsion * dir;
       }
     }
   }
