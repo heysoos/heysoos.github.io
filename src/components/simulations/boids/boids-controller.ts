@@ -127,6 +127,13 @@ export class BoidsController {
   readonly defaultShaderSource = shaderCode;
   /** The shader currently loaded (or last loaded via preset). Updated by reloadShader. */
   shaderSource = shaderCode;
+  /**
+   * Workgroup size declared by the active boids shader's @workgroup_size — kept
+   * in sync with shaderSource so dispatchWorkgroups gets `ceil(N / size)`. If a
+   * user-loaded shader uses a different value than the default, this prevents
+   * over- or under-dispatching the compute pass.
+   */
+  private boidsWorkgroupSize = 64;
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
     try {
@@ -255,6 +262,7 @@ export class BoidsController {
       this._buildOverlayPipeline(this.gpu.format);
 
       // ── Boids update + render pipelines ──────────────────────────────
+      this.boidsWorkgroupSize = this._parseWorkgroupSize(shaderCode);
       const boidsModule = device.createShaderModule({ code: shaderCode });
       this._createBoidsPipelines(boidsModule);
 
@@ -275,6 +283,12 @@ export class BoidsController {
       console.error('BoidsController init error:', e);
       return false;
     }
+  }
+
+  /** Extract the first arg of `@workgroup_size(N, ...)` from a WGSL source. */
+  private _parseWorkgroupSize(code: string): number {
+    const m = code.match(/@workgroup_size\s*\(\s*(\d+)/);
+    return m ? parseInt(m[1], 10) : 64;
   }
 
   private _createBoidsPipelines(module: GPUShaderModule): void {
@@ -383,10 +397,12 @@ export class BoidsController {
         boidsBindGroupLayout:  this.boidsBindGroupLayout,
         boidsBindGroups:       this.boidsBindGroups,
         renderParamsBindGroup: this.renderParamsBindGroup,
+        boidsWorkgroupSize:    this.boidsWorkgroupSize,
       };
 
       device.pushErrorScope('validation');
       const module = device.createShaderModule({ code });
+      this.boidsWorkgroupSize = this._parseWorkgroupSize(code);
       this._createBoidsPipelines(module);
       const gpuError = await device.popErrorScope();
 
@@ -536,10 +552,11 @@ export class BoidsController {
     computePass.setBindGroup(0, gridBG);
     computePass.dispatchWorkgroups(Math.ceil(N / 64));
 
-    // Pass 6: boids update
+    // Pass 6: boids update — dispatch sized to whatever @workgroup_size the
+    // currently-loaded shader declared (default 64; user shaders may differ).
     computePass.setPipeline(this.computePipeline);
     computePass.setBindGroup(0, this.boidsBindGroups[this.frame % 2]);
-    computePass.dispatchWorkgroups(Math.ceil(N / 64));
+    computePass.dispatchWorkgroups(Math.ceil(N / this.boidsWorkgroupSize));
 
     computePass.end();
     device.queue.submit([computeEncoder.finish()]);
