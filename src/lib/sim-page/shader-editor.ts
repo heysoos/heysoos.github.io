@@ -6,6 +6,8 @@ import { cpp } from '@codemirror/legacy-modes/mode/clike';
 export interface ShaderEditorHandle {
   /** Replace the editor content (e.g. on preset load) */
   setDoc(code: string): void;
+  /** Read the current editor content. */
+  getDoc(): string;
   dispose(): void;
 }
 
@@ -85,6 +87,9 @@ export function createShaderEditor(
   return {
     setDoc(code: string): void {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: code } });
+    },
+    getDoc(): string {
+      return view.state.doc.toString();
     },
     dispose(): void {
       view.destroy();

@@ -24,6 +24,16 @@ export interface BoidsPanelOpts {
   activePresetId?: string;
   onPresetLoad?: (preset: BoidsPreset) => void;
   reactor?: AudioReactor;
+  /** Optional extra tab appended after Image. Used by the admin page to add a
+   *  Presets management tab without forking the panel. `build` runs once when
+   *  the tab is created; the body element is empty, sized to fit the panel. */
+  extraTab?: { name: string; build: (body: HTMLElement) => void };
+  /** Tab to open initially. Defaults to 'Params'. The admin uses this to
+   *  preserve the active tab across panel rebuilds (Save/delete/star). */
+  initialTab?: string;
+  /** Called whenever the user clicks a tab. The admin uses this to track the
+   *  active tab so it can pass it back via initialTab on the next rebuild. */
+  onTabChange?: (name: string) => void;
 }
 
 export function buildBoidsPanel(
@@ -72,11 +82,15 @@ export function buildBoidsPanel(
     tabRight.appendChild(closeBtn);
   }
 
-  const tabNames = ['Params', 'Audio', 'Image'] as const;
+  const baseTabs = ['Params', 'Audio', 'Image'] as const;
+  const tabNames: string[] = opts.extraTab
+    ? [...baseTabs, opts.extraTab.name]
+    : [...baseTabs];
   const tabBodies: Record<string, HTMLDivElement> = {};
   const tabBtns:  Record<string, HTMLButtonElement> = {};
 
-  let activeTab = 'Params';
+  const initialTab = opts.initialTab && tabNames.includes(opts.initialTab) ? opts.initialTab : 'Params';
+  let activeTab = initialTab;
 
   function buildTabStyle(active: boolean): string {
     return [
@@ -105,18 +119,19 @@ export function buildBoidsPanel(
       tabBodies[t].style.display = isActive ? 'block' : 'none';
     }
     if (name === 'Audio') audioVizControls?.start();
+    opts.onTabChange?.(name);
   }
 
   for (const name of tabNames) {
     const btn = document.createElement('button');
     btn.textContent = name;
-    btn.style.cssText = buildTabStyle(name === 'Params');
+    btn.style.cssText = buildTabStyle(name === initialTab);
     btn.addEventListener('click', () => switchTab(name));
     tabBar.appendChild(btn);
     tabBtns[name] = btn;
 
     const body = document.createElement('div');
-    body.style.display = name === 'Params' ? 'block' : 'none';
+    body.style.display = name === initialTab ? 'block' : 'none';
     body.style.overflowX = 'hidden';
     tabBodies[name] = body;
   }
@@ -132,11 +147,15 @@ export function buildBoidsPanel(
 
   if (opts.reactor) {
     audioVizControls = buildAudioTab(audioBody, opts.reactor, updMaps, registerDisconnect);
-    // Start immediately stopped — Params tab is shown first
-    audioVizControls.stop();
+    // Match initialTab — only run audio viz when Audio is the active tab.
+    if (initialTab !== 'Audio') audioVizControls.stop();
   } else {
     audioBody.style.cssText = 'padding:8px;color:var(--text-muted);font-size:0.7rem;';
     audioBody.textContent = 'No audio reactor provided.';
+  }
+
+  if (opts.extraTab) {
+    opts.extraTab.build(tabBodies[opts.extraTab.name]);
   }
 
   // ── Preset switcher ───────────────────────────────────────────────────────

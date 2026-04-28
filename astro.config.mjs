@@ -12,8 +12,18 @@ function stemToVarName(stem) {
 }
 
 /**
+ * Normalize CRLF and lone CR to LF so content matching is line-ending
+ * agnostic. CodeMirror in the admin editor returns LF, but shader files
+ * committed on Windows can be CRLF — without this, "save unchanged" falls
+ * through to writing a new file with the preset id.
+ */
+function normalizeLineEndings(s) {
+  return s.replace(/\r\n?/g, '\n');
+}
+
+/**
  * Read all .wgsl files from SHADERS_DIR and return a map:
- *   content → { stem, varName }
+ *   normalized content → { stem, varName }
  * Used to detect when a preset's shader content matches an existing file.
  */
 function loadShaderFileMap() {
@@ -23,7 +33,7 @@ function loadShaderFileMap() {
     if (!f.endsWith('.wgsl')) continue;
     const stem = f.slice(0, -5);
     const content = readFileSync(resolve(SHADERS_DIR, f), 'utf-8');
-    map.set(content, { stem, varName: stemToVarName(stem) });
+    map.set(normalizeLineEndings(content), { stem, varName: stemToVarName(stem) });
   }
   return map;
 }
@@ -41,8 +51,9 @@ function generatePresetsFile(presets) {
 
     if (p.shader) {
       // 1. Content matches an existing file → use that file
-      if (shaderFileMap.has(p.shader)) {
-        const { stem, varName } = shaderFileMap.get(p.shader);
+      const normalized = normalizeLineEndings(p.shader);
+      if (shaderFileMap.has(normalized)) {
+        const { stem, varName } = shaderFileMap.get(normalized);
         p.shaderFile = stem;
         delete p.shader;
         imports.set(stem, varName);
@@ -116,6 +127,23 @@ export const BOIDS_PRESETS: BoidsPreset[] = ${arrJson};
 export default defineConfig({
   site: 'https://heysoos.github.io',
   vite: {
+    // Don't trigger HMR / full-reload when the admin pages write their own
+    // auto-generated outputs back to disk — otherwise clicking "Write to disk"
+    // reloads the admin page and discards in-memory state. Manual edits
+    // outside the admin UI won't hot-reload either, but those files are
+    // marked AUTO-GENERATED in CLAUDE.md and should never be hand-edited.
+    server: {
+      watch: {
+        ignored: [
+          '**/src/data/boids-presets.ts',
+          '**/src/data/boids-shaders/**',
+          '**/src/data/cppn-presets.ts',
+          '**/src/data/cppn-weights/**',
+          '**/src/data/nca-presets.ts',
+          '**/src/data/nca-weights/**',
+        ],
+      },
+    },
     plugins: [
       {
         name: 'admin-save-presets',
