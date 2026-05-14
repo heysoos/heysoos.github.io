@@ -19,8 +19,10 @@ export class TrailRenderer {
 
     this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
 
+    // 16 bytes: vec4f(bgColor.r, bgColor.g, bgColor.b, decayFactor) — matches
+    // the `params: vec4f` uniform in trail.wgsl. Updated each frame in render().
     this.decayBuffer = device.createBuffer({
-      size: 4,
+      size: 16,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -89,6 +91,27 @@ export class TrailRenderer {
     this._createTextures(device, width, height);
   }
 
+  /** Clear both ping-pong trail textures to bgColor. Use after init/resize so
+   *  the fade shader doesn't have to spend ~100 frames converging the
+   *  uninitialised (effectively-black) texture memory toward the current bg.
+   *  Without this, switching to a light theme on first load shows a black flash
+   *  that slowly fades to cream. */
+  primeBg(device: GPUDevice, bgColor: GPUColor): void {
+    const encoder = device.createCommandEncoder();
+    for (const view of this.trailViews) {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view,
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue: bgColor,
+        }],
+      });
+      pass.end();
+    }
+    device.queue.submit([encoder.finish()]);
+  }
+
   /**
    * Orchestrates one composited frame.
    *
@@ -105,6 +128,7 @@ export class TrailRenderer {
     context: GPUCanvasContext,
     decayFactor: number,
     trailsEnabled: boolean,
+    bgColor: GPUColor,
     particlePassFn: (encoder: GPUCommandEncoder, targetView: GPUTextureView, loadOp: GPULoadOp) => void,
   ): void {
     if (!trailsEnabled) {
@@ -114,7 +138,12 @@ export class TrailRenderer {
       return;
     }
 
-    device.queue.writeBuffer(this.decayBuffer, 0, new Float32Array([decayFactor]));
+    // Pack into params: vec4f { rgb = bgColor, a = decay } — see trail.wgsl.
+    const bg = bgColor as GPUColorDict;
+    device.queue.writeBuffer(
+      this.decayBuffer, 0,
+      new Float32Array([bg.r, bg.g, bg.b, decayFactor]),
+    );
 
     const encoder = device.createCommandEncoder();
 
@@ -125,7 +154,7 @@ export class TrailRenderer {
           view: this.trailViews[this.writeIdx],
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: bgColor,
         }],
       });
       pass.setPipeline(this.fadePipeline);
@@ -137,14 +166,15 @@ export class TrailRenderer {
     // 2. Particle pass onto trail write texture
     particlePassFn(encoder, this.trailViews[this.writeIdx], 'load');
 
-    // 3. Blit write → swapchain
+    // 3. Blit write → swapchain. The blit shader is opaque, so this clear value
+    //    is never visible, but kept consistent.
     {
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
           view: context.getCurrentTexture().createView(),
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: bgColor,
         }],
       });
       pass.setPipeline(this.blitPipeline);

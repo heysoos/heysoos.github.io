@@ -30,6 +30,13 @@ const pageTitle = title === siteConfig.name
     <meta name="description" content={description} />
     <title>{pageTitle}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      // Apply saved theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* storage may be blocked */ }
+    </script>
   </head>
   <body>
     {backgroundSim && <BackgroundSim sim={backgroundSim} />}

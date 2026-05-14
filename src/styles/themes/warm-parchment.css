@@ -1,0 +1,33 @@
+/*
+ * Theme: Warm Parchment — light counterpart to Warm Ember.
+ * Activated by setting [data-theme="light"] on <html>. Same token set as the
+ * dark themes plus --viz-canvas-bg / --row-hover / --row-hover-strong.
+ *
+ * Design notes:
+ *   - Viz canvases stay dark (warm-tinted) so the white-alpha overlays and
+ *     bright data-viz colors inside them keep their contrast. This is the
+ *     "instrument display" convention (Logic Pro / Ableton / Bloomberg).
+ *   - Row hover overlays flip to black-alpha so they show against the cream
+ *     panel surface.
+ */
+
+[data-theme="light"] {
+  --bg-primary: #f6efe4;
+  --bg-surface: #ece2d0;
+  --bg-surface-hover: #e2d6bf;
+  --bg-surface-border: #d6c7a8;
+  --bg-nav: rgba(246, 239, 228, 0.85);
+  --text-primary: #2a1d0c;
+  --text-body: #5a4628;
+  --text-muted: #8a7757;
+  --text-link: #a35a14;
+  --text-link-hover: #6e3d08;
+  --accent: #a35a14;
+  --accent-glow: #c87a26;
+  --accent-subtle: rgba(163, 90, 20, 0.12);
+  --hero-gradient-start: #ece2d0;
+  --hero-gradient-end: #f6efe4;
+  --viz-canvas-bg: #2a1d0c;
+  --row-hover: rgba(42, 29, 12, 0.05);
+  --row-hover-strong: rgba(42, 29, 12, 0.08);
+}

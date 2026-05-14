@@ -4,6 +4,7 @@
  *         --bg-nav, --text-primary, --text-body, --text-muted, --text-link,
  *         --text-link-hover, --accent, --accent-glow, --accent-subtle,
  *         --hero-gradient-start, --hero-gradient-end,
+ *         --viz-canvas-bg, --row-hover, --row-hover-strong,
  *         --border-radius, --transition-speed
  */
 
@@ -23,6 +24,9 @@
   --accent-subtle: rgba(192, 128, 48, 0.1);
   --hero-gradient-start: #1a1008;
   --hero-gradient-end: #0a0804;
+  --viz-canvas-bg: #06050a;
+  --row-hover: rgba(255, 255, 255, 0.03);
+  --row-hover-strong: rgba(255, 255, 255, 0.06);
   --border-radius: 8px;
   --transition-speed: 0.2s;
 }

@@ -7,23 +7,39 @@ const currentPath = Astro.url.pathname;
 <nav class="nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">{siteConfig.name.toUpperCase()}</a>
-    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
-      <span class="nav-toggle-bar"></span>
-      <span class="nav-toggle-bar"></span>
-      <span class="nav-toggle-bar"></span>
-    </button>
-    <ul class="nav-links">
-      {siteConfig.navItems.map((item) => (
-        <li>
-          <a
-            href={item.href}
-            class:list={[{ active: currentPath.startsWith(item.href) }]}
-          >
-            {item.label}
-          </a>
-        </li>
-      ))}
-    </ul>
+    <div class="nav-right">
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+      <ul class="nav-links">
+        {siteConfig.navItems.map((item) => (
+          <li>
+            <a
+              href={item.href}
+              class:list={[{ active: currentPath.startsWith(item.href) }]}
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+      <button
+        class="theme-toggle"
+        type="button"
+        aria-label="Toggle color theme"
+        title="Toggle day/night"
+      >
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </nav>
 
@@ -60,6 +76,12 @@ const currentPath = Astro.url.pathname;
     color: var(--text-primary);
   }
 
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
   .nav-links {
     display: flex;
     list-style: none;
@@ -78,6 +100,33 @@ const currentPath = Astro.url.pathname;
   .nav-links a.active {
     color: var(--text-primary);
   }
+
+  .theme-toggle {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: color var(--transition-speed),
+                border-color var(--transition-speed),
+                background-color var(--transition-speed),
+                transform var(--transition-speed);
+  }
+  .theme-toggle:hover {
+    color: var(--accent-glow);
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+  }
+  .theme-toggle:active { transform: scale(0.94); }
+  .theme-toggle svg { width: 14px; height: 14px; display: block; }
+  .theme-toggle .icon-sun { display: none; }
+  [data-theme="light"] .theme-toggle .icon-sun { display: block; }
+  [data-theme="light"] .theme-toggle .icon-moon { display: none; }
 
   .nav-toggle {
     display: none;
@@ -129,5 +178,13 @@ const currentPath = Astro.url.pathname;
     const expanded = toggle.getAttribute('aria-expanded') === 'true';
     toggle.setAttribute('aria-expanded', String(!expanded));
     links?.classList.toggle('open');
+  });
+
+  const themeBtn = document.querySelector<HTMLButtonElement>('.theme-toggle');
+  themeBtn?.addEventListener('click', () => {
+    const root = document.documentElement;
+    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch { /* storage may be blocked */ }
   });
 </script>

@@ -112,6 +112,15 @@ export class BoidsController {
   private mouseY = 0;
   private mouseActive = false;
   private trailRenderer = new TrailRenderer();
+
+  /** Page background color used for trail decay target + no-trails swapchain
+   *  clear. Re-read whenever [data-theme] flips on <html>. Defaults to the
+   *  warm-ember --bg-primary (#0a0804) so SSR / non-DOM contexts have a value. */
+  private bgColor: { r: number; g: number; b: number; a: number } = { r: 0.039, g: 0.031, b: 0.016, a: 1 };
+  /** True when bgColor is light enough that additive blending would wash to
+   *  white. Drives the boid render pipeline's blend mode. */
+  private _isLight = false;
+  private _themeObserver: MutationObserver | null = null;
   readonly imageProcessor = new ImageProcessor();
   readonly imageForce     = new BoidsImageForce();
   readonly webcam         = new BoidsWebcam();
@@ -261,14 +270,25 @@ export class BoidsController {
       this.imageForce.init(device, this.imageProcessor);
       this._buildOverlayPipeline(this.gpu.format);
 
+      // ── Read bg color BEFORE building the boids render pipeline ──────
+      // The blend mode picked by _createBoidsPipelines depends on _isLight, so
+      // bg has to be known first. Additive blending only looks right against a
+      // dark bg (washes to white on cream); standard alpha blend is used in
+      // light mode. _initThemeObserver runs after pipeline build so an early
+      // theme flip can call back into the rebuild path safely.
+      this._readBgColor();
+
       // ── Boids update + render pipelines ──────────────────────────────
       this.boidsWorkgroupSize = this._parseWorkgroupSize(shaderCode);
       const boidsModule = device.createShaderModule({ code: shaderCode });
       this._createBoidsPipelines(boidsModule);
 
       this.trailRenderer.init(device, this.gpu!.format, canvas.width || 1, canvas.height || 1);
+      this.trailRenderer.primeBg(device, this.bgColor);
       this.prevCanvasWidth = canvas.width;
       this.prevCanvasHeight = canvas.height;
+
+      this._initThemeObserver();
 
       canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
@@ -384,10 +404,18 @@ export class BoidsController {
         entryPoint: 'fragmentMain',
         targets: [{
           format,
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-          },
+          // Additive on dark bg gives the glowing-particle look; on light bg it
+          // sums boid colors with the bg and clamps to white. Switch to standard
+          // alpha blending in light mode so boid colors read against cream.
+          blend: this._isLight
+            ? {
+                color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              }
+            : {
+                color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+                alpha: { srcFactor: 'one',       dstFactor: 'one', operation: 'add' },
+              },
         }],
       },
       primitive: { topology: 'triangle-list' },
@@ -524,6 +552,7 @@ export class BoidsController {
     const resized = canvas.width !== this.prevCanvasWidth || canvas.height !== this.prevCanvasHeight;
     if (resized) {
       this.trailRenderer.resize(device, canvas.width, canvas.height);
+      this.trailRenderer.primeBg(device, this.bgColor);
       this.imageProcessor.resize(canvas.width, canvas.height);
       this.rebuildBoidsBindGroups();  // processedTexture was re-allocated; refresh bind group
       this.overlayBindGroup = null;   // compositedTexture was re-allocated; rebuild on next use
@@ -584,11 +613,12 @@ export class BoidsController {
       context,
       this.trailDecay,
       this.trailsEnabled,
+      this.bgColor,
       (encoder, targetView, loadOp) => {
         const renderPass = encoder.beginRenderPass({
           colorAttachments: [{
             view: targetView,
-            clearValue: { r: 0.039, g: 0.031, b: 0.016, a: 1 },
+            clearValue: this.bgColor,
             loadOp,
             storeOp: 'store',
           }],
@@ -737,5 +767,49 @@ export class BoidsController {
     this.webcam.destroy();
     this.imageProcessor.destroy();
     this.imageForce.destroy();
+    this._themeObserver?.disconnect();
+    this._themeObserver = null;
+  }
+
+  /** Read --bg-primary off <html> and convert hex to 0..1 RGB. Falls back to
+   *  the current bgColor if the CSS var is empty or malformed (SSR / unknown
+   *  contexts). bgra8unorm framebuffers are linear, so simple /255 matches the
+   *  prior hardcoded clear value (#0a0804 → 0.039, 0.031, 0.016).
+   *
+   *  When the light/dark mode flips, also rebuilds the boids render pipeline
+   *  (to swap blend mode: additive ↔ alpha) and re-primes the trail textures
+   *  so a fresh-mounted controller doesn't fade in from black. */
+  private _readBgColor(): void {
+    if (typeof document === 'undefined') return;
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
+    let hex = raw.replace(/^#/, '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return;
+    this.bgColor = {
+      r: parseInt(hex.slice(0, 2), 16) / 255,
+      g: parseInt(hex.slice(2, 4), 16) / 255,
+      b: parseInt(hex.slice(4, 6), 16) / 255,
+      a: 1,
+    };
+    // Lightness: simple sum-of-channels threshold. The cream theme sits around
+    // 2.85; the darkest dark theme sits around 0.07. Anything above 1.5 needs
+    // the alpha-blend path.
+    const nextIsLight = (this.bgColor.r + this.bgColor.g + this.bgColor.b) > 1.5;
+    if (nextIsLight !== this._isLight) {
+      this._isLight = nextIsLight;
+      if (this.gpu) {
+        const module = this.gpu.device.createShaderModule({ code: this.shaderSource });
+        this._createBoidsPipelines(module);
+      }
+    }
+  }
+
+  private _initThemeObserver(): void {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    this._themeObserver = new MutationObserver(() => this._readBgColor());
+    this._themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
   }
 }

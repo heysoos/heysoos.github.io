@@ -20,6 +20,6 @@ export const STYLES = {
   drawerRow:     'border-bottom:1px solid var(--bg-surface-border);',
   drawerHeader:  'display:flex;align-items:center;cursor:pointer;padding:5px 8px;gap:6px;font-size:0.68rem;color:var(--text-body);user-select:none;',
   drawerBody:    'padding:6px 8px 8px;display:flex;flex-direction:column;gap:6px;',
-  matrixCanvas:  'background:#06050a;border-radius:2px;display:block;',
-  bgCanvas:      '#06050a',
+  matrixCanvas:  'background:var(--viz-canvas-bg);border-radius:2px;display:block;',
+  bgCanvas:      'var(--viz-canvas-bg)',
 } as const;

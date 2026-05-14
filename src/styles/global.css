@@ -1,7 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap');
 
-/* Default theme — swap this import to change the site theme */
+/* Default (dark) theme — swap this import to change the dark-mode palette */
 @import './themes/warm-ember.css';
+/* Light counterpart — activated by [data-theme="light"] on <html> */
+@import './themes/warm-parchment.css';
 
 *,
 *::before,

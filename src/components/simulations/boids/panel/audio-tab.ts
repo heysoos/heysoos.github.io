@@ -303,7 +303,7 @@ function buildTotalTab(
   const stackCanvas = document.createElement('canvas');
   stackCanvas.width  = TRACE_W * dpr;
   stackCanvas.height = STACKED_H * dpr;
-  stackCanvas.style.cssText = `width:100%;height:${STACKED_H}px;display:block;border-radius:2px;background:#06050a;margin-bottom:3px;`;
+  stackCanvas.style.cssText = `width:100%;height:${STACKED_H}px;display:block;border-radius:2px;background:var(--viz-canvas-bg);margin-bottom:3px;`;
   body.appendChild(stackCanvas);
 
   // Legend
@@ -643,7 +643,7 @@ export function buildAudioTab(
   const vizCanvas = document.createElement('canvas');
   vizCanvas.width  = 184;
   vizCanvas.height = 40;
-  vizCanvas.style.cssText = 'width:100%;height:40px;display:block;border-radius:2px;background:#06050a;';
+  vizCanvas.style.cssText = 'width:100%;height:40px;display:block;border-radius:2px;background:var(--viz-canvas-bg);';
   canvasSection.appendChild(vizCanvas);
 
   // Keep vizCanvas pixel buffer in sync with its CSS size on panel resize.
@@ -704,7 +704,7 @@ export function buildAudioTab(
     const canvas = document.createElement('canvas');
     canvas.width  = TRACE_W * dpr;
     canvas.height = 14 * dpr;
-    canvas.style.cssText = `width:100%;height:14px;display:block;border-radius:2px;background:#06050a;`;
+    canvas.style.cssText = `width:100%;height:14px;display:block;border-radius:2px;background:var(--viz-canvas-bg);`;
 
     function draw(): void {
       const ctx = canvas.getContext('2d');
@@ -872,7 +872,7 @@ export function buildAudioTab(
 
       const tr = document.createElement('tr');
       tr.style.cssText = 'cursor:pointer;transition:background 0.1s;';
-      tr.addEventListener('mouseenter', () => { if (!drawer.isOpen(param)) tr.style.background = 'rgba(255,255,255,0.03)'; });
+      tr.addEventListener('mouseenter', () => { if (!drawer.isOpen(param)) tr.style.background = 'var(--row-hover)'; });
       tr.addEventListener('mouseleave', () => { if (!drawer.isOpen(param)) tr.style.background = ''; });
 
       // Param label cell — truncates with ellipsis; click opens/closes the drawer
@@ -923,7 +923,7 @@ export function buildAudioTab(
       for (const band of BAND_KEYS_ORDER) {
         const td = document.createElement('td');
         td.style.cssText = 'text-align:center;padding:3px 0;cursor:pointer;transition:background 0.1s;';
-        td.addEventListener('mouseenter', () => { td.style.background = 'rgba(255,255,255,0.06)'; });
+        td.addEventListener('mouseenter', () => { td.style.background = 'var(--row-hover-strong)'; });
         td.addEventListener('mouseleave', () => { td.style.background = ''; });
 
         const mapping = activeMappings.find(m => m.band === band) ?? null;

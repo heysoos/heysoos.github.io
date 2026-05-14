@@ -22,20 +22,27 @@ fn quadVert(@builtin(vertex_index) vi: u32) -> QuadOutput {
   return out;
 }
 
-// Fade pass: sample trail texture, multiply by decay factor.
+// Fade pass: sample trail texture, decay toward bgColor.
+//   params.rgb = bgColor (the target color trails fade back to — page background)
+//   params.a   = decayFactor (multiplier per frame applied to (c - bgColor))
 @group(0) @binding(0) var fadeSampler: sampler;
 @group(0) @binding(1) var fadeTex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> decayFactor: f32;
+@group(0) @binding(2) var<uniform> params: vec4f;
 
 @fragment
 fn fadeFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let c = textureSample(fadeTex, fadeSampler, uv);
-  // Subtract half a quantization step after multiplying. Without this, small values
-  // (e.g. 6/255 × 0.92 = 5.52/255) round back to themselves in bgra8unorm storage
-  // and never reach zero. The 0.5/255 bias guarantees strict monotone decrease for
-  // any decay < 1, regardless of the decay value chosen.
-  let faded = max(c.rgb * decayFactor - vec3f(0.5 / 255.0), vec3f(0.0));
-  return vec4f(faded, 1.0);
+  let c     = textureSample(fadeTex, fadeSampler, uv);
+  let bg    = params.rgb;
+  let decay = params.a;
+  // Operate on the delta from bg so the asymptote is bg, not 0. Subtract half a
+  // quantization step in the direction of bg after decaying. Without this, small
+  // |delta| values round back to themselves in bgra8unorm storage and never reach
+  // bg. select() clamps any component that crossed bg this frame.
+  let delta  = c.rgb - bg;
+  let faded  = delta * decay;
+  let biased = faded - sign(faded) * vec3f(0.5 / 255.0);
+  let snapped = select(biased, vec3f(0.0), sign(biased) != sign(faded));
+  return vec4f(bg + snapped, 1.0);
 }
 
 // Blit pass: copy trail texture to swapchain unchanged.
