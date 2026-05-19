@@ -30,4 +30,16 @@
   --viz-canvas-bg: #2a1d0c;
   --row-hover: rgba(42, 29, 12, 0.05);
   --row-hover-strong: rgba(42, 29, 12, 0.08);
+
+  /* Publication tag colors — Spectrum Pop (light) — darker/more saturated for legibility on cream */
+  --tag-artificial-life-fg: #3a7530;
+  --tag-artificial-life-bg: rgba(58, 117,  48, 0.10);
+  --tag-criticality-fg:     #a83020;
+  --tag-criticality-bg:     rgba(168, 48,  32, 0.10);
+  --tag-evolution-fg:       #7a5810;
+  --tag-evolution-bg:       rgba(122, 88,  16, 0.12);
+  --tag-neural-networks-fg: #1f6a96;
+  --tag-neural-networks-bg: rgba(31, 106, 150, 0.10);
+  --tag-generative-art-fg:  #843080;
+  --tag-generative-art-bg:  rgba(132, 48, 128, 0.10);
 }

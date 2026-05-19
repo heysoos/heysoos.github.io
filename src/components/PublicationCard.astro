@@ -14,6 +14,16 @@ const link = doi ? `https://doi.org/${doi}` : url;
 const isMe = (a: string) => a.includes('Khajehabdollahi');
 const slugify = (tag: string) => tag.toLowerCase().replace(/\s+/g, '-');
 const dataTagsValue = tags.map(slugify).join(' ');
+
+// Short chip label per journal. Unknown journals fall back to italic text.
+const journalLabels: Record<string, string> = {
+  'ALIFE': 'ALIFE',
+  'ICLR': 'ICLR',
+  'Entropy': 'ENTROPY',
+  'Brain Connectivity': 'BRAIN CONN.',
+  'IEEE Symposium on Artificial Life': 'IEEE ALIFE',
+};
+const journalChip = journalLabels[journal] ?? null;
 ---
 
 <article class="pub-entry" data-tags={dataTagsValue} data-year={String(year)}>
@@ -29,11 +39,20 @@ const dataTagsValue = tags.map(slugify).join(' ');
     ))}
   </p>
   <p class="pub-meta">
-    <span class="pub-journal">{journal}</span> &middot; {year}
+    {journalChip
+      ? <span class="pub-journal-chip">{journalChip}</span>
+      : <span class="pub-journal">{journal}</span>}
+    &middot; {year}
   </p>
   {tags.length > 0 && (
     <div class="pub-tags">
-      {tags.map((tag) => <span class="pub-tag">{tag}</span>)}
+      {tags.map((tag) => (
+        <a
+          class="pub-tag"
+          data-slug={slugify(tag)}
+          href={`/publications#tag=${slugify(tag)}`}
+        >{tag}</a>
+      ))}
     </div>
   )}
 </article>
@@ -77,6 +96,21 @@ const dataTagsValue = tags.map(slugify).join(' ');
     font-style: italic;
   }
 
+  .pub-journal-chip {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.55rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    border-radius: 2px;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    vertical-align: 1px;
+    margin-right: 0.1rem;
+  }
+
   .pub-tags {
     display: flex;
     gap: 0.4rem;
@@ -84,12 +118,31 @@ const dataTagsValue = tags.map(slugify).join(' ');
   }
 
   .pub-tag {
+    display: inline-block;
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: var(--accent);
-    background: var(--accent-subtle);
+    color: var(--tag-fg, var(--accent));
+    background: var(--tag-bg, var(--accent-subtle));
     padding: 0.15rem 0.5rem;
     border-radius: 3px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: filter var(--transition-speed), transform var(--transition-speed);
   }
+
+  .pub-tag:hover {
+    color: var(--tag-fg, var(--accent));
+    filter: brightness(1.25);
+    transform: translateY(-1px);
+  }
+
+  /* Tag-color mapping — drives both .pub-tag (here) and .tag-btn (sidebar)
+     via shared --tag-fg / --tag-bg custom properties. Color tokens come
+     from the active theme (warm-ember / warm-parchment). */
+  .pub-tag[data-slug="artificial-life"] { --tag-fg: var(--tag-artificial-life-fg); --tag-bg: var(--tag-artificial-life-bg); }
+  .pub-tag[data-slug="criticality"]     { --tag-fg: var(--tag-criticality-fg);     --tag-bg: var(--tag-criticality-bg);     }
+  .pub-tag[data-slug="evolution"]       { --tag-fg: var(--tag-evolution-fg);       --tag-bg: var(--tag-evolution-bg);       }
+  .pub-tag[data-slug="neural-networks"] { --tag-fg: var(--tag-neural-networks-fg); --tag-bg: var(--tag-neural-networks-bg); }
+  .pub-tag[data-slug="generative-art"]  { --tag-fg: var(--tag-generative-art-fg);  --tag-bg: var(--tag-generative-art-bg);  }
 </style>

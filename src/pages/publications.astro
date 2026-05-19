@@ -122,13 +122,20 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
   }
 
   .tag-btn:hover {
-    color: var(--text-body);
+    color: var(--tag-fg, var(--text-body));
   }
 
   .tag-btn.active {
-    color: var(--accent);
-    background: var(--accent-subtle);
+    color: var(--tag-fg, var(--accent));
+    background: var(--tag-bg, var(--accent-subtle));
   }
+
+  /* Map data-tag → shared --tag-fg / --tag-bg tokens (defined per theme). */
+  .tag-btn[data-tag="artificial-life"] { --tag-fg: var(--tag-artificial-life-fg); --tag-bg: var(--tag-artificial-life-bg); }
+  .tag-btn[data-tag="criticality"]     { --tag-fg: var(--tag-criticality-fg);     --tag-bg: var(--tag-criticality-bg);     }
+  .tag-btn[data-tag="evolution"]       { --tag-fg: var(--tag-evolution-fg);       --tag-bg: var(--tag-evolution-bg);       }
+  .tag-btn[data-tag="neural-networks"] { --tag-fg: var(--tag-neural-networks-fg); --tag-bg: var(--tag-neural-networks-bg); }
+  .tag-btn[data-tag="generative-art"]  { --tag-fg: var(--tag-generative-art-fg);  --tag-bg: var(--tag-generative-art-bg);  }
 
   /* ── Content ── */
   .pub-content {
@@ -192,12 +199,12 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
   const articles = document.querySelectorAll<HTMLElement>('.pub-entry');
   const sections = document.querySelectorAll<HTMLElement>('.year-section');
 
-  function reset() {
-    const allBtn = document.querySelector<HTMLButtonElement>('[data-tag="all"]')!;
-    allBtn.setAttribute('aria-pressed', 'true');
-    allBtn.classList.add('active');
-    articles.forEach(a => (a.style.display = ''));
-    sections.forEach(s => (s.style.display = ''));
+  function setActiveButton(predicate: (b: HTMLButtonElement) => boolean) {
+    buttons.forEach(b => {
+      const active = predicate(b);
+      b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      b.classList.toggle('active', active);
+    });
   }
 
   function collapseEmptySections() {
@@ -208,42 +215,71 @@ const allTags = [...new Set(sorted.flatMap(p => p.data.tags))].sort();
     });
   }
 
+  function showAll() {
+    articles.forEach(a => (a.style.display = ''));
+    sections.forEach(s => (s.style.display = ''));
+    setActiveButton(b => b.dataset.tag === 'all');
+  }
+
+  function applyTagFilter(slug: string) {
+    if (!slug || slug === 'all') { showAll(); return; }
+    setActiveButton(b => b.dataset.tag === slug);
+    articles.forEach(article => {
+      const tags = article.dataset.tags ? article.dataset.tags.split(' ') : [];
+      article.style.display = tags.includes(slug) ? '' : 'none';
+    });
+    collapseEmptySections();
+  }
+
+  function applyYearFilter(year: string) {
+    setActiveButton(b => b.dataset.year === year);
+    articles.forEach(article => {
+      article.style.display = article.dataset.year === year ? '' : 'none';
+    });
+    collapseEmptySections();
+  }
+
+  function syncFromHash() {
+    const m = location.hash.match(/^#tag=(.+)$/);
+    if (m) applyTagFilter(decodeURIComponent(m[1]));
+    else showAll();
+  }
+
+  // Sidebar buttons
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
       const tag = btn.dataset.tag;
       const year = btn.dataset.year;
-      const isActive = btn.getAttribute('aria-pressed') === 'true';
-
-      // Deactivate all buttons
-      buttons.forEach(b => {
-        b.setAttribute('aria-pressed', 'false');
-        b.classList.remove('active');
-      });
+      const isActive = btn.classList.contains('active');
 
       if (tag === 'all' || isActive) {
-        reset();
+        showAll();
+        history.replaceState(null, '', location.pathname);
         return;
       }
-
-      // Activate clicked button
-      btn.setAttribute('aria-pressed', 'true');
-      btn.classList.add('active');
-
       if (year) {
-        // Year filter: match article's data-year attribute
-        articles.forEach(article => {
-          article.style.display = article.dataset.year === year ? '' : 'none';
-        });
+        applyYearFilter(year);
+        history.replaceState(null, '', location.pathname);
       } else if (tag) {
-        // Topic filter: match article's data-tags attribute
-        articles.forEach(article => {
-          // dataset.tags is '' (not absent) when a paper has no tags — empty string is falsy
-          const tags = article.dataset.tags ? article.dataset.tags.split(' ') : [];
-          article.style.display = tags.includes(tag) ? '' : 'none';
-        });
+        applyTagFilter(tag);
+        history.replaceState(null, '', '#tag=' + encodeURIComponent(tag));
       }
-
-      collapseEmptySections();
     });
   });
+
+  // In-card tag chips — delegated so it covers chips rendered now or later.
+  // The chip is an <a href="/publications#tag=…">, so on cross-page nav from
+  // home → publications, the browser handles it and syncFromHash picks it up.
+  // On the publications page itself, we intercept to avoid the scroll jump.
+  document.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a.pub-tag[data-slug]');
+    if (!target) return;
+    e.preventDefault();
+    const slug = target.dataset.slug!;
+    applyTagFilter(slug);
+    history.pushState(null, '', '#tag=' + encodeURIComponent(slug));
+  });
+
+  window.addEventListener('hashchange', syncFromHash);
+  syncFromHash();
 </script>

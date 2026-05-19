@@ -29,4 +29,16 @@
   --row-hover-strong: rgba(255, 255, 255, 0.06);
   --border-radius: 8px;
   --transition-speed: 0.2s;
+
+  /* Publication tag colors — Spectrum Pop (dark) */
+  --tag-artificial-life-fg: #8fcf76;
+  --tag-artificial-life-bg: rgba(143, 207, 118, 0.12);
+  --tag-criticality-fg:     #e85a4f;
+  --tag-criticality-bg:     rgba(232,  90,  79, 0.12);
+  --tag-evolution-fg:       #e8c84a;
+  --tag-evolution-bg:       rgba(232, 200,  74, 0.12);
+  --tag-neural-networks-fg: #6cb4d4;
+  --tag-neural-networks-bg: rgba(108, 180, 212, 0.12);
+  --tag-generative-art-fg:  #c878c8;
+  --tag-generative-art-bg:  rgba(200, 120, 200, 0.14);
 }
