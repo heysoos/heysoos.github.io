@@ -175,6 +175,13 @@ export function buildBoidsPanel(
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+  function addSubheading(parent: HTMLElement, label: string): void {
+    const el = document.createElement('p');
+    el.className = 'section-subheading';
+    el.textContent = label;
+    parent.appendChild(el);
+  }
+
   function addSection(parent: HTMLElement, label: string): HTMLElement {
     const savedKey = `boids-section-${label}`;
     const initCollapsed = sessionStorage.getItem(savedKey) === 'true';
@@ -244,19 +251,19 @@ export function buildBoidsPanel(
     scale: 'log',
   });
 
-  // ── Forces ────────────────────────────────────────────────────────────────
-  const forcesBody = addSection(paramsBody, 'Forces');
-  const padTraceUpdaters = buildForcesPads(forcesBody, controller);
+  // ── Forces (sub-section of Simulation) ───────────────────────────────────
+  addSubheading(simulationBody, 'Forces');
+  const padTraceUpdaters = buildForcesPads(simulationBody, controller);
 
-  // ── Perception ────────────────────────────────────────────────────────────
-  const perceptionBody = addSection(paramsBody, 'Perception');
-  createRangeSlider(perceptionBody, {
+  // ── Perception (sub-section of Simulation) ────────────────────────────────
+  addSubheading(simulationBody, 'Perception');
+  createRangeSlider(simulationBody, {
     label: 'Vision Cone', min: -1.0, max: 0.99, step: 0.05,
     get: () => controller.params.coneAngle,
     set: v => { controller.params.coneAngle = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('coneAngle', { wrap: w, fill: f }),
   });
-  createRangeSlider(perceptionBody, {
+  createRangeSlider(simulationBody, {
     label: 'Mouse Radius', min: 0.05, max: 0.5, step: 0.01,
     get: () => controller.params.mouseRadius,
     set: v => { controller.params.mouseRadius = v; },

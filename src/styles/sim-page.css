@@ -196,6 +196,15 @@
   transition: color 0.15s;
 }
 
+.params-panel .section-subheading {
+  font-size: 0.58rem;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin: 0.1rem 0 0;
+  opacity: 0.75;
+}
+
 .params-panel .section-body {
   display: flex;
   flex-direction: column;
