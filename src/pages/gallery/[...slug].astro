@@ -15,6 +15,7 @@ export async function getStaticPaths() {
 const { project } = Astro.props;
 const { Content } = await render(project);
 const sim = project.data.simulation;
+const underConstruction = project.data.underConstruction ?? false;
 ---
 
 <SimLayout title={project.data.title} description={project.data.description}>
@@ -78,7 +79,18 @@ const sim = project.data.simulation;
 </svg>
   <div class="sim-page">
     <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
-      <canvas id="sim-canvas"></canvas>
+      {underConstruction ? (
+        <div class="under-construction" id="under-construction">
+          <div class="uc-dots" id="uc-dots"></div>
+          <div class="uc-text">
+            <span class="uc-label">In Development</span>
+            <div class="uc-rule"></div>
+            <span class="uc-sub">{project.data.title}</span>
+          </div>
+        </div>
+      ) : (
+        <canvas id="sim-canvas"></canvas>
+      )}
       <Controls simId={sim} />
       <div id="params-panel" class="params-panel" style="display:none;">
         <div class="panel-drag-handle">
@@ -103,20 +115,22 @@ const sim = project.data.simulation;
           <div class="shader-errors" id="shader-errors" style="display:none;"></div>
         </div>
       </div>
-      <div id="fps-display" class="fps-display">
-        <span id="fps-value">-- fps</span>
-        <div class="fps-popup" id="fps-popup">
-          <label class="fps-row">
-            <input type="checkbox" id="fps-unlimited" checked>
-            <span>Display rate</span>
-          </label>
-          <div class="fps-slider-row" id="fps-slider-row">
-            <span id="fps-slider-label">60</span>
-            <input type="range" id="fps-slider" min="10" max="360" step="5" value="60">
-            <span style="color:var(--text-muted);font-size:0.6rem">fps cap</span>
+      {!underConstruction && (
+        <div id="fps-display" class="fps-display">
+          <span id="fps-value">-- fps</span>
+          <div class="fps-popup" id="fps-popup">
+            <label class="fps-row">
+              <input type="checkbox" id="fps-unlimited" checked>
+              <span>Display rate</span>
+            </label>
+            <div class="fps-slider-row" id="fps-slider-row">
+              <span id="fps-slider-label">60</span>
+              <input type="range" id="fps-slider" min="10" max="360" step="5" value="60">
+              <span style="color:var(--text-muted);font-size:0.6rem">fps cap</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -151,6 +165,110 @@ const sim = project.data.simulation;
     margin-bottom: 1.2rem;
   }
 
+  .prose :global(blockquote) {
+    margin: 0.5rem 0 1.2rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-surface-border);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  }
+
+  .prose :global(blockquote p) {
+    margin-bottom: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 600;
+  }
+
+  .prose :global(blockquote ul) {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .prose :global(blockquote li) {
+    font-size: 0.8rem;
+    color: var(--text-body);
+    display: flex;
+    gap: 0.5rem;
+    line-height: 1.5;
+  }
+
+  .prose :global(blockquote li::before) {
+    content: '›';
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* ── UNDER CONSTRUCTION ────────────────────────────────────────────────────── */
+
+  .under-construction {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 45%, var(--hero-gradient-start), var(--hero-gradient-end));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .uc-dots {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  :global(.uc-dot) {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0;
+    animation: uc-drift linear infinite;
+  }
+
+  @keyframes uc-drift {
+    0%   { transform: translate(0, 0); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 0.6; }
+    100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+  }
+
+  .uc-text {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .uc-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-body);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .uc-rule {
+    width: 28px;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+
+  .uc-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.07em;
+  }
+
   .back-link {
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -173,7 +291,6 @@ const sim = project.data.simulation;
 
   const viewport      = document.getElementById("sim-viewport") as HTMLElement;
   const sim           = viewport.dataset.sim!;
-  const canvas        = document.getElementById("sim-canvas") as HTMLCanvasElement;
   const fallback      = document.getElementById("sim-fallback") as HTMLElement;
   const panel         = document.getElementById("params-panel") as HTMLElement;
   const panelContent  = document.getElementById("panel-content") as HTMLElement;
@@ -183,67 +300,116 @@ const sim = project.data.simulation;
   panelManager.init();
   document.addEventListener('pagehide', () => panelManager.dispose(), { once: true });
 
-  const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
-    boids: new BoidsController(),
-    "particle-life": new ParticleLifeController(),
-    nca: new NCAController(),
-    cppn: new CPPNController(),
-  };
+  const isUnderConstruction = viewport.dataset.sim === sim &&
+    document.getElementById('under-construction') !== null;
 
-  const controller = controllers[sim];
-  let playing = true;
+  if (isUnderConstruction) {
+    // Animate drift dots — CSS custom properties drive per-dot translation
+    const dotsField = document.getElementById('uc-dots') as HTMLElement;
+    const colors = ['#e85a4f','#8fcf76','#6cb4d4','#e8c84a','#c878c8','#c08030'];
+    for (let i = 0; i < 28; i++) {
+      const d = document.createElement('div');
+      d.className = 'uc-dot';
+      const size = Math.random() * 4 + 2;
+      d.style.cssText = [
+        `width:${size}px`, `height:${size}px`,
+        `left:${Math.random()*100}%`, `top:${Math.random()*100}%`,
+        `background:${colors[Math.floor(Math.random()*colors.length)]}`,
+        `--tx:${(Math.random()-0.5)*80}px`, `--ty:${(Math.random()-0.5)*80}px`,
+        `animation-duration:${Math.random()*8+5}s`,
+        `animation-delay:${Math.random()*-12}s`,
+      ].join(';');
+      dotsField.appendChild(d);
+    }
 
-  if (!controller) {
-    fallback.style.display = "flex";
-    (fallback.querySelector("p") as HTMLElement).textContent = "Simulation coming soon.";
+    // Dim the settings button — no panel available
+    const settingsBtn = document.querySelector(`#controls-${sim} [data-action="settings"]`) as HTMLElement | null;
+    if (settingsBtn) {
+      settingsBtn.style.opacity = '0.35';
+      settingsBtn.style.pointerEvents = 'none';
+    }
+
+    // Fullscreen still works
+    const controls = document.getElementById(`controls-${sim}`);
+    controls?.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest("[data-action]");
+      if (!btn) return;
+      if (btn.getAttribute("data-action") === "fullscreen") {
+        document.getElementById("sim-viewport")?.requestFullscreen();
+      }
+    });
+
   } else {
-    try {
-      const ok = await controller.init(canvas);
-      if (ok) {
-        controller.start();
+    const canvas = document.getElementById("sim-canvas") as HTMLCanvasElement;
+    const controllers: Record<string, { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void }> = {
+      boids: new BoidsController(),
+      "particle-life": new ParticleLifeController(),
+      nca: new NCAController(),
+      cppn: new CPPNController(),
+    };
 
-        const fpsCounter = createFpsCounter(
-          document.getElementById("fps-value") as HTMLElement,
-          document.getElementById("fps-unlimited") as HTMLInputElement,
-          document.getElementById("fps-slider") as HTMLInputElement,
-          document.getElementById("fps-slider-label") as HTMLElement,
-          document.getElementById("fps-slider-row") as HTMLElement,
-          controller as unknown as { maxFps: number; tickCount: number },
-        );
-        document.addEventListener('pagehide', () => fpsCounter.dispose(), { once: true });
+    const controller = controllers[sim];
+    let playing = true;
 
-        if (sim === 'boids') {
-          attachBench(controller as unknown as Parameters<typeof attachBench>[0]);
-        }
+    if (!controller) {
+      fallback.style.display = "flex";
+      (fallback.querySelector("p") as HTMLElement).textContent = "Simulation coming soon.";
+    } else {
+      try {
+        const ok = await controller.init(canvas);
+        if (ok) {
+          controller.start();
 
-        const hasPanel = await setupSim(sim, controller, panelContent, panel, shaderPanelEl);
+          const fpsCounter = createFpsCounter(
+            document.getElementById("fps-value") as HTMLElement,
+            document.getElementById("fps-unlimited") as HTMLInputElement,
+            document.getElementById("fps-slider") as HTMLInputElement,
+            document.getElementById("fps-slider-label") as HTMLElement,
+            document.getElementById("fps-slider-row") as HTMLElement,
+            controller as unknown as { maxFps: number; tickCount: number },
+          );
+          document.addEventListener('pagehide', () => fpsCounter.dispose(), { once: true });
 
-        const controls = document.getElementById(`controls-${sim}`);
-        controls?.addEventListener("click", (e) => {
-          const btn = (e.target as HTMLElement).closest("[data-action]");
-          if (!btn) return;
-          const action = btn.getAttribute("data-action");
-          if (action === "play-pause") {
-            if (playing) { controller.stop(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
-            else { controller.start(); btn.querySelector(".ctrl-icon")!.textContent = "⏸"; }
-            playing = !playing;
-          } else if (action === "reset") {
-            controller.reset();
-          } else if (action === "fullscreen") {
-            document.getElementById("sim-viewport")?.requestFullscreen();
-          } else if (action === "settings" && hasPanel) {
-            const isOpen = panel.style.display !== "none";
-            panel.style.display = isOpen ? "none" : "flex";
+          if (sim === 'boids') {
+            attachBench(controller as unknown as Parameters<typeof attachBench>[0]);
           }
-        });
-      } else {
+
+          const hasPanel = await setupSim(sim, controller, panelContent, panel, shaderPanelEl);
+
+          // Open panel by default; respect sessionStorage close preference within session
+          if (hasPanel) {
+            const savedOpen = sessionStorage.getItem(`${sim}-panel-open`);
+            panel.style.display = savedOpen === 'false' ? 'none' : 'flex';
+          }
+
+          const controls = document.getElementById(`controls-${sim}`);
+          controls?.addEventListener("click", (e) => {
+            const btn = (e.target as HTMLElement).closest("[data-action]");
+            if (!btn) return;
+            const action = btn.getAttribute("data-action");
+            if (action === "play-pause") {
+              if (playing) { controller.stop(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
+              else { controller.start(); btn.querySelector(".ctrl-icon")!.textContent = "⏸"; }
+              playing = !playing;
+            } else if (action === "reset") {
+              controller.reset();
+            } else if (action === "fullscreen") {
+              document.getElementById("sim-viewport")?.requestFullscreen();
+            } else if (action === "settings" && hasPanel) {
+              const isOpen = panel.style.display !== "none";
+              panel.style.display = isOpen ? "none" : "flex";
+              sessionStorage.setItem(`${sim}-panel-open`, String(!isOpen));
+            }
+          });
+        } else {
+          canvas.style.display = "none";
+          fallback.style.display = "flex";
+        }
+      } catch (e) {
+        console.error("Simulation failed to start:", e);
         canvas.style.display = "none";
         fallback.style.display = "flex";
       }
-    } catch (e) {
-      console.error("Simulation failed to start:", e);
-      canvas.style.display = "none";
-      fallback.style.display = "flex";
     }
   }
 </script>

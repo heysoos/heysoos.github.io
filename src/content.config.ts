@@ -35,6 +35,7 @@ const projects = defineCollection({
     thumbnail: z.string().optional(),
     simulation: z.string(),
     order: z.number(),
+    underConstruction: z.boolean().optional(),
   }),
 });
 

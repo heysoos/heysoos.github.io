@@ -5,4 +5,10 @@ simulation: "boids"
 order: 1
 ---
 
-Craig Reynolds' boids model demonstrates how complex flocking behavior emerges from three simple local rules applied to each agent: avoid crowding nearby agents (separation), steer towards the average heading of nearby agents (alignment), and steer towards the average position of nearby agents (cohesion).
+Craig Reynolds' flocking model — complex collective motion from three simple local rules applied to each agent: separation, alignment, and cohesion.
+
+> **Controls**
+> - Open ⚙ to tune force weights, perception radius, and max speed
+> - Preset drawer — save and recall named configurations
+> - Shader editor — hot-swap the WGSL render shader at runtime
+> - Audio tab — bind microphone amplitude to any force parameter

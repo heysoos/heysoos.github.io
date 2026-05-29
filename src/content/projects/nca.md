@@ -5,4 +5,10 @@ simulation: "nca"
 order: 3
 ---
 
-A neural cellular automaton where each cell updates its state by applying a small neural network to its local neighborhood. Trained on texture targets or initialized randomly to explore the space of emergent dynamics.
+Each cell updates its state by applying a small neural network to its local neighborhood, producing emergent texture and pattern dynamics from a randomly initialized grid.
+
+> **Controls**
+> - Load a preset or click Random Init to start from scratch
+> - Architecture — adjust channels, hidden size, filters, and activation
+> - Runtime — tune fire rate, steps per frame, and dt
+> - Brush — paint or damage the grid with configurable radius and strength

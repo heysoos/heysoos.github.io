@@ -5,4 +5,9 @@ simulation: "cppn"
 order: 4
 ---
 
-Compositional Pattern-Producing Networks (CPPNs) are neural networks that take spatial coordinates as input and output color values, producing infinitely scalable abstract patterns. By composing periodic functions (sin, cos, gaussian), CPPNs generate intricate, symmetrical, and organic-looking imagery.
+A compositional pattern-producing network takes spatial coordinates as input and outputs color values, generating infinitely scalable abstract patterns by composing periodic activation functions.
+
+> **Controls**
+> - Arch tab — redesign the layer stack, widths, activations, and coordinate scale
+> - Weights tab — randomize with normal, uniform, glorot, or sparse distributions
+> - Z tab — control animation frequency bands and phase per band
