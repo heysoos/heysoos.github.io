@@ -160,8 +160,9 @@ export function buildBoidsPanel(
 
   // ── Preset switcher ───────────────────────────────────────────────────────
   if (opts.presets && opts.presets.length > 0) {
+    const presetsBody = addSection(paramsBody, 'Presets');
     const pillRow = document.createElement('div');
-    pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin:0.3rem 0 0.1rem;';
+    pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;';
     for (const preset of opts.presets) {
       const isActive = preset.id === opts.activePresetId;
       const pill = document.createElement('button');
@@ -170,47 +171,73 @@ export function buildBoidsPanel(
       pill.addEventListener('click', () => opts.onPresetLoad?.(preset));
       pillRow.appendChild(pill);
     }
-    paramsBody.appendChild(pillRow);
+    presetsBody.appendChild(pillRow);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  function addSection(parent: HTMLElement, label: string): void {
-    const divider = document.createElement('div');
-    divider.className = 'section-divider';
-    parent.appendChild(divider);
+  function addSection(parent: HTMLElement, label: string): HTMLElement {
+    const savedKey = `boids-section-${label}`;
+    const initCollapsed = sessionStorage.getItem(savedKey) === 'true';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'section-wrapper' + (initCollapsed ? ' collapsed' : '');
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'section-chevron';
+    chevron.textContent = '›';
+
     const heading = document.createElement('p');
     heading.className = 'section-heading';
     heading.textContent = label;
-    parent.appendChild(heading);
+
+    header.appendChild(chevron);
+    header.appendChild(heading);
+
+    const body = document.createElement('div');
+    body.className = 'section-body';
+
+    header.addEventListener('click', () => {
+      const isCollapsed = wrapper.classList.toggle('collapsed');
+      sessionStorage.setItem(savedKey, String(isCollapsed));
+    });
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(body);
+    parent.appendChild(wrapper);
+
+    return body;
   }
 
   // ── Appearance ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Appearance');
-  createRangeSlider(paramsBody, {
+  const appearanceBody = addSection(paramsBody, 'Appearance');
+  createRangeSlider(appearanceBody, {
     label: 'Size', min: 0.001, max: 0.08, step: 0.001,
     get: () => controller.params.size,
     set: v => { controller.params.size = v; },
     scale: 'log',
   });
-  createRangeSlider(paramsBody, {
+  createRangeSlider(appearanceBody, {
     label: 'Opacity', min: 0.01, max: 1.0, step: 0.01,
     get: () => controller.params.opacity,
     set: v => { controller.params.opacity = v; },
   });
-  buildOpacityModeRow(paramsBody, controller);
-  buildShapeRow(paramsBody, controller);
-  buildColorRow(paramsBody, controller);
-  buildTrailsRow(paramsBody, controller);
+  buildOpacityModeRow(appearanceBody, controller);
+  buildShapeRow(appearanceBody, controller);
+  buildColorRow(appearanceBody, controller);
+  buildTrailsRow(appearanceBody, controller);
 
   // ── Simulation ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Simulation');
-  createRangeSlider(paramsBody, {
+  const simulationBody = addSection(paramsBody, 'Simulation');
+  createRangeSlider(simulationBody, {
     label: 'Time Step', min: 0.001, max: 0.1, step: 0.001,
     get: () => controller.params.dt,
     set: v => { controller.params.dt = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('dt', { wrap: w, fill: f }),
   });
-  createRangeSlider(paramsBody, {
+  createRangeSlider(simulationBody, {
     label: 'Particles', min: 10, max: 10000, step: 10,
     get: () => controller.params.numParticles,
     set: v => { controller.params.numParticles = v; },
@@ -218,18 +245,18 @@ export function buildBoidsPanel(
   });
 
   // ── Forces ────────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Forces');
-  const padTraceUpdaters = buildForcesPads(paramsBody, controller);
+  const forcesBody = addSection(paramsBody, 'Forces');
+  const padTraceUpdaters = buildForcesPads(forcesBody, controller);
 
   // ── Perception ────────────────────────────────────────────────────────────
-  addSection(paramsBody, 'Perception');
-  createRangeSlider(paramsBody, {
+  const perceptionBody = addSection(paramsBody, 'Perception');
+  createRangeSlider(perceptionBody, {
     label: 'Vision Cone', min: -1.0, max: 0.99, step: 0.05,
     get: () => controller.params.coneAngle,
     set: v => { controller.params.coneAngle = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('coneAngle', { wrap: w, fill: f }),
   });
-  createRangeSlider(paramsBody, {
+  createRangeSlider(perceptionBody, {
     label: 'Mouse Radius', min: 0.05, max: 0.5, step: 0.01,
     get: () => controller.params.mouseRadius,
     set: v => { controller.params.mouseRadius = v; },

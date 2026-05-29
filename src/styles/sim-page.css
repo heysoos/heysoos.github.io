@@ -153,10 +153,38 @@
 
 .params-panel .panel-close:hover { color: var(--text-primary); }
 
-.params-panel .section-divider {
-  height: 1px;
-  background: var(--bg-surface-border);
-  margin: 0.4rem 0 0.3rem;
+.params-panel .section-wrapper {
+  border-top: 1px solid var(--bg-surface-border);
+}
+
+.params-panel .section-wrapper:first-child {
+  border-top: none;
+}
+
+.params-panel .section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0 0.2rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.params-panel .section-header:hover .section-heading {
+  color: var(--text-body);
+}
+
+.params-panel .section-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+  transition: transform 0.15s;
+  transform: rotate(90deg);
+}
+
+.params-panel .section-wrapper.collapsed .section-chevron {
+  transform: rotate(0deg);
 }
 
 .params-panel .section-heading {
@@ -164,7 +192,19 @@
   letter-spacing: 1.5px;
   color: var(--text-muted);
   text-transform: uppercase;
-  margin: 0 0 0.25rem;
+  margin: 0;
+  transition: color 0.15s;
+}
+
+.params-panel .section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.3rem;
+}
+
+.params-panel .section-wrapper.collapsed .section-body {
+  display: none;
 }
 
 .params-panel .shape-row {
