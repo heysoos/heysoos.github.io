@@ -76,6 +76,11 @@ const underConstruction = project.data.underConstruction ?? false;
     <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none"/>
     <circle cx="5" cy="16" r="1.2" fill="currentColor" stroke="none"/>
   </symbol>
+  <!-- Shader editor: pencil writing on a document -->
+  <symbol id="ic-shader" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </symbol>
 </svg>
   <div class="sim-page">
     <div class="sim-viewport" id="sim-viewport" data-sim={sim}>
@@ -204,6 +209,44 @@ const underConstruction = project.data.underConstruction ?? false;
     content: '›';
     color: var(--accent);
     flex-shrink: 0;
+  }
+
+  .prose :global(.ctrl-preview) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5em;
+    height: 1.5em;
+    border: 1px solid var(--bg-surface-border);
+    border-radius: 4px;
+    background: var(--bg-nav);
+    font-size: 0.78em;
+    vertical-align: middle;
+    flex-shrink: 0;
+    color: var(--text-primary);
+  }
+
+  .prose :global(.tab-preview) {
+    display: inline-block;
+    padding: 1px 6px 2px;
+    border: 1px solid var(--bg-surface-border);
+    border-bottom: 2px solid var(--accent);
+    border-radius: 3px 3px 0 0;
+    background: var(--bg-nav);
+    font-size: 0.72rem;
+    color: var(--text-body);
+    vertical-align: middle;
+  }
+
+  .prose :global(.pill-preview) {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-body);
+    border: 1px solid var(--bg-surface-border);
+    font-size: 0.72rem;
+    vertical-align: middle;
   }
 
   /* ── UNDER CONSTRUCTION ────────────────────────────────────────────────────── */
