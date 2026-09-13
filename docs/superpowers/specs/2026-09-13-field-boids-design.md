@@ -12,7 +12,7 @@ align   += (m_k − ρ_k · v) · area_k               (cone taps)              
 repulse -= ρ_k · dir_k / (r_k² + ε) · area_k     (inner ring taps, r ≤ repulsionRadius)
 ```
 
-`area_k` is the patch each tap represents; each tap samples the mip level whose texel footprint matches that patch, so taps tile the area with no gaps.
+`area_k` is the patch each tap represents; each tap samples the mip level whose texel footprint matches that patch, capped so the mip texel is at most half the tap radius (a coarser footprint quantises the force onto the mip grid and particles lock into a lattice). Each accumulated sum is divided by `max(neighbourCount, 1)` (mean-field normalisation) so slider values keep their meaning at any particle count; a single neighbour reproduces pairwise boids exactly. Because the sum is a mean, the `1/r²` kernels are scaled by the corresponding radius² so the force is O(1)·slider regardless of radius. The cone rings sit at ⅙, ½, ⅚ × attractionRadius (midpoint quadrature: the tap areas tile the sector exactly).
 
 **Memory.** The field is multiplied by `memory ∈ [0, 1)` before deposit. `memory = 0` is pure instantaneous boids; higher values give a decaying physarum-style trail that particles also react to.
 
@@ -41,7 +41,7 @@ Plus: `src/data/field-boids-presets.ts` (auto-generated), `src/pages/admin/field
 1. **Decay** — fullscreen pass: `B = A × memory`. When `memory == 0`, skip the pass and clear `B` via `loadOp: "clear"` in the deposit pass.
 2. **Deposit** — instanced quads (one per particle), `splatSize` texels wide, gaussian weight `w`, fragment output `(w, w·vx, w·vy, 0)`, blend `one + one`, into `B` level 0.
 3. **Mips** — downsample blits `level n → n+1` on `B` (2×2 box via linear sample at texel corner).
-4. **Sense + integrate** — compute, workgroup 64, one thread per particle. Taps read `B` with `textureSampleLevel`. Cone stencil: 3 rings at ⅓, ⅔, 1 × attractionRadius, 5 taps per ring spread across `±coneAngle` about the heading. Repulsion stencil: 6 taps on a ring at ½ × repulsionRadius, all directions. No centre tap (avoids self-interaction). LOD per tap = `log2(ring spacing in texels)`, clamped to the mip range. Then friction, noise, mouse attraction, max-speed clamp, integrate, wrap — same formulas as `boids.wgsl`.
+4. **Sense + integrate** — compute, workgroup 64, one thread per particle. Taps read `B` with `textureSampleLevel`. Cone stencil: 3 rings at ⅙, ½, ⅚ × attractionRadius, 5 taps per ring spread across `±coneAngle` about the heading. Repulsion stencil: 6 taps on a ring at ½ × repulsionRadius, all directions. No centre tap (avoids self-interaction). LOD per tap = `log2(sqrt(patch area in texels))`, capped at `log2(tap radius in texels / 2)`, clamped to the mip range. Then friction, noise, mouse attraction, max-speed clamp, integrate, wrap — same formulas as `boids.wgsl`.
 5. **Display** — `viewMode 0` (field): fullscreen pass, brightness = `1 − exp(−ρ · exposure)` tinted with theme accent; sub-mode hue-by-flow-direction using `atan2(my, mx)`. `viewMode 1` (points): instanced point draw straight to the swapchain, additive, low alpha, theme accent.
 6. Swap A/B.
 

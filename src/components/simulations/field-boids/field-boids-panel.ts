@@ -75,11 +75,11 @@ export function buildFieldBoidsPanel(
     get: () => p.attractionRadius, set: v => { p.attractionRadius = v; } });
   createRangeSlider(container, { label: 'Repulsion radius', min: 0.005, max: 0.2, step: 0.005,
     get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; } });
-  createRangeSlider(container, { label: 'Attraction', min: 0, max: 2, step: 0.01,
+  createRangeSlider(container, { label: 'Attraction', min: 0, max: 5, step: 0.01,
     get: () => p.attraction, set: v => { p.attraction = v; } });
-  createRangeSlider(container, { label: 'Repulsion', min: 0, max: 5, step: 0.01,
+  createRangeSlider(container, { label: 'Repulsion', min: 0, max: 10, step: 0.01,
     get: () => p.repulsion, set: v => { p.repulsion = v; } });
-  createRangeSlider(container, { label: 'Alignment', min: 0, max: 2, step: 0.01,
+  createRangeSlider(container, { label: 'Alignment', min: 0, max: 10, step: 0.01,
     get: () => p.alignment, set: v => { p.alignment = v; } });
   createRangeSlider(container, { label: 'Cone angle', min: -1, max: 1, step: 0.01,
     get: () => p.coneAngle, set: v => { p.coneAngle = v; } });

@@ -31,6 +31,8 @@ src/
     boids/panel/            #   index.ts → boids-panel.ts (orchestrator) + audio-tab.ts
                             #   ring-buffer-canvas.ts, drawer-controller.ts,
                             #   range-slider.ts, panel-styles.ts, resize-observer-pool.ts
+    field-boids/            #   Field-based boids: field-boids-controller.ts + field-boids-panel.ts
+                            #   field-common.wgsl (shared Params) + field-deposit.wgsl + field-boids.wgsl + field-view.wgsl
     particle-life/          #   stub
     nca/                    #   stub
     cppn/                   #   stub
