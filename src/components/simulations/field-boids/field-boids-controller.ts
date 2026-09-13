@@ -4,6 +4,7 @@ import { resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
 import commonSrc from './field-common.wgsl?raw';
 import depositSrc from './field-deposit.wgsl?raw';
 import viewSrc from './field-view.wgsl?raw';
+import computeSrc from './field-boids.wgsl?raw';
 import {
   DEFAULT_FIELD_BOIDS_PARAMS,
   type FieldBoidsParams,
@@ -57,6 +58,8 @@ export class FieldBoidsController {
   private pointPipeline!: GPURenderPipeline;
   private levelBindGroups: GPUBindGroup[][] = [];      // [tex][level] — single-level view
   private fullBindGroups: GPUBindGroup[][] = [];       // [tex][particle buffer] — full view
+  private computePipeline!: GPUComputePipeline;
+  private computeBindGroups: GPUBindGroup[][] = [];    // [field tex][read particle buffer]
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
     try {
@@ -153,6 +156,12 @@ export class FieldBoidsController {
       fragment: { module: viewModule, entryPoint: 'pointFrag', targets: [{ format, blend: additive }] },
       primitive: { topology: 'point-list' },
     });
+
+    const computeModule = device.createShaderModule({ code: commonSrc + computeSrc });
+    this.computePipeline = device.createComputePipeline({
+      layout: 'auto',
+      compute: { module: computeModule, entryPoint: 'computeMain' },
+    });
   }
 
   // ── Field textures ────────────────────────────────────────────────
@@ -189,8 +198,19 @@ export class FieldBoidsController {
     this.onFieldTexturesCreated(device);
   }
 
-  /** Hook for the compute pass (Task 3) to rebuild its bind groups. */
-  protected onFieldTexturesCreated(_device: GPUDevice): void {}
+  private onFieldTexturesCreated(device: GPUDevice): void {
+    this.computeBindGroups = this.fieldFullViews.map(view =>
+      [0, 1].map(readIdx => device.createBindGroup({
+        layout: this.computePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: { buffer: this.particleBuffers[readIdx] } },
+          { binding: 2, resource: { buffer: this.particleBuffers[1 - readIdx] } },
+          { binding: 3, resource: view },
+          { binding: 4, resource: this.sampler },
+        ],
+      })));
+  }
 
   // ── Presets ───────────────────────────────────────────────────────
   loadPreset(preset: FieldBoidsPreset): void {
@@ -315,8 +335,13 @@ export class FieldBoidsController {
   /** Task 4 fills this in. With memory = 0 the deposit pass clears instead. */
   protected runDecay(_encoder: GPUCommandEncoder): void {}
 
-  /** Task 3 fills this in. */
-  protected runCompute(_encoder: GPUCommandEncoder, _readIdx: number, _N: number): void {}
+  private runCompute(encoder: GPUCommandEncoder, readIdx: number, N: number): void {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(this.computePipeline);
+    pass.setBindGroup(0, this.computeBindGroups[this.writeIdx][readIdx]);
+    pass.dispatchWorkgroups(Math.ceil(N / 64));
+    pass.end();
+  }
 
   private runDeposit(encoder: GPUCommandEncoder, readIdx: number, N: number): void {
     const decayed = this.params.memory > 0;
@@ -361,7 +386,7 @@ export class FieldBoidsController {
     });
     if (this.params.viewMode === 2) {
       pass.setPipeline(this.pointPipeline);
-      pass.setBindGroup(0, this.fullBindGroups[this.writeIdx][readIdx]);
+      pass.setBindGroup(0, this.fullBindGroups[this.writeIdx][1 - readIdx]);
       pass.draw(N);
     } else {
       pass.setPipeline(this.fieldPipeline);
