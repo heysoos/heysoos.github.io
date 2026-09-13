@@ -61,7 +61,10 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   var repulseCount  = 0.0;
 
   // Cone stencil: RINGS rings × TAPS_PER_RING taps spanning ±coneHalf.
-  // No centre tap, so a particle never reads its own splat here.
+  // No centre tap. The innermost ring's mip footprint still overlaps the
+  // particle's own splat (~2% of ambient density at 500k particles,
+  // dominant below ~20k); alignment self-cancels exactly, the cone term
+  // does not.
   let dr = params.attractionRadius / f32(RINGS);
   let dTheta = 2.0 * coneHalf / f32(TAPS_PER_RING);
   for (var i = 0; i < RINGS; i++) {
@@ -73,7 +76,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       let t = tap(pos, dir * r, area);
       let n = t.x;
       coneCount     += n;
-      spatial_force += n * dir / (r * r + 0.001);
+      spatial_force += n * dir * (params.attractionRadius * params.attractionRadius) / (r * r + 0.001);
       align_force   += t.yz - n * vel;          // Σ (v_j − v)
     }
   }
@@ -83,16 +86,18 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let rr = 0.5 * params.repulsionRadius;
   let areaR = PI * params.repulsionRadius * params.repulsionRadius / f32(REPULSE_TAPS);
   for (var j = 0; j < REPULSE_TAPS; j++) {
-    let theta = headAngle + f32(j) * TAU / f32(REPULSE_TAPS);
+    let theta = f32(j) * TAU / f32(REPULSE_TAPS);
     let dir = vec2f(cos(theta), sin(theta));
     let t = tap(pos, dir * rr, areaR);
     repulseCount  += t.x;
-    repulse_force -= t.x * dir / (rr * rr + 0.0001);
+    repulse_force -= t.x * dir * (params.repulsionRadius * params.repulsionRadius) / (rr * rr + 0.0001);
   }
 
   // Mean-field normalisation: divide by neighbour count so slider values
   // mean the same thing from 1k to 2M particles. One neighbour reproduces
-  // the pairwise boids force exactly.
+  // the pairwise boids force exactly. Kernels are scaled by radius² so the
+  // mean-field force is O(1)·slider regardless of radius; at r = radius the
+  // weight is 1.
   let cn = max(coneCount, 1.0);
   let rn = max(repulseCount, 1.0);
   spatial_force = params.attraction * spatial_force / cn
