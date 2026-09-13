@@ -35,7 +35,10 @@ fn tap(pos: vec2f, offS: vec2f, areaS: f32) -> vec3f {
   let lodCap = log2(max(rTex * 0.5, 1.0));
   let lod = clamp(min(lodArea, lodCap), 0.0, params.maxLod);
   let p = pos + vec2f(offS.x / params.aspect, offS.y);
-  let f = textureSampleLevel(fieldTex, fieldSampler, ndcToUv(p), lod);
+  // rgba16float saturates to Inf at ~65504 (reachable at memory 0.99 with
+  // millions of particles); Inf·dir sums of opposite sign become NaN and
+  // poison the whole sim. Clamp at the source.
+  let f = min(textureSampleLevel(fieldTex, fieldSampler, ndcToUv(p), lod), vec4f(1e4));
   return vec3f(f.r, f.g, f.b) * areaTex;
 }
 
@@ -137,6 +140,9 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
       vel = vel * (params.maxSpeed / nsp);
     }
   }
+
+  // Belt and braces: a non-finite velocity never reaches the buffer.
+  if (!(dot(vel, vel) < 1e30)) { vel = vec2f(0.0); }
 
   pos = pos + vel * params.deltaTime;
   // Torus wrap into [-1, 1)

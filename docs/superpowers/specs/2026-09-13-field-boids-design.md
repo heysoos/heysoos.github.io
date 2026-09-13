@@ -42,7 +42,7 @@ Plus: `src/data/field-boids-presets.ts` (auto-generated), `src/pages/admin/field
 2. **Deposit** — instanced quads (one per particle), `splatSize` texels wide, gaussian weight `w`, fragment output `(w, w·vx, w·vy, 0)`, blend `one + one`, into `B` level 0.
 3. **Mips** — downsample blits `level n → n+1` on `B` (2×2 box via linear sample at texel corner).
 4. **Sense + integrate** — compute, workgroup 64, one thread per particle. Taps read `B` with `textureSampleLevel`. Cone stencil: 3 rings at ⅙, ½, ⅚ × attractionRadius, 5 taps per ring spread across `±coneAngle` about the heading. Repulsion stencil: 6 taps on a ring at ½ × repulsionRadius, all directions. No centre tap (avoids self-interaction). LOD per tap = `log2(sqrt(patch area in texels))`, capped at `log2(tap radius in texels / 2)`, clamped to the mip range. Then friction, noise, mouse attraction, max-speed clamp, integrate, wrap — same formulas as `boids.wgsl`.
-5. **Display** — `viewMode 0` (field): fullscreen pass, brightness = `1 − exp(−ρ · exposure)` tinted with theme accent; sub-mode hue-by-flow-direction using `atan2(my, mx)`. `viewMode 1` (points): instanced point draw straight to the swapchain, additive, low alpha, theme accent.
+5. **Display** — `viewMode 0` density: fullscreen pass, brightness = `1 − exp(−ρ · exposure)` tinted with theme accent. `viewMode 1` flow: hue by direction of the mean velocity using `atan2(my, mx)`. `viewMode 2` points: instanced point draw straight to the swapchain, additive, low alpha, theme accent.
 6. Swap A/B.
 
 ## Panel

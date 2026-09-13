@@ -196,6 +196,12 @@
   transition: color 0.15s;
 }
 
+.params-panel .section-divider {
+  height: 1px;
+  background: var(--bg-surface-border);
+  margin: 0.4rem 0 0.3rem;
+}
+
 .params-panel .section-subheading {
   font-size: 0.58rem;
   letter-spacing: 1.2px;

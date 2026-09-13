@@ -315,7 +315,7 @@ export class FieldBoidsController {
     }
     const { device, context, canvas } = this.gpu;
     if (resizeCanvasToDisplaySize(canvas)) {
-      this.createFieldTextures(device, canvas.width, canvas.height);
+      this.createFieldTextures(device, canvas.width || 1, canvas.height || 1);
     }
     const aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 1;
     device.queue.writeBuffer(this.uniformBuffer, 0, this.packUniforms(aspect));

@@ -95,7 +95,7 @@ export function buildFieldBoidsPanel(
   heading(container, 'Field');
   createRangeSlider(container, { label: 'Memory', min: 0, max: 0.99, step: 0.01,
     get: () => p.memory, set: v => { p.memory = v; } });
-  createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 6, step: 0.1,
+  createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
     get: () => p.splatSize, set: v => { p.splatSize = v; } });
 
   // View
