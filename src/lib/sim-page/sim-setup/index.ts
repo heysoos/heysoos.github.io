@@ -2,9 +2,11 @@
 import type { BoidsController } from '../../../components/simulations/boids/boids-controller';
 import type { CPPNController } from '../../../components/simulations/cppn/cppn-controller';
 import type { NCAController } from '../../../components/simulations/nca/nca-controller';
+import type { FieldBoidsController } from '../../../components/simulations/field-boids/field-boids-controller';
 import { setupBoids } from './boids';
 import { setupCPPN } from './cppn';
 import { setupNCA } from './nca';
+import { setupFieldBoids } from './field-boids';
 
 type AnyController = { init(c: HTMLCanvasElement): Promise<boolean>; start(): void; stop(): void; reset(): void };
 
@@ -28,6 +30,9 @@ export async function setupSim(
       return true;
     case 'nca':
       setupNCA(ctrl as NCAController, panelContent, panel);
+      return true;
+    case 'field-boids':
+      await setupFieldBoids(ctrl as FieldBoidsController, panelContent, panel);
       return true;
     default:
       return false;

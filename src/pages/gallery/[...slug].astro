@@ -327,6 +327,7 @@ const underConstruction = project.data.underConstruction ?? false;
   import { ParticleLifeController } from "../../components/simulations/particle-life/particle-life-controller";
   import { NCAController } from "../../components/simulations/nca/nca-controller";
   import { CPPNController } from "../../components/simulations/cppn/cppn-controller";
+  import { FieldBoidsController } from "../../components/simulations/field-boids/field-boids-controller";
   import { PanelManager } from "../../lib/sim-page/panel-manager";
   import { createFpsCounter } from "../../lib/sim-page/fps-counter";
   import { attachBench } from "../../lib/sim-page/bench";
@@ -389,6 +390,7 @@ const underConstruction = project.data.underConstruction ?? false;
       "particle-life": new ParticleLifeController(),
       nca: new NCAController(),
       cppn: new CPPNController(),
+      "field-boids": new FieldBoidsController(),
     };
 
     const controller = controllers[sim];
