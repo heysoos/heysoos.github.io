@@ -27,7 +27,13 @@ fn rand2(index: u32, tick: u32) -> vec2f {
 fn tap(pos: vec2f, offS: vec2f, areaS: f32) -> vec3f {
   let texPerUnit = params.fieldH * 0.5;       // 2 NDC units of y = fieldH texels
   let areaTex = areaS * texPerUnit * texPerUnit;
-  let lod = clamp(0.5 * log2(max(areaTex, 1.0)), 0.0, params.maxLod);
+  // LOD from the patch area, but never so coarse that the mip texel exceeds
+  // half the tap radius: a footprint larger than the ring quantises the force
+  // onto the mip grid and particles lock into a lattice.
+  let rTex = length(offS) * texPerUnit;
+  let lodArea = 0.5 * log2(max(areaTex, 1.0));
+  let lodCap = log2(max(rTex * 0.5, 1.0));
+  let lod = clamp(min(lodArea, lodCap), 0.0, params.maxLod);
   let p = pos + vec2f(offS.x / params.aspect, offS.y);
   let f = textureSampleLevel(fieldTex, fieldSampler, ndcToUv(p), lod);
   return vec3f(f.r, f.g, f.b) * areaTex;
