@@ -247,7 +247,20 @@ export class FieldBoidsController {
     }
     device.queue.writeBuffer(this.particleBuffers[0], 0, data);
     device.queue.writeBuffer(this.particleBuffers[1], 0, data);
+
+    const encoder = device.createCommandEncoder();
+    for (const views of this.fieldLevelViews) {
+      for (const view of views) {
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }],
+        });
+        pass.end();
+      }
+    }
+    device.queue.submit([encoder.finish()]);
+
     this.frame = 0;
+    this.writeIdx = 0;
   }
 
   // ── Uniforms ──────────────────────────────────────────────────────
@@ -272,7 +285,7 @@ export class FieldBoidsController {
     v.setFloat32(56,  aspect, true);
     v.setUint32(60,   this.frame, true);
     v.setFloat32(64,  p.noise, true);
-    v.setFloat32(68,  p.memory, true);
+    v.setFloat32(68,  Math.min(p.memory, 0.999), true);
     v.setFloat32(72,  Math.max(0.5, p.splatSize), true);
     v.setUint32(76,   p.viewMode, true);
     v.setFloat32(80,  p.exposure, true);
@@ -332,8 +345,22 @@ export class FieldBoidsController {
     });
   };
 
-  /** Task 4 fills this in. With memory = 0 the deposit pass clears instead. */
-  protected runDecay(_encoder: GPUCommandEncoder): void {}
+  /** B = A × memory. Skipped when memory is 0: the deposit pass clears instead. */
+  private runDecay(encoder: GPUCommandEncoder): void {
+    if (this.params.memory <= 0) return;
+    const prev = 1 - this.writeIdx;
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.fieldLevelViews[this.writeIdx][0],
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    });
+    pass.setPipeline(this.decayPipeline);
+    pass.setBindGroup(0, this.fullBindGroups[prev][0]);
+    pass.draw(6);
+    pass.end();
+  }
 
   private runCompute(encoder: GPUCommandEncoder, readIdx: number, N: number): void {
     const pass = encoder.beginComputePass();
