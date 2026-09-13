@@ -52,5 +52,22 @@ export async function createPreviewController(
       resume: () => ctrl.start(),
     }
   }
+  if (sim === 'field-boids') {
+    const [{ FieldBoidsController }, { FIELD_BOIDS_PRESETS }] = await Promise.all([
+      import('../../components/simulations/field-boids/field-boids-controller'),
+      import('../../data/field-boids-presets'),
+    ])
+    const ctrl = new FieldBoidsController()
+    ctrl.maxFieldSize = 512
+    const ok = await ctrl.init(canvas)
+    if (!ok) return null
+    const preset = FIELD_BOIDS_PRESETS.find(p => p.isDefault) ?? FIELD_BOIDS_PRESETS[0]
+    if (preset) ctrl.loadPreset(preset)
+    ctrl.params.numParticles = Math.min(ctrl.params.numParticles, 100000)
+    return {
+      pause: () => ctrl.stop(),
+      resume: () => ctrl.start(),
+    }
+  }
   return null
 }

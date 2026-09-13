@@ -2,7 +2,7 @@
 import { defineConfig } from 'astro/config';
 import { writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createPresetsMiddleware, generateWeightsPresetsFile } from './src/lib/admin/presets.ts';
+import { createPresetsMiddleware, generateWeightsPresetsFile, generateParamsPresetsFile } from './src/lib/admin/presets.ts';
 
 const SHADERS_DIR = 'src/data/boids-shaders';
 
@@ -141,6 +141,7 @@ export default defineConfig({
           '**/src/data/cppn-weights/**',
           '**/src/data/nca-presets.ts',
           '**/src/data/nca-weights/**',
+          '**/src/data/field-boids-presets.ts',
         ],
       },
     },
@@ -174,6 +175,17 @@ export default defineConfig({
               typeName: 'NCAPreset',
               constName: 'NCA_PRESETS',
               weightsDir: 'src/data/nca-weights',
+              presets,
+            }),
+          ));
+          server.middlewares.use(createPresetsMiddleware(
+            '/api/admin/save-field-boids-presets',
+            'src/data/field-boids-presets.ts',
+            (presets) => generateParamsPresetsFile({
+              simName: 'field-boids',
+              typeImportPath: '../components/simulations/field-boids/field-boids-types',
+              typeName: 'FieldBoidsPreset',
+              constName: 'FIELD_BOIDS_PRESETS',
               presets,
             }),
           ));

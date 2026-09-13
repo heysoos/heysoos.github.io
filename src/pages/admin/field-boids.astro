@@ -1,0 +1,198 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Field Boids Admin">
+</AdminLayout>
+
+<script>
+  import { FieldBoidsController } from '../../components/simulations/field-boids/field-boids-controller';
+  import { buildFieldBoidsPanel } from '../../components/simulations/field-boids/field-boids-panel';
+  import { FIELD_BOIDS_PRESETS } from '../../data/field-boids-presets';
+  import type { FieldBoidsPreset } from '../../components/simulations/field-boids/field-boids-types';
+
+  const canvas   = document.getElementById('admin-canvas') as HTMLCanvasElement;
+  const fallback = document.getElementById('admin-fallback') as HTMLElement;
+  const ctrl = new FieldBoidsController();
+  const ok = await ctrl.init(canvas);
+
+  if (!ok) {
+    canvas.style.display = 'none';
+    fallback.style.display = 'flex';
+  } else {
+    const def = FIELD_BOIDS_PRESETS.find(p => p.isDefault) ?? FIELD_BOIDS_PRESETS[0];
+    if (def) ctrl.loadPreset(def);
+    ctrl.start();
+  }
+
+  let playing = true;
+  document.getElementById('btn-play-pause')!.addEventListener('click', (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    if (playing) { ctrl.stop(); btn.textContent = '▶'; }
+    else         { ctrl.start(); btn.textContent = '⏸'; }
+    playing = !playing;
+  });
+  document.getElementById('btn-reset')!.addEventListener('click', () => ctrl.reset());
+
+  const tabBtns  = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const tabPanes = document.querySelectorAll<HTMLElement>('.tab-pane');
+  function switchTab(name: string): void {
+    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    tabPanes.forEach(p => { p.style.display = p.id === `tab-${name}` ? 'flex' : 'none'; });
+  }
+  tabBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab!)));
+
+  let adminPresets: FieldBoidsPreset[] = JSON.parse(JSON.stringify(FIELD_BOIDS_PRESETS));
+  let activePresetId: string | undefined = adminPresets.find(p => p.isDefault)?.id;
+
+  const paramsContainer  = document.getElementById('tab-params')  as HTMLElement;
+  const presetsContainer = document.getElementById('tab-presets') as HTMLElement;
+
+  function buildAdminPanel(activeId?: string): void {
+    paramsContainer.innerHTML = '';
+    buildFieldBoidsPanel(paramsContainer, ctrl, {
+      presets: adminPresets,
+      activePresetId: activeId,
+      onPresetLoad: (preset) => {
+        activePresetId = preset.id;
+        ctrl.loadPreset(preset);
+        buildAdminPanel(preset.id);
+        renderPresetList();
+      },
+    });
+  }
+
+  async function writeToDisk(): Promise<void> {
+    const writeBtn = document.getElementById('write-to-disk');
+    try {
+      const res = await fetch('/api/admin/save-field-boids-presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adminPresets),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (writeBtn) {
+        writeBtn.textContent = '✓ Written';
+        writeBtn.style.borderColor = 'var(--accent)';
+        setTimeout(() => { writeBtn!.textContent = '↓ Write to disk'; }, 2000);
+      }
+    } catch (err) {
+      if (writeBtn) {
+        writeBtn.textContent = '✗ Error';
+        writeBtn.style.borderColor = '#e05060';
+        writeBtn.style.color = '#e05060';
+        setTimeout(() => {
+          writeBtn!.textContent = '↓ Write to disk';
+          writeBtn!.style.borderColor = 'var(--accent)';
+          writeBtn!.style.color = 'var(--accent)';
+        }, 2000);
+      }
+      console.error('Write to disk failed:', err);
+    }
+  }
+
+  function renderPresetList(): void {
+    presetsContainer.innerHTML = '';
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+
+    for (const preset of adminPresets) {
+      const isActive = preset.id === activePresetId;
+      const rowEl = document.createElement('div');
+      rowEl.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:4px;cursor:pointer;border:1px solid ${isActive ? 'var(--accent)' : 'var(--bg-surface-border)'};`;
+
+      const nameEl = document.createElement('span');
+      nameEl.style.cssText = `flex:1;font-size:0.75rem;color:${isActive ? 'var(--accent)' : 'var(--text-body)'};`;
+      nameEl.textContent = preset.name + (preset.isDefault ? ' ★' : '');
+      nameEl.title = 'Double-click to rename';
+
+      let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
+      nameEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.value = preset.name;
+        inp.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;color:var(--text-body);font-size:0.75rem;min-width:0;';
+        inp.addEventListener('click', ev => ev.stopPropagation());
+        rowEl.replaceChild(inp, nameEl);
+        inp.focus(); inp.select();
+        const commit = () => { if (inp.value.trim()) preset.name = inp.value.trim(); renderPresetList(); };
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); if (ev.key === 'Escape') renderPresetList(); });
+      });
+
+      const starBtn = document.createElement('button');
+      starBtn.textContent = '★'; starBtn.title = 'Set as default';
+      starBtn.style.cssText = `background:none;border:none;cursor:pointer;font-size:0.7rem;color:${preset.isDefault ? 'var(--accent)' : 'var(--text-muted)'};padding:0;`;
+      starBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminPresets.forEach(p => { p.isDefault = p.id === preset.id; });
+        renderPresetList(); buildAdminPanel(activePresetId);
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕'; delBtn.title = 'Delete';
+      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--text-muted);padding:0;';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        adminPresets = adminPresets.filter(p => p.id !== preset.id);
+        if (activePresetId === preset.id) activePresetId = undefined;
+        renderPresetList(); buildAdminPanel(activePresetId);
+      });
+
+      rowEl.addEventListener('click', () => {
+        if (clickTimer !== null) return;
+        clickTimer = setTimeout(() => {
+          clickTimer = null;
+          activePresetId = preset.id;
+          ctrl.loadPreset(preset);
+          buildAdminPanel(preset.id); renderPresetList();
+        }, 220);
+      });
+
+      rowEl.appendChild(nameEl);
+      rowEl.appendChild(starBtn);
+      rowEl.appendChild(delBtn);
+      list.appendChild(rowEl);
+    }
+
+    presetsContainer.appendChild(list);
+
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height:1px;background:var(--bg-surface-border);margin:0.5rem 0;flex-shrink:0;';
+    presetsContainer.appendChild(divider);
+
+    const saveRow = document.createElement('div');
+    saveRow.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.placeholder = 'preset name...';
+    nameInput.style.cssText = 'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:4px;padding:0.25rem 0.5rem;color:var(--text-body);font-size:0.72rem;';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = 'padding:0.25rem 0.6rem;border:1px solid var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-body);font-size:0.72rem;cursor:pointer;white-space:nowrap;';
+    saveBtn.addEventListener('click', () => {
+      const rawName = nameInput.value.trim();
+      if (!rawName) return;
+      const captured = ctrl.capturePreset(rawName);
+      const id = adminPresets.some(p => p.id === captured.id)
+        ? `${captured.id}-${Date.now()}` : captured.id;
+      adminPresets.push({ ...captured, id });
+      activePresetId = id;
+      nameInput.value = '';
+      renderPresetList(); buildAdminPanel(id);
+    });
+    saveRow.appendChild(nameInput);
+    saveRow.appendChild(saveBtn);
+    presetsContainer.appendChild(saveRow);
+
+    const writeBtn = document.createElement('button');
+    writeBtn.textContent = '↓ Write to disk'; writeBtn.id = 'write-to-disk';
+    writeBtn.style.cssText = 'margin-top:0.25rem;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;flex-shrink:0;';
+    writeBtn.addEventListener('click', writeToDisk);
+    presetsContainer.appendChild(writeBtn);
+  }
+
+  buildAdminPanel(activePresetId);
+  renderPresetList();
+</script>
