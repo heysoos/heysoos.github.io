@@ -71,6 +71,8 @@ export function buildFieldBoidsPanel(
   heading(container, 'Simulation');
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
     get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); } });
+  createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
+    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); } });
   createRangeSlider(container, { label: 'Attraction radius', min: 0.01, max: 0.5, step: 0.005,
     get: () => p.attractionRadius, set: v => { p.attractionRadius = v; } });
   createRangeSlider(container, { label: 'Repulsion radius', min: 0.005, max: 0.2, step: 0.005,

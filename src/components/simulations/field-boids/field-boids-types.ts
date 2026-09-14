@@ -2,6 +2,7 @@
 
 export interface FieldBoidsParams {
   dt: number;
+  stepsPerFrame: number;  // sim steps per rendered frame (1–30)
   numParticles: number;
   attractionRadius: number;
   repulsionRadius: number;
@@ -29,6 +30,7 @@ export interface FieldBoidsPreset {
 
 export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   dt: 0.016,
+  stepsPerFrame: 1,
   numParticles: 500000,
   attractionRadius: 0.15,
   repulsionRadius: 0.03,

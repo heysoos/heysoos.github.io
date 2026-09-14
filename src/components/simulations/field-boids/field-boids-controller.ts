@@ -23,6 +23,7 @@ export class FieldBoidsController {
   private animId = 0;
   private lastFrameTime = 0;
   private frame = 0;
+  private inFlight = 0;   // submitted-but-unfinished frames; capped so CPU and GPU overlap
   maxFps = Infinity;
   tickCount = 0;
 
@@ -318,31 +319,39 @@ export class FieldBoidsController {
       this.createFieldTextures(device, canvas.width || 1, canvas.height || 1);
     }
     const aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 1;
-    device.queue.writeBuffer(this.uniformBuffer, 0, this.packUniforms(aspect));
-
     const N = Math.min(this.params.numParticles, MAX_PARTICLES);
-    const readIdx = this.frame % 2;          // particle buffer holding current state
-    const encoder = device.createCommandEncoder();
+    const steps = Math.max(1, Math.min(30, Math.round(this.params.stepsPerFrame)));
 
-    this.runDecay(encoder);
-    this.runDeposit(encoder, readIdx, N);
-    this.runMips(encoder);
-    this.runCompute(encoder, readIdx, N);
-    this.runDisplay(encoder, context, readIdx, N);
+    // One submit per sim step so each step sees its own `tick` uniform (noise seed).
+    // Only the last step renders to the swapchain.
+    for (let s = 0; s < steps; s++) {
+      device.queue.writeBuffer(this.uniformBuffer, 0, this.packUniforms(aspect));
+      const readIdx = this.frame % 2;          // particle buffer holding current state
+      const encoder = device.createCommandEncoder();
+      this.runDecay(encoder);
+      this.runDeposit(encoder, readIdx, N);
+      this.runMips(encoder);
+      this.runCompute(encoder, readIdx, N);
+      if (s === steps - 1) this.runDisplay(encoder, context, readIdx, N);
+      device.queue.submit([encoder.finish()]);
+      this.frame++;
+      this.writeIdx = 1 - this.writeIdx;
+    }
+    this.tickCount++;
 
-    device.queue.submit([encoder.finish()]);
-    this.frame++;
-    this.writeIdx = 1 - this.writeIdx;
-
-    void device.queue.onSubmittedWorkDone().then(() => {
+    // Let up to two frames be in flight: the CPU encodes frame n+1 while the GPU
+    // runs frame n. Only when we get two ahead do we wait for the GPU.
+    this.inFlight++;
+    const done = device.queue.onSubmittedWorkDone().then(() => { this.inFlight--; });
+    const schedule = (): void => {
       if (!this.running) return;
-      this.tickCount++;
       if (!Number.isFinite(this.maxFps)) {
         this.animId = requestAnimationFrame(this.tick);
       } else {
         this.animId = window.setTimeout(this.tick, 0) as unknown as number;
       }
-    });
+    };
+    if (this.inFlight >= 2) void done.then(schedule); else schedule();
   };
 
   /** B = A × memory. Skipped when memory is 0: the deposit pass clears instead. */
