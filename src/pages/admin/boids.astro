@@ -113,6 +113,7 @@ import '../../styles/sim-page.css';
   import { BoidsController } from '../../components/simulations/boids/boids-controller';
   import { buildBoidsPanel } from '../../components/simulations/boids/panel';
   import { BOIDS_PRESETS } from '../../data/boids-presets';
+  import { applyBoidsPreset } from '../../lib/sim-page/boids-preset-apply';
   import { PanelManager } from '../../lib/sim-page/panel-manager';
   import { createFpsCounter } from '../../lib/sim-page/fps-counter';
   import { attachBench } from '../../lib/sim-page/bench';
@@ -145,12 +146,7 @@ import '../../styles/sim-page.css';
     } else {
       // Apply default preset before bindBoidsAudio snapshots base params.
       const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
-      if (defaultPreset) {
-        Object.assign(ctrl.params, defaultPreset.params);
-        ctrl.trailsEnabled = defaultPreset.trailsEnabled;
-        ctrl.trailDecay = defaultPreset.trailDecay;
-        if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
-      }
+      if (defaultPreset) await applyBoidsPreset(ctrl, defaultPreset);
       ctrl.start();
 
       // FPS counter (same wiring as gallery slug page).
@@ -240,12 +236,7 @@ import '../../styles/sim-page.css';
             shaderPanelEl.style.display = isOpen ? 'none' : 'flex';
           },
           onPresetLoad: async (preset) => {
-            Object.assign(ctrl.params, preset.params);
-            ctrl.trailsEnabled = preset.trailsEnabled;
-            ctrl.trailDecay = preset.trailDecay;
-            const next = preset.shader ?? ctrl.defaultShaderSource;
-            await ctrl.reloadShader(next);
-            shaderEditor.setDoc(next);
+            await applyBoidsPreset(ctrl, preset, (code) => shaderEditor.setDoc(code));
             presetsTab.setPendingShaderFile(preset.shaderFile ?? '');
             rebuildPanel(preset.id);
           },

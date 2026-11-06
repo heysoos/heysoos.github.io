@@ -4,6 +4,12 @@ import { buildBoidsPanel } from '../../../components/simulations/boids/panel';
 import { BOIDS_PRESETS } from '../../../data/boids-presets';
 import { bindBoidsAudio } from '../boids-audio-binding';
 import { createShaderEditor, type ShaderEditorHandle } from '../shader-editor';
+import { applyBoidsPreset, captureBoidsPreset, type BoidsPresetBody } from '../boids-preset-apply';
+import { createPresetManager } from '../../presets/preset-manager';
+import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
+import { attachUndoKeys } from '../../presets/undo-history';
+
+type Params = BoidsPresetBody['params'];
 
 export async function setupBoids(
   ctrl: BoidsController,
@@ -14,6 +20,8 @@ export async function setupBoids(
   const { reactor, getBaseParams } = bindBoidsAudio(ctrl);
 
   let panelControls: { teardown: () => void; updateAudioViz: (baseParams?: Record<string, number>) => void } | null = null;
+  let shaderEditorHandle: ShaderEditorHandle | null = null;
+  let shaderEditorOpen = false;
 
   // Drive panel viz from a dedicated rAF. bindBoidsAudio handles the
   // audio→params mapping in its own loop; here we only pump the panel
@@ -28,24 +36,32 @@ export async function setupBoids(
   })();
   document.addEventListener('pagehide', () => cancelAnimationFrame(vizRafId), { once: true });
 
+  const mgr = createPresetManager<Params>({
+    simId: 'boids',
+    defaults: { ...(ctrl.params as unknown as Params) },
+    builtIn: BOIDS_PRESETS as unknown as Array<{ id: string; name: string; params: Params }>,
+    // Base (un-modulated) params so audio reactivity never reads as an edit.
+    capture: () => captureBoidsPreset(ctrl, reactor.isActive() ? getBaseParams() : undefined),
+    apply: (body) => applyBoidsPreset(ctrl, body as BoidsPresetBody, (code) => shaderEditorHandle?.setDoc(code)),
+  });
+
   const defaultPreset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0];
   if (defaultPreset) {
-    Object.assign(ctrl.params, defaultPreset.params);
-    ctrl.trailsEnabled = defaultPreset.trailsEnabled;
-    ctrl.trailDecay = defaultPreset.trailDecay;
-    if (defaultPreset.shader !== undefined) await ctrl.reloadShader(defaultPreset.shader);
+    await mgr.load(defaultPreset as unknown as { id: string; name: string; params: Params });
+    mgr.history.clear();
   }
 
-  let shaderEditorHandle: ShaderEditorHandle | null = null;
-  let shaderEditorOpen = false;
+  let section: PresetSectionHandle | null = null;
 
-  function buildPanel(activeId?: string): void {
+  function buildPanel(): void {
+    const scrollTop = panelContent.scrollTop;
+    section?.dispose();
     panelControls?.teardown();
     panelContent.innerHTML = '';
     panelControls = buildBoidsPanel(panelContent, ctrl, {
-      presets: BOIDS_PRESETS,
-      activePresetId: activeId,
       reactor,
+      history: mgr.history,
+      buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
       onClose: () => {
         panelControls?.teardown();
         panel.style.display = 'none';
@@ -54,18 +70,11 @@ export async function setupBoids(
         shaderEditorOpen = !shaderEditorOpen;
         shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
       },
-      onPresetLoad: async (preset) => {
-        Object.assign(ctrl.params, preset.params);
-        ctrl.trailsEnabled = preset.trailsEnabled;
-        ctrl.trailDecay = preset.trailDecay;
-        const nextShader = preset.shader ?? ctrl.defaultShaderSource;
-        await ctrl.reloadShader(nextShader);
-        shaderEditorHandle?.setDoc(nextShader);
-        buildPanel(preset.id);
-      },
     });
+    panelContent.scrollTop = scrollTop;
   }
-  buildPanel(defaultPreset?.id);
+  mgr.onRebuild(buildPanel);
+  buildPanel();
 
   const editorWrap   = shaderPanelEl.querySelector('#shader-editor-wrap') as HTMLElement;
   const shaderErrors = shaderPanelEl.querySelector('#shader-errors') as HTMLElement;
@@ -82,9 +91,13 @@ export async function setupBoids(
     shaderPanelEl,
     {
       initialCode: ctrl.shaderSource,
-      onApply: (code) => ctrl.reloadShader(code),
+      // Applying a shader is one undo entry; CodeMirror keeps its own text history.
+      onApply: async (code) => { const r = await ctrl.reloadShader(code); mgr.history.push('Shader'); section?.refresh(); return r; },
       onReset: () => ctrl.shaderSource,
       onClose: () => { shaderEditorOpen = false; },
     },
   );
+
+  const detachKeys = attachUndoKeys(mgr.history);
+  document.addEventListener('pagehide', () => { detachKeys(); mgr.dispose(); }, { once: true });
 }

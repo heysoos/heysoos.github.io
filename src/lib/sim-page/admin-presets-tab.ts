@@ -8,6 +8,7 @@
 import type { BoidsPreset } from '../../data/boids-presets';
 import type { BoidsController } from '../../components/simulations/boids/boids-controller';
 import { buildAdminImportButton } from '../presets/preset-file';
+import { applyBoidsPreset } from './boids-preset-apply';
 
 export interface AdminPresetsTabOpts {
   controller: BoidsController;
@@ -97,12 +98,7 @@ export function buildAdminPresetsTab(
 
   function loadPreset(preset: BoidsPreset): void {
     activeId = preset.id;
-    Object.assign(opts.controller.params, preset.params);
-    opts.controller.trailsEnabled = preset.trailsEnabled;
-    opts.controller.trailDecay = preset.trailDecay;
-    const nextShader = preset.shader ?? opts.controller.defaultShaderSource;
-    opts.controller.reloadShader(nextShader);
-    opts.setEditorDoc(nextShader);
+    void applyBoidsPreset(opts.controller, preset, opts.setEditorDoc);
     pendingShaderFile = preset.shaderFile ?? '';
     notifyChange();
   }

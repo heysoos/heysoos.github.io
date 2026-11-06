@@ -5,6 +5,7 @@
 // canvas-based audio-reactive trace overlay.
 
 import type { BandSnapshot, AudioMapping } from '../boids-audio';
+import type { UndoHistory } from '../../../../lib/presets/undo-history';
 import type { BoidsController } from '../boids-controller';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ export function buildXYPad(
   xDef: XYPadDef,
   yDef: XYPadDef,
   controller: BoidsController,
+  undo?: UndoHistory,
 ): { el: HTMLElement; updateTrace(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>): void } {
 
   const params = controller.params as unknown as Record<string, number>;
@@ -213,7 +215,9 @@ export function buildXYPad(
     params[yDef.paramKey] = fromNorm(1 - ny, yDef);  // flip: top = high y
     redraw();
     updateValueText();
+    undo?.touch();
   }
+  const gestureLabel = `${yDef.label} / ${xDef.label}`;
 
   function onMouseMove(e: MouseEvent): void {
     if (!dragging) return;
@@ -223,6 +227,7 @@ export function buildXYPad(
   function onMouseUp(): void {
     dragging = false;
     surf.classList.remove('dragging');
+    undo?.endGesture();
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
   }
@@ -230,6 +235,7 @@ export function buildXYPad(
   surf.addEventListener('mousedown', (e: MouseEvent) => {
     dragging = true;
     surf.classList.add('dragging');
+    undo?.beginGesture(gestureLabel);
     applyPointer(e.clientX, e.clientY);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -246,12 +252,14 @@ export function buildXYPad(
 
   function onTouchEnd(): void {
     dragging = false;
+    undo?.endGesture();
     document.removeEventListener('touchmove', onTouchMove);
     document.removeEventListener('touchend', onTouchEnd);
   }
 
   surf.addEventListener('touchstart', (e: TouchEvent) => {
     dragging = true;
+    undo?.beginGesture(gestureLabel);
     const t = e.touches[0];
     if (t) applyPointer(t.clientX, t.clientY);
     document.addEventListener('touchmove', onTouchMove, { passive: false });

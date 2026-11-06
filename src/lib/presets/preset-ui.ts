@@ -37,9 +37,15 @@ export interface PresetSectionHandle {
   dispose(): void;
 }
 
+export interface PresetSectionOpts {
+  /** Show the "Presets" label in the header. Off when the host panel already has one. */
+  showTitle?: boolean;
+}
+
 export function buildPresetSection<P extends ParamRecord>(
   container: HTMLElement,
   mgr: PresetManager<P>,
+  sectionOpts: PresetSectionOpts = {},
 ): PresetSectionHandle {
   const root = el('div', 'display:flex;flex-direction:column;gap:5px;margin-bottom:0.4rem;');
   container.appendChild(root);
@@ -204,7 +210,9 @@ export function buildPresetSection<P extends ParamRecord>(
     const activeIsCustom = !!active && !mgr.isBuiltIn(active.id);
 
     header.innerHTML = '';
-    header.appendChild(el('p', 'font-size:0.6rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;', 'Presets'));
+    if (sectionOpts.showTitle !== false) {
+      header.appendChild(el('p', 'font-size:0.6rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;', 'Presets'));
+    }
     if (dirty) header.appendChild(el('span', MUTED, 'unsaved changes'));
     if (!mgr.store.storageOk) header.appendChild(el('span', MUTED + 'color:#e05060;', 'storage blocked — custom presets are session-only'));
     const spacer = el('span', 'flex:1;');
