@@ -3,12 +3,17 @@ import type { FieldBoidsController } from './field-boids-controller';
 import type { FieldBoidsPreset } from './field-boids-types';
 import { createRangeSlider } from '../boids/panel/range-slider';
 import { pillStyle } from '../boids/panel/panel-styles';
+import type { UndoHistory } from '../../../lib/presets/undo-history';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
   activePresetId?: string;
   onPresetLoad?: (preset: FieldBoidsPreset) => void;
   onClose?: () => void;
+  /** Gallery page: renders the shared preset section (replaces the pill row). */
+  buildPresets?: (container: HTMLElement) => void;
+  /** Gallery page: param changes record undo entries. */
+  history?: UndoHistory;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -42,6 +47,7 @@ export function buildFieldBoidsPanel(
 ): void {
   container.innerHTML = '';
   const p = ctrl.params;
+  const history = opts.history;
 
   // Header
   const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
@@ -56,8 +62,10 @@ export function buildFieldBoidsPanel(
   }
   container.appendChild(header);
 
-  // Preset pills
-  if (opts.presets && opts.presets.length > 0) {
+  // Presets: shared section when provided, plain pill row otherwise (admin)
+  if (opts.buildPresets) {
+    opts.buildPresets(container);
+  } else if (opts.presets && opts.presets.length > 0) {
     const pillRow = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin:0 0 0.4rem;');
     for (const preset of opts.presets) {
       const pill = el('button', pillStyle(preset.id === opts.activePresetId), preset.name);
@@ -70,35 +78,35 @@ export function buildFieldBoidsPanel(
   // Simulation
   heading(container, 'Simulation');
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
-    get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); } });
+    get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history });
   createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
-    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); } });
+    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); }, history });
   createRangeSlider(container, { label: 'Attraction radius', min: 0.01, max: 0.5, step: 0.005,
-    get: () => p.attractionRadius, set: v => { p.attractionRadius = v; } });
+    get: () => p.attractionRadius, set: v => { p.attractionRadius = v; }, history });
   createRangeSlider(container, { label: 'Repulsion radius', min: 0.005, max: 0.2, step: 0.005,
-    get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; } });
+    get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; }, history });
   createRangeSlider(container, { label: 'Attraction', min: 0, max: 5, step: 0.01,
-    get: () => p.attraction, set: v => { p.attraction = v; } });
+    get: () => p.attraction, set: v => { p.attraction = v; }, history });
   createRangeSlider(container, { label: 'Repulsion', min: 0, max: 10, step: 0.01,
-    get: () => p.repulsion, set: v => { p.repulsion = v; } });
+    get: () => p.repulsion, set: v => { p.repulsion = v; }, history });
   createRangeSlider(container, { label: 'Alignment', min: 0, max: 10, step: 0.01,
-    get: () => p.alignment, set: v => { p.alignment = v; } });
+    get: () => p.alignment, set: v => { p.alignment = v; }, history });
   createRangeSlider(container, { label: 'Cone angle', min: -1, max: 1, step: 0.01,
-    get: () => p.coneAngle, set: v => { p.coneAngle = v; } });
+    get: () => p.coneAngle, set: v => { p.coneAngle = v; }, history });
   createRangeSlider(container, { label: 'Friction', min: 0, max: 10, step: 0.1,
-    get: () => p.friction, set: v => { p.friction = v; } });
+    get: () => p.friction, set: v => { p.friction = v; }, history });
   createRangeSlider(container, { label: 'Max speed', min: 0.01, max: 1, step: 0.01,
-    get: () => p.maxSpeed, set: v => { p.maxSpeed = v; } });
+    get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history });
   createRangeSlider(container, { label: 'Noise', min: 0, max: 0.1, step: 0.001,
-    get: () => p.noise, set: v => { p.noise = v; } });
+    get: () => p.noise, set: v => { p.noise = v; }, history });
 
   // Field
   divider(container);
   heading(container, 'Field');
   createRangeSlider(container, { label: 'Memory', min: 0, max: 0.99, step: 0.01,
-    get: () => p.memory, set: v => { p.memory = v; } });
+    get: () => p.memory, set: v => { p.memory = v; }, history });
   createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
-    get: () => p.splatSize, set: v => { p.splatSize = v; } });
+    get: () => p.splatSize, set: v => { p.splatSize = v; }, history });
 
   // View
   divider(container);
@@ -110,13 +118,14 @@ export function buildFieldBoidsPanel(
     b.addEventListener('click', () => {
       p.viewMode = i;
       modeBtns.forEach((mb, k) => { mb.style.cssText = pillStyle(k === i); });
+      history?.push('View mode');
     });
     modeBtns.push(b);
     modeRow.appendChild(b);
   });
   container.appendChild(modeRow);
   createRangeSlider(container, { label: 'Exposure', min: 0.1, max: 20, step: 0.1, scale: 'log',
-    get: () => p.exposure, set: v => { p.exposure = v; } });
+    get: () => p.exposure, set: v => { p.exposure = v; }, history });
   createRangeSlider(container, { label: 'Point alpha', min: 0.01, max: 1, step: 0.01,
-    get: () => p.pointAlpha, set: v => { p.pointAlpha = v; } });
+    get: () => p.pointAlpha, set: v => { p.pointAlpha = v; }, history });
 }
