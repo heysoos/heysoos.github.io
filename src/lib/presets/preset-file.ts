@@ -93,6 +93,68 @@ export function parseBundle<P extends ParamRecord>(text: string, defaults: P): P
   return { presets, sim, warnings };
 }
 
+export function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'preset';
+}
+
+/**
+ * Turn an imported custom preset into a built-in shaped one for the admin
+ * pages: readable slug id (deduped against `existingIds`), no timestamps.
+ */
+export function toBuiltInPreset<P extends ParamRecord>(
+  p: CustomPreset<P>,
+  existingIds: Set<string>,
+): { id: string; name: string; params: P } & Record<string, unknown> {
+  const { createdAt: _c, updatedAt: _u, id: _id, ...rest } = p;
+  let id = slugify(p.name);
+  let n = 2;
+  while (existingIds.has(id)) id = `${slugify(p.name)}-${n++}`;
+  existingIds.add(id);
+  return { ...rest, id, name: p.name, params: p.params };
+}
+
+/**
+ * Admin helper: an "Import" button plus hidden file input. On a successful
+ * parse, `onImport` receives built-in shaped presets; `onError` gets a
+ * message otherwise.
+ */
+export function buildAdminImportButton<P extends ParamRecord>(opts: {
+  defaults: P;
+  simId: string;
+  existingIds: () => Set<string>;
+  onImport: (presets: Array<{ id: string; name: string; params: P } & Record<string, unknown>>) => void;
+  onError: (message: string) => void;
+  style?: string;
+}): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:4px;align-items:center;';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.style.display = 'none';
+  const btn = document.createElement('button');
+  btn.textContent = '↑ Import JSON';
+  btn.title = 'Import presets exported from a sim page';
+  btn.style.cssText = opts.style ?? 'padding:0.35rem;border:1px solid var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-body);font-size:0.72rem;cursor:pointer;flex:1;';
+  btn.addEventListener('click', () => { input.value = ''; input.click(); });
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const { presets, sim, warnings } = parseBundle<P>(await readFileText(file), opts.defaults);
+      if (sim && sim !== opts.simId) warnings.unshift(`File is for "${sim}", this page is ${opts.simId}.`);
+      if (presets.length === 0) { opts.onError(['Nothing to import.', ...warnings].join(' ')); return; }
+      const ids = opts.existingIds();
+      opts.onImport(presets.map(p => toBuiltInPreset(p, ids)));
+      if (warnings.length) opts.onError(warnings.join(' '));
+    } catch (err) {
+      opts.onError(`Import failed: ${(err as Error).message}`);
+    }
+  });
+  wrap.append(btn, input);
+  return wrap;
+}
+
 /** Read a File chosen in an <input type="file"> as text. */
 export function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

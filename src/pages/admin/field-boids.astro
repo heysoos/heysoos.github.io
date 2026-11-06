@@ -9,7 +9,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
   import { FieldBoidsController } from '../../components/simulations/field-boids/field-boids-controller';
   import { buildFieldBoidsPanel } from '../../components/simulations/field-boids/field-boids-panel';
   import { FIELD_BOIDS_PRESETS } from '../../data/field-boids-presets';
-  import type { FieldBoidsPreset } from '../../components/simulations/field-boids/field-boids-types';
+  import { DEFAULT_FIELD_BOIDS_PARAMS, type FieldBoidsPreset } from '../../components/simulations/field-boids/field-boids-types';
+  import { buildAdminImportButton } from '../../lib/presets/preset-file';
 
   const canvas   = document.getElementById('admin-canvas') as HTMLCanvasElement;
   const fallback = document.getElementById('admin-fallback') as HTMLElement;
@@ -185,6 +186,21 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     saveRow.appendChild(nameInput);
     saveRow.appendChild(saveBtn);
     presetsContainer.appendChild(saveRow);
+
+    type FBParams = FieldBoidsPreset['params'] & Record<string, unknown>;
+    const importRow = buildAdminImportButton<FBParams>({
+      defaults: { ...DEFAULT_FIELD_BOIDS_PARAMS },
+      simId: 'field-boids',
+      existingIds: () => new Set(adminPresets.map(p => p.id)),
+      onImport: (imported) => {
+        for (const p of imported) adminPresets.push({ id: p.id, name: p.name, params: p.params as FieldBoidsPreset['params'] });
+        activePresetId = imported[imported.length - 1]?.id ?? activePresetId;
+        renderPresetList(); buildAdminPanel(activePresetId);
+      },
+      onError: (msg) => { console.warn('[admin import]', msg); alert(msg); },
+    });
+    importRow.style.marginTop = '0.25rem';
+    presetsContainer.appendChild(importRow);
 
     const writeBtn = document.createElement('button');
     writeBtn.textContent = '↓ Write to disk'; writeBtn.id = 'write-to-disk';
