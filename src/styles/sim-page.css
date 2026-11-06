@@ -14,7 +14,12 @@
   position: relative;
   width: 100%;
   height: calc(100vh - 60px);
+  height: calc(100dvh - 60px); /* phones: exclude the collapsible URL bar */
 }
+
+/* A finger drag on the sim canvas drives the pointer force, not page scroll.
+   Scoped to the gallery canvas only — the home-page hero must stay scrollable. */
+#sim-canvas { touch-action: none; }
 
 .sim-viewport canvas {
   width: 100%;
@@ -621,4 +626,90 @@
   font-variant-numeric: tabular-nums;
   min-width: 2.2rem;
   text-align: right;
+}
+
+/* ── PHONE LAYOUT ────────────────────────────────────────────────────────── */
+/* Below 768px the floating panel becomes a bottom sheet (see bottom-sheet.ts),
+   the controls move top-right so they are never under the sheet or the URL
+   bar, hover-only UI becomes tap-to-toggle, and hit targets grow. Desktop is
+   untouched. */
+
+@media (max-width: 768px) {
+  .params-panel {
+    position: fixed;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0;
+    max-height: 120px;             /* peek: handle + preset row */
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    border-bottom: none;
+    transition: max-height 0.2s ease-out;
+    cursor: default !important;
+  }
+
+  .params-panel.sheet-expanded {
+    max-height: 70dvh;
+  }
+
+  .panel-drag-handle {
+    height: 30px;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .panel-content {
+    padding: 0.6rem 0.9rem 1.2rem 0.9rem;
+    overscroll-behavior: contain;
+  }
+
+  .params-panel input[type=range] {
+    height: 28px;
+    touch-action: pan-y;
+  }
+
+  .params-panel .param-value-edit {
+    min-height: 28px;
+  }
+
+  .params-panel button {
+    min-height: 32px;
+  }
+
+  .params-panel .color-swatch,
+  .params-panel .color-picker {
+    min-height: 0;
+    width: 28px;
+    height: 28px;
+  }
+
+  .shader-panel {
+    position: fixed;
+    inset: 60px 0 0 0;
+    width: auto;
+    max-height: none;
+    border-radius: 0;
+    z-index: 30;
+  }
+
+  .shader-editor-wrap .cm-editor {
+    max-height: none;
+  }
+
+  .fps-display {
+    bottom: auto;
+    top: 0.6rem;
+    left: 0.75rem;
+  }
+
+  .fps-display:hover .fps-popup { display: none; }
+  .fps-display.open .fps-popup,
+  .fps-display.open:hover .fps-popup { display: flex; }
+  .fps-popup {
+    bottom: auto;
+    top: calc(100% + 8px);
+  }
 }

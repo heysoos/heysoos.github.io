@@ -329,6 +329,7 @@ const underConstruction = project.data.underConstruction ?? false;
   import { CPPNController } from "../../components/simulations/cppn/cppn-controller";
   import { FieldBoidsController } from "../../components/simulations/field-boids/field-boids-controller";
   import { PanelManager } from "../../lib/sim-page/panel-manager";
+  import { BottomSheetController, isPhoneLayout } from "../../lib/sim-page/bottom-sheet";
   import { createFpsCounter } from "../../lib/sim-page/fps-counter";
   import { attachBench } from "../../lib/sim-page/bench";
   import { setupSim } from "../../lib/sim-page/sim-setup/index";
@@ -340,9 +341,49 @@ const underConstruction = project.data.underConstruction ?? false;
   const panelContent  = document.getElementById("panel-content") as HTMLElement;
   const shaderPanelEl = document.getElementById("shader-panel") as HTMLElement;
 
-  const panelManager = new PanelManager(panel, viewport, sim);
-  panelManager.init();
-  document.addEventListener('pagehide', () => panelManager.dispose(), { once: true });
+  // Desktop: draggable/resizable floating panel. Phone: bottom sheet. The
+  // two never share saved geometry, so rotating past the breakpoint swaps
+  // controllers instead of restoring a nonsensical layout.
+  let layoutCtrl: { dispose(): void } | null = null;
+  function initLayout(): void {
+    layoutCtrl?.dispose();
+    if (isPhoneLayout()) {
+      const sheet = new BottomSheetController(panel, `${sim}-sheet`, () => {
+        panel.style.display = 'none';
+        sessionStorage.setItem(`${sim}-panel-open`, 'false');
+      });
+      sheet.init();
+      layoutCtrl = sheet;
+    } else {
+      const display = panel.style.display;
+      panel.style.cssText = '';
+      panel.style.display = display;
+      const pm = new PanelManager(panel, viewport, sim);
+      pm.init();
+      layoutCtrl = pm;
+    }
+  }
+  const panelWasOpen = () => panel.style.display !== 'none';
+  initLayout();
+  window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
+    const open = panelWasOpen();
+    initLayout();
+    panel.style.display = open ? 'flex' : 'none';
+  });
+  document.addEventListener('pagehide', () => layoutCtrl?.dispose(), { once: true });
+
+  // FPS popup is hover-only on desktop; on touch, tap the readout to toggle it.
+  const fpsDisplay = document.getElementById('fps-display');
+  fpsDisplay?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.fps-popup')) return;
+    fpsDisplay.classList.toggle('open');
+  });
+
+  // iOS Safari has no element fullscreen; hide the button rather than show a dead one.
+  if (!document.fullscreenEnabled) {
+    const fsBtn = document.querySelector(`#controls-${sim} [data-action="fullscreen"]`) as HTMLElement | null;
+    if (fsBtn) fsBtn.style.display = 'none';
+  }
 
   const isUnderConstruction = viewport.dataset.sim === sim &&
     document.getElementById('under-construction') !== null;
