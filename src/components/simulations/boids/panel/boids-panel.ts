@@ -14,6 +14,7 @@ import { buildXYPad, type XYPadDef } from './xy-pad';
 import { buildAudioTab, type AudioUpdaterMaps } from './audio-tab';
 import { createRangeSlider } from './range-slider';
 import { pillStyle } from './panel-styles';
+import type { UndoHistory } from '../../../../lib/presets/undo-history';
 
 // ── Main panel builder ────────────────────────────────────────────────────────
 
@@ -24,6 +25,10 @@ export interface BoidsPanelOpts {
   activePresetId?: string;
   onPresetLoad?: (preset: BoidsPreset) => void;
   reactor?: AudioReactor;
+  /** Gallery page: renders the shared preset section in place of the pill row. */
+  buildPresets?: (container: HTMLElement) => void;
+  /** Gallery page: param changes record undo entries. */
+  history?: UndoHistory;
   /** Optional extra tab appended after Image. Used by the admin page to add a
    *  Presets management tab without forking the panel. `build` runs once when
    *  the tab is created; the body element is empty, sized to fit the panel. */
@@ -158,8 +163,12 @@ export function buildBoidsPanel(
     opts.extraTab.build(tabBodies[opts.extraTab.name]);
   }
 
+  const history = opts.history;
+
   // ── Preset switcher ───────────────────────────────────────────────────────
-  if (opts.presets && opts.presets.length > 0) {
+  if (opts.buildPresets) {
+    opts.buildPresets(addSection(paramsBody, 'Presets'));
+  } else if (opts.presets && opts.presets.length > 0) {
     const presetsBody = addSection(paramsBody, 'Presets');
     const pillRow = document.createElement('div');
     pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;';
@@ -220,31 +229,31 @@ export function buildBoidsPanel(
 
   // ── Appearance ────────────────────────────────────────────────────────────
   const appearanceBody = addSection(paramsBody, 'Appearance');
-  createRangeSlider(appearanceBody, {
+  createRangeSlider(appearanceBody, { history,
     label: 'Size', min: 0.001, max: 0.08, step: 0.001,
     get: () => controller.params.size,
     set: v => { controller.params.size = v; },
     scale: 'log',
   });
-  createRangeSlider(appearanceBody, {
+  createRangeSlider(appearanceBody, { history,
     label: 'Opacity', min: 0.01, max: 1.0, step: 0.01,
     get: () => controller.params.opacity,
     set: v => { controller.params.opacity = v; },
   });
-  buildOpacityModeRow(appearanceBody, controller);
-  buildShapeRow(appearanceBody, controller);
-  buildColorRow(appearanceBody, controller);
-  buildTrailsRow(appearanceBody, controller);
+  buildOpacityModeRow(appearanceBody, controller, history);
+  buildShapeRow(appearanceBody, controller, history);
+  buildColorRow(appearanceBody, controller, history);
+  buildTrailsRow(appearanceBody, controller, history);
 
   // ── Simulation ────────────────────────────────────────────────────────────
   const simulationBody = addSection(paramsBody, 'Simulation');
-  createRangeSlider(simulationBody, {
+  createRangeSlider(simulationBody, { history,
     label: 'Time Step', min: 0.001, max: 0.1, step: 0.001,
     get: () => controller.params.dt,
     set: v => { controller.params.dt = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('dt', { wrap: w, fill: f }),
   });
-  createRangeSlider(simulationBody, {
+  createRangeSlider(simulationBody, { history,
     label: 'Particles', min: 10, max: 10000, step: 10,
     get: () => controller.params.numParticles,
     set: v => { controller.params.numParticles = v; },
@@ -253,17 +262,17 @@ export function buildBoidsPanel(
 
   // ── Forces (sub-section of Simulation) ───────────────────────────────────
   addSubheading(simulationBody, 'Forces');
-  const padTraceUpdaters = buildForcesPads(simulationBody, controller);
+  const padTraceUpdaters = buildForcesPads(simulationBody, controller, history);
 
   // ── Perception (sub-section of Simulation) ────────────────────────────────
   addSubheading(simulationBody, 'Perception');
-  createRangeSlider(simulationBody, {
+  createRangeSlider(simulationBody, { history,
     label: 'Vision Cone', min: -1.0, max: 0.99, step: 0.05,
     get: () => controller.params.coneAngle,
     set: v => { controller.params.coneAngle = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('coneAngle', { wrap: w, fill: f }),
   });
-  createRangeSlider(simulationBody, {
+  createRangeSlider(simulationBody, { history,
     label: 'Mouse Radius', min: 0.05, max: 0.5, step: 0.01,
     get: () => controller.params.mouseRadius,
     set: v => { controller.params.mouseRadius = v; },
@@ -375,7 +384,7 @@ export function buildBoidsPanel(
 // Each handles one Appearance sub-section. Extracted from buildBoidsPanel to
 // keep that function navigable. Add new Appearance controls here, not inline.
 
-function buildOpacityModeRow(parent: HTMLElement, controller: BoidsController): void {
+function buildOpacityModeRow(parent: HTMLElement, controller: BoidsController, history?: UndoHistory): void {
   const modeRow = document.createElement('div');
   modeRow.className = 'param-row';
   const modeLabel = document.createElement('div');
@@ -392,6 +401,7 @@ function buildOpacityModeRow(parent: HTMLElement, controller: BoidsController): 
     btn.addEventListener('click', () => {
       controller.params.opacityMode = mi;
       modeBtns.forEach((b, j) => { b.style.cssText = pillStyle(j === mi); });
+      history?.push('Opacity mode');
     });
     modeBtns.push(btn);
     btnRow.appendChild(btn);
@@ -401,7 +411,7 @@ function buildOpacityModeRow(parent: HTMLElement, controller: BoidsController): 
   parent.appendChild(modeRow);
 }
 
-function buildShapeRow(parent: HTMLElement, controller: BoidsController): void {
+function buildShapeRow(parent: HTMLElement, controller: BoidsController, history?: UndoHistory): void {
   const labelEl = document.createElement('div');
   labelEl.className = 'param-label';
   labelEl.innerHTML = '<span>Shape</span>';
@@ -423,6 +433,7 @@ function buildShapeRow(parent: HTMLElement, controller: BoidsController): void {
     btn.addEventListener('click', () => {
       controller.params.shapeId = s.id;
       shapeBtns.forEach((b, i) => b.classList.toggle('active', i === s.id));
+      history?.push('Shape');
     });
     shapeBtns.push(btn);
     shapeRow.appendChild(btn);
@@ -430,7 +441,7 @@ function buildShapeRow(parent: HTMLElement, controller: BoidsController): void {
   parent.appendChild(shapeRow);
 }
 
-function buildColorRow(parent: HTMLElement, controller: BoidsController): void {
+function buildColorRow(parent: HTMLElement, controller: BoidsController, history?: UndoHistory): void {
   const labelEl = document.createElement('div');
   labelEl.className = 'param-label';
   labelEl.innerHTML = '<span>Color</span>';
@@ -464,6 +475,7 @@ function buildColorRow(parent: HTMLElement, controller: BoidsController): void {
       applyColor(p.r, p.g, p.b);
       swatches.forEach((s, j) => s.classList.toggle('active', j === i));
       colorPicker.value = p.hex;
+      history?.push('Color');
     });
     swatches.push(btn);
     colorRow.appendChild(btn);
@@ -477,12 +489,16 @@ function buildColorRow(parent: HTMLElement, controller: BoidsController): void {
     const [r, g, b] = hexToRgb(colorPicker.value);
     applyColor(r, g, b);
     swatches.forEach(s => s.classList.remove('active'));
+    history?.touch();
   });
+  // Native colour pickers stream 'input' while dragging; 'change' fires once on close.
+  colorPicker.addEventListener('pointerdown', () => history?.beginGesture('Color'));
+  colorPicker.addEventListener('change', () => { if (history?.isGestureOpen()) history.endGesture(); else history?.push('Color'); });
   colorRow.appendChild(colorPicker);
   parent.appendChild(colorRow);
 }
 
-function buildTrailsRow(parent: HTMLElement, controller: BoidsController): void {
+function buildTrailsRow(parent: HTMLElement, controller: BoidsController, history?: UndoHistory): void {
   const trailRow = document.createElement('div');
   trailRow.className = 'trail-row';
   const trailLabel = document.createElement('span');
@@ -506,11 +522,13 @@ function buildTrailsRow(parent: HTMLElement, controller: BoidsController): void 
     min: 0.80, max: 0.99, step: 0.01,
     get: () => controller.trailDecay,
     set: v => { controller.trailDecay = v; },
+    history,
   });
   parent.appendChild(decayWrapper);
   toggleInput.addEventListener('change', () => {
     controller.trailsEnabled = toggleInput.checked;
     decayWrapper.style.display = toggleInput.checked ? 'block' : 'none';
+    history?.push('Trails');
   });
 }
 
@@ -519,6 +537,7 @@ function buildTrailsRow(parent: HTMLElement, controller: BoidsController): void 
 function buildForcesPads(
   parent: HTMLElement,
   controller: BoidsController,
+  history?: UndoHistory,
 ): Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> {
   const grid = document.createElement('div');
   grid.className = 'pads-grid';
@@ -550,7 +569,7 @@ function buildForcesPads(
   const updaters: Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> = [];
 
   for (const { xDef, yDef } of pads) {
-    const { updateTrace } = buildXYPad(grid, xDef, yDef, controller);
+    const { updateTrace } = buildXYPad(grid, xDef, yDef, controller, history);
     updaters.push(updateTrace);
   }
 
@@ -585,6 +604,7 @@ export function makeResetBtn(slider: HTMLInputElement, defaultValue: number): HT
   btn.addEventListener('click', () => {
     slider.value = String(defaultValue);
     slider.dispatchEvent(new Event('input'));
+    slider.dispatchEvent(new Event('change'));
   });
 
   return btn;

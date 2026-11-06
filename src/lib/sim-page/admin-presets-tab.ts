@@ -7,6 +7,8 @@
 
 import type { BoidsPreset } from '../../data/boids-presets';
 import type { BoidsController } from '../../components/simulations/boids/boids-controller';
+import { buildAdminImportButton } from '../presets/preset-file';
+import { applyBoidsPreset } from './boids-preset-apply';
 
 export interface AdminPresetsTabOpts {
   controller: BoidsController;
@@ -96,12 +98,7 @@ export function buildAdminPresetsTab(
 
   function loadPreset(preset: BoidsPreset): void {
     activeId = preset.id;
-    Object.assign(opts.controller.params, preset.params);
-    opts.controller.trailsEnabled = preset.trailsEnabled;
-    opts.controller.trailDecay = preset.trailDecay;
-    const nextShader = preset.shader ?? opts.controller.defaultShaderSource;
-    opts.controller.reloadShader(nextShader);
-    opts.setEditorDoc(nextShader);
+    void applyBoidsPreset(opts.controller, preset, opts.setEditorDoc);
     pendingShaderFile = preset.shaderFile ?? '';
     notifyChange();
   }
@@ -273,6 +270,31 @@ export function buildAdminPresetsTab(
       notifyChange();
       render();
     });
+
+    // ── Import from a gallery-exported JSON file ─────────────────────
+    const importRow = buildAdminImportButton({
+      defaults: opts.controller.params as unknown as Record<string, unknown>,
+      simId: 'boids',
+      existingIds: () => new Set(presets.map(p => p.id)),
+      onImport: (imported) => {
+        for (const p of imported) {
+          presets.push({
+            id: p.id, name: p.name,
+            params: p.params as unknown as BoidsPreset['params'],
+            trailsEnabled: Boolean(p.trailsEnabled ?? false),
+            trailDecay: typeof p.trailDecay === 'number' ? p.trailDecay : 0.95,
+            ...(typeof p.shader === 'string' ? { shader: p.shader } : {}),
+          });
+        }
+        activeId = imported[imported.length - 1]?.id ?? activeId;
+        markDirty();
+        notifyChange();
+        render();
+      },
+      onError: (msg) => { console.warn('[admin import]', msg); alert(msg); },
+    });
+    importRow.style.marginTop = '0.25rem';
+    inner.appendChild(importRow);
 
     // ── Write to disk ────────────────────────────────────────────────
     const writeBtn = document.createElement('button');

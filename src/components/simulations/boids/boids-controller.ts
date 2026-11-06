@@ -290,13 +290,21 @@ export class BoidsController {
 
       this._initThemeObserver();
 
-      canvas.addEventListener('mousemove', (e) => {
+      // Pointer events cover mouse and touch alike: a finger drag drives the
+      // force and lifting it (or a cancelled touch when the page scrolls)
+      // releases it. mouseleave alone left the force stuck on after a tap.
+      const setPointer = (e: PointerEvent) => {
         const rect = canvas.getBoundingClientRect();
         this.mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouseY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
         this.mouseActive = true;
-      });
-      canvas.addEventListener('mouseleave', () => { this.mouseActive = false; });
+      };
+      const clearPointer = () => { this.mouseActive = false; };
+      canvas.addEventListener('pointerdown', setPointer);
+      canvas.addEventListener('pointermove', setPointer);
+      canvas.addEventListener('pointerup', clearPointer);
+      canvas.addEventListener('pointercancel', clearPointer);
+      canvas.addEventListener('pointerleave', clearPointer);
 
       // ResizeObserver writes canvas dimensions directly — no layout reads in the GPU rAF loop.
       const canvasRO = new ResizeObserver((entries) => {

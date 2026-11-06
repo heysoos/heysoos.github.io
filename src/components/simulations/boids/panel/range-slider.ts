@@ -1,3 +1,5 @@
+import type { UndoHistory } from '../../../../lib/presets/undo-history';
+
 export interface RangeSliderOpts {
   label:   string;
   min:     number;
@@ -7,11 +9,13 @@ export interface RangeSliderOpts {
   set:     (v: number) => void;
   scale?:  'linear' | 'log';
   onIndicatorCreate?: (wrap: HTMLElement, fill: HTMLElement) => void;
+  /** When given, a drag records one undo entry and a typed edit records one. */
+  history?: UndoHistory;
 }
 
 /** Appends a labelled range-slider row to `parent`. */
 export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): void {
-  const { label, min, max, step, get, set, scale = 'linear' } = opts;
+  const { label, min, max, step, get, set, scale = 'linear', history } = opts;
 
   const row      = document.createElement('div');
   row.className  = 'param-row';
@@ -54,7 +58,19 @@ export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): v
     const val = sliderToValue(parseFloat(input.value));
     set(val);
     valueSpan.textContent = val.toFixed(decimals);
+    history?.touch();
   });
+
+  // Undo coalescing: pointerdown opens a gesture, 'change' (fires on release,
+  // and on keyboard steps) closes it. A keyboard step with no gesture open is
+  // its own entry.
+  if (history) {
+    input.addEventListener('pointerdown', () => history.beginGesture(label));
+    input.addEventListener('change', () => {
+      if (history.isGestureOpen()) history.endGesture();
+      else history.push(label);
+    });
+  }
 
   valueSpan.addEventListener('click', () => {
     const lastVal = get();
@@ -72,7 +88,7 @@ export function createRangeSlider(parent: HTMLElement, opts: RangeSliderOpts): v
       const raw      = decimals === 0 ? parseInt(editInput.value, 10) : parseFloat(editInput.value);
       const isValid  = !isNaN(raw) && raw >= min && raw <= max;
       const finalVal = isValid ? raw : lastVal;
-      if (isValid) { set(finalVal); input.value = String(valueToSlider(finalVal)); }
+      if (isValid) { set(finalVal); input.value = String(valueToSlider(finalVal)); history?.push(label); }
       valueSpan.textContent = finalVal.toFixed(decimals);
       editInput.replaceWith(valueSpan);
     }

@@ -95,6 +95,8 @@ const { sim } = Astro.props;
   import { BoidsController } from './simulations/boids/boids-controller';
   import { ObstacleTracker } from '../lib/webgpu/obstacle-tracker';
   import { BOIDS_PRESETS } from '../data/boids-presets';
+  import { applyBoidsPreset } from '../lib/sim-page/boids-preset-apply';
+  import { scaledHeroCount } from '../lib/sim-page/hero-scale';
 
   const canvas = document.getElementById('bg-sim-canvas') as HTMLCanvasElement;
   const debugCanvas = document.getElementById('bg-sim-debug') as HTMLCanvasElement;
@@ -185,11 +187,22 @@ const { sim } = Astro.props;
       }
     }
 
+    // The background swarm is scaled to the viewport area so a phone is not
+    // a wall of boids. The preset's own count is kept for rescaling on resize.
+    let presetCount = defaultPreset.params.numParticles;
+    function applyScale(): void {
+      controller.params.numParticles = scaledHeroCount(presetCount, canvas.clientWidth, canvas.clientHeight);
+    }
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(applyScale, 200);
+    });
+
     async function applyPreset(preset: typeof BOIDS_PRESETS[0]): Promise<void> {
-      Object.assign(controller.params, preset.params);
-      controller.trailsEnabled = preset.trailsEnabled;
-      controller.trailDecay    = preset.trailDecay;
-      await controller.reloadShader(preset.shader ?? controller.defaultShaderSource);
+      await applyBoidsPreset(controller, preset);
+      presetCount = preset.params.numParticles;
+      applyScale();
       activePresetId = preset.id;
       updatePills();
     }
