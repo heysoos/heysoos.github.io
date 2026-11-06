@@ -24,20 +24,19 @@ export async function setupFieldBoids(
     defaults: { ...DEFAULT_FIELD_BOIDS_PARAMS },
     builtIn: FIELD_BOIDS_PRESETS as unknown as Array<{ id: string; name: string; params: Params }>,
     capture: () => ({ params: { ...ctrl.params } }),
-    apply: (body) => {
-      Object.assign(ctrl.params, body.params);
+    apply: (body) => { Object.assign(ctrl.params, body.params); },
+    prepare: (body) => {
       if (isPhoneLayout()) {
-        ctrl.params.numParticles = Math.min(ctrl.params.numParticles, PHONE_PARTICLE_CAP);
+        body.params.numParticles = Math.min(body.params.numParticles, PHONE_PARTICLE_CAP);
       }
+      return body;
     },
   });
 
   const defaultPreset = FIELD_BOIDS_PRESETS.find(p => p.isDefault) ?? FIELD_BOIDS_PRESETS[0];
   if (defaultPreset) {
-    Object.assign(ctrl.params, defaultPreset.params);
-    if (isPhoneLayout()) ctrl.params.numParticles = Math.min(ctrl.params.numParticles, PHONE_PARTICLE_CAP);
-    mgr.setActiveId(defaultPreset.id);
-    mgr.history.resetBaseline();
+    await mgr.load(defaultPreset as unknown as { id: string; name: string; params: Params });
+    mgr.history.clear();
   }
 
   let section: PresetSectionHandle | null = null;

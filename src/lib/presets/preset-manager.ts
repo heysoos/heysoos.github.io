@@ -16,9 +16,16 @@ export interface PresetBinding<P extends ParamRecord> {
   capture(): PresetBody<P>;
   /** Push a body into the controller. */
   apply(body: PresetBody<P>): void | Promise<void>;
+  /** Optional device-specific adjustment (e.g. a phone particle cap) applied
+   *  to a preset body before it is loaded *and* before it is compared for
+   *  the dirty check, so the adjustment itself never reads as "unsaved". */
+  prepare?(body: PresetBody<P>): PresetBody<P>;
 }
 
-interface Snapshot<P extends ParamRecord> { body: PresetBody<P>; activeId: string | undefined }
+// Undo snapshots are the param body only. The active preset id is not part of
+// history: undoing past a load leaves that preset active but dirty, which is
+// what the user sees anyway, and keeps Save As from being undone by accident.
+type Snapshot<P extends ParamRecord> = PresetBody<P>;
 
 export interface PresetManager<P extends ParamRecord> {
   readonly simId: string;
@@ -46,14 +53,21 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
   let rebuildFn: () => void = () => {};
 
   const history = createUndoHistory<Snapshot<P>>({
-    getSnapshot: () => ({ body: cloneBody(binding.capture()), activeId }),
+    getSnapshot: () => cloneBody(binding.capture()),
     applySnapshot: async (s) => {
-      activeId = s.activeId;
-      await binding.apply(cloneBody(s.body));
+      await binding.apply(cloneBody(s));
       rebuildFn();
     },
-    isEqual: (a, b) => a.activeId === b.activeId && bodyKey(a.body) === bodyKey(b.body),
+    isEqual: (a, b) => bodyKey(a) === bodyKey(b),
   });
+
+  // Fill missing params from defaults (built-ins written before a param
+  // existed), then let the sim adjust (phone cap). Used for both loading and
+  // the dirty check so neither step reads as an unsaved change.
+  const prepare = (body: PresetBody<P>): PresetBody<P> => {
+    const filled = { ...body, params: { ...binding.defaults, ...body.params } } as PresetBody<P>;
+    return binding.prepare ? binding.prepare(filled) : filled;
+  };
 
   function findPreset(id: string | undefined): BasePreset<P> | undefined {
     if (!id) return undefined;
@@ -74,7 +88,7 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
     isDirty() {
       const active = findPreset(activeId);
       if (!active) return false;
-      return bodyKey(bodyOf(active)) !== bodyKey(binding.capture());
+      return bodyKey(prepare(cloneBody(bodyOf(active)))) !== bodyKey(binding.capture());
     },
 
     capture: () => cloneBody(binding.capture()),
@@ -82,7 +96,7 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
     async load(preset) {
       history.endGesture();
       activeId = preset.id;
-      await binding.apply(cloneBody(bodyOf(preset)));
+      await binding.apply(prepare(cloneBody(bodyOf(preset))));
       history.push(`Load ${preset.name}`);
       rebuildFn();
     },

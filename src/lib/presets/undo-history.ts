@@ -25,6 +25,8 @@ export interface UndoHistory {
   redoLabel(): string | undefined;
   /** Re-baseline without recording (e.g. after an external, non-undoable change). */
   resetBaseline(): void;
+  /** Drop all entries and re-baseline (e.g. after the initial preset load). */
+  clear(): void;
   subscribe(fn: () => void): () => void;
   dispose(): void;
 }
@@ -127,6 +129,8 @@ export function createUndoHistory<S>(opts: UndoHistoryOpts<S>): UndoHistory {
     redoLabel: () => redoStack[redoStack.length - 1]?.label,
 
     resetBaseline() { endGesture(); current = opts.getSnapshot(); },
+
+    clear() { endGesture(); undoStack = []; redoStack = []; current = opts.getSnapshot(); notify(); },
 
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
 
