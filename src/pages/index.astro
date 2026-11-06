@@ -87,6 +87,7 @@ const projects = (await getCollection('projects'))
   .hero {
     position: relative;
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: flex-end;
     padding: 4rem 1.5rem;
@@ -168,6 +169,7 @@ const projects = (await getCollection('projects'))
   <script>
     import { BoidsController } from '../components/simulations/boids/boids-controller';
     import { BOIDS_PRESETS } from '../data/boids-presets';
+    import { scaledHeroCount } from '../lib/sim-page/hero-scale';
 
     const canvas = document.getElementById('boids-canvas') as HTMLCanvasElement;
     const fallback = document.getElementById('boids-fallback') as HTMLElement;
@@ -184,6 +186,17 @@ const projects = (await getCollection('projects'))
           controller.trailDecay = defaultPreset.trailDecay;
           if (defaultPreset.shader !== undefined) await controller.reloadShader(defaultPreset.shader);
         }
+        // Scale the swarm to the canvas area so phones aren't a wall of boids.
+        const presetCount = controller.params.numParticles;
+        const applyScale = () => {
+          controller.params.numParticles = scaledHeroCount(presetCount, canvas.clientWidth, canvas.clientHeight);
+        };
+        applyScale();
+        let resizeTimer = 0;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimer);
+          resizeTimer = window.setTimeout(applyScale, 200);
+        });
         controller.start();
       } else {
         canvas.style.display = 'none';
