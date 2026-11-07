@@ -5,7 +5,8 @@
 // vertical is fine. While a param is selected the list collapses to a chip
 // (name, value, range) so the sim stays visible; a plain tap on the canvas
 // or ‹ returns to the list. With the list closed the canvas is the sim's own
-// pointer force, and a plain tap on it closes the list. Long-press a row (or
+// pointer force, and a plain tap on it closes the list. Dragging sideways on
+// a row scrubs that param in place (vertical still scrolls). Long-press a row (or
 // tap the chip's name) to lock it. The card header (undo/redo, Presets,
 // Randomize) stays put while the body scrolls; Presets swaps the body for
 // the shared preset section inside the same card.
@@ -43,6 +44,7 @@ export interface ScrubPanelHandle {
 }
 
 const COARSE_PX = 220;      // horizontal travel for the full range
+const ROW_PX = 240;         // same, for a drag that starts on a list row
 const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
 const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
@@ -160,10 +162,11 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         const row = document.createElement('button');
         row.className = 'scrub-row';
         row.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span><span class="v"></span>`;
-        row.addEventListener('click', () => select(cur === spec ? null : spec));
+        row.addEventListener('click', () => { if (!swallowClick) select(cur === spec ? null : spec); swallowClick = false; });
         body.appendChild(row);
         rows.push({ spec, el: row, val: row.querySelector<HTMLElement>('.v')! });
         attachLongPress(row, spec.key as string);
+        attachRowDrag(row, spec);
       } else {
         rows.push(buildEnum(spec));
       }
@@ -206,6 +209,41 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     body.appendChild(wrap);
     attachLongPress(wrap, spec.key as string);
     return row;
+  }
+
+  // Sideways drag on a row: a mini slider. The tap-to-select click is
+  // swallowed once a drag has started; the long-press cancels itself on slop.
+  let swallowClick = false;
+  function attachRowDrag(row: HTMLElement, spec: NumSpec): void {
+    let id = -1, x0 = 0, y0 = 0, s0 = 0, active = false;
+    row.addEventListener('pointerdown', (e) => {
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; active = false;
+      s0 = toSlider(spec, get(spec.key as string));
+    });
+    row.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (!active) {
+        if (Math.abs(dx) < PRESS_SLOP || Math.abs(dx) < Math.abs(dy)) return;
+        active = true; swallowClick = true;
+        row.classList.add('dragging');
+        try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+        history?.beginGesture(spec.label);
+      }
+      e.preventDefault();
+      const range = toSlider(spec, spec.max) - toSlider(spec, spec.min);
+      const s = Math.min(toSlider(spec, spec.max), Math.max(toSlider(spec, spec.min), s0 + (dx / ROW_PX) * range));
+      set(spec.key as string, fromSlider(spec, s));
+      history?.touch();
+      refresh();
+    });
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      id = -1;
+      if (active) { active = false; row.classList.remove('dragging'); history?.endGesture(); }
+    };
+    row.addEventListener('pointerup', end);
+    row.addEventListener('pointercancel', (e) => { end(e); swallowClick = false; });
   }
 
   function attachLongPress(el: HTMLElement, key: string): void {

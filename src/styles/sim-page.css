@@ -112,7 +112,7 @@
 .scrub-list {
   position: absolute;
   left: 0.5rem; top: 0.6rem; bottom: 3.6rem;
-  width: 160px;
+  width: 180px;
   display: flex; flex-direction: column;
   overflow: hidden;
   transition: width 0.2s ease;
@@ -123,7 +123,7 @@
   -webkit-touch-callout: none; user-select: none;
 }
 .scrub-list.presets-mode { width: min(300px, calc(100% - 1rem)); }
-.scrub-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 0.3rem 0.4rem 0.8rem; display: flex; flex-direction: column; gap: 1px; }
+.scrub-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 0.3rem 0.35rem 0.8rem; display: flex; flex-direction: column; gap: 1px; }
 .scrub-scroll::-webkit-scrollbar { display: none; }
 .scrub-scroll > *, .scrub-body > * { flex-shrink: 0; }
 .scrub-body { display: flex; flex-direction: column; gap: 1px; }
@@ -156,9 +156,11 @@
 .scrub-row .v, .scrub-enum .v { font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; font-variant-numeric: tabular-nums; }
 .scrub-row.on { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .scrub-row.on .v { color: var(--accent); }
+.scrub-row.dragging { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.scrub-row.dragging .v { color: var(--accent); }
 /* Collapsed state while a param is selected */
 .scrub-chip {
-  position: absolute; left: 0.5rem; top: 0.6rem; width: 160px; z-index: 5;
+  position: absolute; left: 0.5rem; top: 0.6rem; width: 180px; z-index: 5;
   padding: 6px 10px 9px; border-radius: 10px;
   background: rgba(8,6,4,0.82); border: 1px solid var(--accent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -179,6 +181,8 @@
 .scrub-list .locked .n { color: var(--accent); }
 .scrub-enum { padding: 3px 6px 5px; display: flex; flex-direction: column; gap: 3px; }
 .scrub-enum .note { font-size: 0.56rem; color: #e08a60; }
+.scrub-enum .segmented { display: flex; width: 100%; }
+.scrub-enum .segmented button { flex: 1 1 auto; min-width: 0; padding: 4px 2px; font-size: 0.58rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scrub-enum .n { font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px; }
 
 /* Shared enum widgets (desktop Look section + phone list) */
