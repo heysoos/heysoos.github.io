@@ -56,7 +56,6 @@ export const FIELD_BOIDS_GROUPS: ParamGroup[] = [
     num('friction', 'Friction', 0, 10, 0.1),
     num('maxSpeed', 'Max speed', 0.01, 1, 0.01),
     num('noise', 'Noise', 0, 0.1, 0.001),
-    num('gravity', 'Gravity', 0, 1, 0.005),
   ] },
   { name: 'Field', items: [
     num('memory', 'Memory', 0, 0.99, 0.01),

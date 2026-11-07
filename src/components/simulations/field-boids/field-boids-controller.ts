@@ -42,6 +42,9 @@ export class FieldBoidsController {
    *  down unless a tilt sensor steers it. Not a preset param. */
   private gravityX = 0;
   private gravityY = -1;
+  /** Gravity acceleration. A device setting (phone tilt companion), not a
+   *  preset param: presets never carry it and Randomize never touches it. */
+  gravity = 0;
 
   // GPU resources
   private uniformBuffer!: GPUBuffer;
@@ -375,7 +378,7 @@ export class FieldBoidsController {
     v.setFloat32(112, this.bgColor.g, true);
     v.setFloat32(116, this.bgColor.b, true);
     v.setFloat32(120, p.pointAlpha, true);
-    v.setFloat32(124, p.gravity ?? 0, true);
+    v.setFloat32(124, this.gravity, true);
     v.setFloat32(128, this.gravityX, true);
     v.setFloat32(132, this.gravityY, true);
     v.setFloat32(136, p.bloom ?? 0, true);

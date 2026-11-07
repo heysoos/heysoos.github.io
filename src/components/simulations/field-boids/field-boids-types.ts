@@ -19,7 +19,6 @@ export interface FieldBoidsParams {
   viewMode: number;       // 0 density, 1 flow (hue by direction), 2 points
   exposure: number;       // density → brightness gain
   pointAlpha: number;     // per-point alpha in points view
-  gravity: number;        // constant acceleration along the gravity direction (0 = off)
   // Look (display only; nothing below touches the physics)
   curve: number;          // 0 linear, 1 sqrt, 2 log, 3 asinh, 4 gamma
   tonemap: number;        // 0 clip, 1 reinhard, 2 aces
@@ -54,7 +53,6 @@ export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   viewMode: 0,
   exposure: 2.0,
   pointAlpha: 0.15,
-  gravity: 0,
   curve: 3,
   tonemap: 2,
   palette: 0,

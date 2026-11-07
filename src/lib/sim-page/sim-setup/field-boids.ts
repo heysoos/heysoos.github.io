@@ -1,6 +1,6 @@
 // src/lib/sim-page/sim-setup/field-boids.ts
 import type { FieldBoidsController } from '../../../components/simulations/field-boids/field-boids-controller';
-import { buildFieldBoidsPanel } from '../../../components/simulations/field-boids/field-boids-panel';
+import { buildFieldBoidsPanel, restoreDeviceGravity } from '../../../components/simulations/field-boids/field-boids-panel';
 import { DEFAULT_FIELD_BOIDS_PARAMS, type FieldBoidsParams } from '../../../components/simulations/field-boids/field-boids-types';
 import { FIELD_BOIDS_PRESETS } from '../../../data/field-boids-presets';
 import { createPresetManager } from '../../presets/preset-manager';
@@ -48,6 +48,7 @@ export async function setupFieldBoids(
   // straight down, so a preset with gravity behaves the same everywhere.
   let tilt: TiltSensor | undefined;
   if (tiltMaybeAvailable()) {
+    restoreDeviceGravity(ctrl);
     tilt = createTiltSensor({
       onDirection: (x, y) => ctrl.setGravityDirection(x, y),
       onDisabled: () => ctrl.resetGravityDirection(),
