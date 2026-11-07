@@ -167,8 +167,8 @@ export class FieldBoidsController {
         const cur = this.pointers.get(e.pointerId);
         if (!cur) {
           const [x, y] = toWorld(sx, sy);
-          // Space (or the middle button) turns a mouse drag into a pan.
-          const pan = e.pointerType === 'mouse' && (this.spaceHeld || e.button === 1);
+          // Space, alt (Photoshop-style) or the middle button turns a mouse drag into a pan.
+          const pan = e.pointerType === 'mouse' && (this.spaceHeld || e.altKey || e.button === 1);
           this.pointers.set(e.pointerId, { x, y, px: x, py: y, vx: 0, vy: 0, strength: 1, type: e.pointerType, clientX: e.clientX, clientY: e.clientY, sx, sy, pan });
           try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
           if (pan) e.preventDefault();
@@ -216,13 +216,16 @@ export class FieldBoidsController {
         this.zoomAt(Math.exp(-e.deltaY * 0.0015), sx, sy);
       }, { passive: false });
       const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      // Space is a modifier here, never a page scroll or a button press.
       window.addEventListener('keydown', (e) => {
-        if (e.code !== 'Space' || isTyping(e.target) || e.repeat) return;
+        if (e.code !== 'Space' || isTyping(e.target)) return;
+        e.preventDefault();
+        if (e.repeat) return;
         this.spaceHeld = true; canvas.style.cursor = 'grab';
-        if (document.activeElement === document.body) e.preventDefault();   // no page scroll
       });
       window.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space') return;
+        if (e.code !== 'Space' || isTyping(e.target)) return;
+        e.preventDefault();
         this.spaceHeld = false; canvas.style.cursor = '';
       });
       canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
@@ -610,9 +613,9 @@ export class FieldBoidsController {
         storeOp: 'store',
       }],
     });
-    pass.setPipeline(this.depositPipeline);
+    pass.setPipeline(this.depositPipeline);   // 4 instances per particle: splat + wrapped copies
     pass.setBindGroup(0, this.depositBindGroups[readIdx]);
-    pass.draw(6, N);
+    pass.draw(6, N * 4);
     pass.end();
   }
 
