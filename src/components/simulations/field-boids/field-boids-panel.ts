@@ -7,6 +7,7 @@ import type { UndoHistory } from '../../../lib/presets/undo-history';
 import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
 import { randomizeFieldBoidsParams } from './field-boids-randomize';
 import type { ParamLocks, ParamLockBinding } from '../../../lib/presets/param-locks';
+import { LOOK_GROUP } from './field-boids-spec';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -24,6 +25,9 @@ export interface FieldBoidsPanelOpts {
   rebuild?: () => void;
   /** Gallery page: sliders can be locked across preset loads. */
   locks?: ParamLocks;
+  /** Phone: params live in the scrub list, so the sheet shows only presets,
+   *  Randomize and the tilt toggle. */
+  paramsHidden?: boolean;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -48,7 +52,23 @@ function heading(parent: HTMLElement, text: string): void {
   parent.appendChild(h);
 }
 
-const VIEW_MODES = ['Density', 'Flow', 'Points'] as const;
+/** A labelled row of exclusive pills for an enum param. */
+function pillRow(parent: HTMLElement, label: string, names: readonly string[], get: () => number, set: (i: number) => void, history?: UndoHistory): void {
+  const row = el('div', 'display:flex;align-items:center;gap:4px;margin-bottom:0.3rem;flex-wrap:wrap;');
+  row.appendChild(el('span', 'font-size:0.66rem;color:var(--text-muted);min-width:3.6rem;', label));
+  const btns: HTMLButtonElement[] = [];
+  names.forEach((name, i) => {
+    const b = el('button', pillStyle(get() === i), name);
+    b.addEventListener('click', () => {
+      set(i);
+      btns.forEach((x, k) => { x.style.cssText = pillStyle(k === i); });
+      history?.push(label);
+    });
+    btns.push(b);
+    row.appendChild(b);
+  });
+  parent.appendChild(row);
+}
 const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
 /** "Tilt gravity" switch. Not a preset param: it is a device setting, and
@@ -123,7 +143,7 @@ export function buildFieldBoidsPanel(
 
   // Simulation
   const simHead = el('div', 'display:flex;justify-content:space-between;align-items:baseline;');
-  heading(simHead, 'Simulation');
+  if (!opts.paramsHidden) heading(simHead, 'Simulation');
   const randomBtn = el('button', RANDOM_BTN, '⚄ Randomize');
   randomBtn.title = 'Random dynamics (particle count and view unchanged)';
   randomBtn.addEventListener('click', () => {
@@ -134,6 +154,10 @@ export function buildFieldBoidsPanel(
   });
   simHead.appendChild(randomBtn);
   container.appendChild(simHead);
+  if (opts.paramsHidden) {
+    if (opts.tilt) buildTiltRow(container, opts.tilt);
+    return;
+  }
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
     get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history, lock: lockFor('numParticles') });
   createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
@@ -168,24 +192,16 @@ export function buildFieldBoidsPanel(
   createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
     get: () => p.splatSize, set: v => { p.splatSize = v; }, history, lock: lockFor('splatSize') });
 
-  // View
+  // Look: enums as pill rows, numbers as sliders, all from the shared spec.
   divider(container);
-  heading(container, 'View');
-  const modeRow = el('div', 'display:flex;gap:4px;margin-bottom:0.4rem;');
-  const modeBtns: HTMLButtonElement[] = [];
-  VIEW_MODES.forEach((name, i) => {
-    const b = el('button', pillStyle(p.viewMode === i), name);
-    b.addEventListener('click', () => {
-      p.viewMode = i;
-      modeBtns.forEach((mb, k) => { mb.style.cssText = pillStyle(k === i); });
-      history?.push('View mode');
-    });
-    modeBtns.push(b);
-    modeRow.appendChild(b);
-  });
-  container.appendChild(modeRow);
-  createRangeSlider(container, { label: 'Exposure', min: 0.1, max: 20, step: 0.1, scale: 'log',
-    get: () => p.exposure, set: v => { p.exposure = v; }, history, lock: lockFor('exposure') });
-  createRangeSlider(container, { label: 'Point alpha', min: 0.01, max: 1, step: 0.01,
-    get: () => p.pointAlpha, set: v => { p.pointAlpha = v; }, history, lock: lockFor('pointAlpha') });
+  heading(container, 'Look');
+  const pr = p as unknown as Record<string, number>;
+  for (const item of LOOK_GROUP.items) {
+    if (item.kind === 'enum') {
+      pillRow(container, item.label, item.names, () => pr[item.key], i => { pr[item.key] = i; }, history);
+    } else {
+      createRangeSlider(container, { label: item.label, min: item.min, max: item.max, step: item.step, scale: item.scale,
+        get: () => pr[item.key], set: v => { pr[item.key] = item.int ? Math.round(v) : v; }, history, lock: lockFor(item.key) });
+    }
+  }
 }

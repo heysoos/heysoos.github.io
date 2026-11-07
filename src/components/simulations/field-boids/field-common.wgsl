@@ -37,9 +37,13 @@ struct Params {
   gravity:          f32,  // 124 — acceleration magnitude
   gravityX:         f32,  // 128 — unit direction, screen space (y up)
   gravityY:         f32,  // 132
-  pad0:             f32,  // 136
-  pad1:             f32,  // 140
-}                          // 144 bytes total
+  bloom:            f32,  // 136
+  longExposure:     f32,  // 140
+  curve:            u32,  // 144
+  tonemap:          u32,  // 148
+  palette:          u32,  // 152
+  pad0:             f32,  // 156
+}                          // 160 bytes total
 
 struct Particle {
   pos: vec2f,

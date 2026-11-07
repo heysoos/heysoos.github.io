@@ -20,6 +20,12 @@ export interface FieldBoidsParams {
   exposure: number;       // density → brightness gain
   pointAlpha: number;     // per-point alpha in points view
   gravity: number;        // constant acceleration along the gravity direction (0 = off)
+  // Look (display only; nothing below touches the physics)
+  curve: number;          // 0 linear, 1 sqrt, 2 log, 3 asinh, 4 gamma
+  tonemap: number;        // 0 clip, 1 reinhard, 2 aces
+  palette: number;        // 0 accent tint, 1 ember, 2 ice, 3 spectral
+  bloom: number;          // 0 = off; adds coarse mips of the density back in
+  longExposure: number;   // render-only frame blending, 0 = off, 0.98 = long
 }
 
 export interface FieldBoidsPreset {
@@ -49,4 +55,9 @@ export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   exposure: 2.0,
   pointAlpha: 0.15,
   gravity: 0,
+  curve: 3,
+  tonemap: 2,
+  palette: 0,
+  bloom: 0,
+  longExposure: 0,
 };
