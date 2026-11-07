@@ -112,7 +112,7 @@
 .scrub-list {
   position: absolute;
   left: 0; top: 2.4rem; bottom: 120px;
-  width: 146px;
+  width: 168px;
   padding: 0.4rem 0.4rem 0.8rem;
   display: flex; flex-direction: column; gap: 1px;
   overflow-y: auto; scrollbar-width: none;
@@ -123,7 +123,22 @@
 }
 .scrub-list::-webkit-scrollbar { display: none; }
 .scrub-list > * { flex-shrink: 0; }
-.scrub-list h6 { margin: 0.5rem 0 0.15rem 0.3rem; font-size: 0.56rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); font-weight: 400; }
+.scrub-list[hidden], .scrub-overlay[hidden], .scrub-list [hidden] { display: none !important; }
+.scrub-head { display: flex; align-items: center; gap: 3px; margin: 0 0 4px; }
+.scrub-head button {
+  min-height: 0 !important; padding: 4px 7px; border-radius: 6px;
+  border: 1px solid var(--bg-surface-border); background: rgba(0,0,0,0.5); color: var(--text-body);
+  font-size: 0.72rem; line-height: 1; cursor: pointer;
+}
+.scrub-head button:disabled { opacity: 0.3; }
+.scrub-head .h-presets { flex: 1; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.scrub-head .h-close { font-size: 0.95rem; padding: 2px 7px; }
+.scrub-list h6 {
+  margin: 0.7rem 0 0.2rem; padding: 0.3rem 0.4rem 0.2rem;
+  font-size: 0.56rem; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+  color: var(--accent); border-top: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
+}
 .scrub-row {
   display: flex; justify-content: space-between; align-items: center; gap: 4px;
   width: 100%; min-height: 0 !important; padding: 4px 6px;
@@ -139,15 +154,29 @@
 .scrub-list .lk { display: none; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); }
 .scrub-list .locked .lk { display: inline-block; }
 .scrub-list .locked .n { color: var(--accent); }
-.scrub-enum { padding: 2px 6px 4px; }
-.scrub-enum .n { font-size: 0.62rem; color: var(--text-muted); }
-.scrub-enum .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
-.scrub-enum .chips button {
-  min-height: 0 !important; padding: 3px 6px; border-radius: 99px;
-  border: 1px solid var(--bg-surface-border); background: transparent; color: var(--text-muted);
-  font-size: 0.58rem; line-height: 1.1; cursor: pointer;
+.scrub-enum { padding: 3px 6px 5px; display: flex; flex-direction: column; gap: 3px; }
+.scrub-enum .n { font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px; }
+
+/* Shared enum widgets (desktop Look section + phone list) */
+.look-segmented, .scrub-enum .segmented {
+  display: inline-flex; border: 1px solid var(--bg-surface-border); border-radius: 6px; overflow: hidden; background: rgba(0,0,0,0.35);
 }
-.scrub-enum .chips button.on { border-color: var(--accent); color: var(--accent); }
+.look-segmented button, .scrub-enum .segmented button {
+  min-height: 0 !important; padding: 4px 7px; border: none; border-right: 1px solid var(--bg-surface-border);
+  background: transparent; color: var(--text-muted); font-size: 0.62rem; line-height: 1.1; cursor: pointer;
+}
+.look-segmented button:last-child, .scrub-enum .segmented button:last-child { border-right: none; }
+.look-segmented button.on, .scrub-enum .segmented button.on { background: var(--accent); color: var(--bg-primary); }
+.look-swatches, .scrub-enum .swatches { display: inline-flex; gap: 6px; align-items: center; padding: 2px 0; }
+.look-swatches .sw, .scrub-enum .swatches .sw {
+  width: 18px; height: 18px; min-height: 0 !important; padding: 0; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+}
+.look-swatches .sw.on, .scrub-enum .swatches .sw.on { border-color: var(--text-primary); box-shadow: 0 0 0 1px var(--text-primary); }
+.look-select, .scrub-enum select {
+  background: rgba(0,0,0,0.35); color: var(--text-body); border: 1px solid var(--bg-surface-border); border-radius: 6px;
+  font-size: 0.66rem; padding: 3px 6px; min-height: 0 !important;
+}
 
 .scrub-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; touch-action: none; }
 .scrub-overlay.armed { pointer-events: auto; }

@@ -15,7 +15,7 @@ import {
 export type { FieldBoidsParams, FieldBoidsPreset };
 
 export const MAX_PARTICLES = 2_000_000;
-const PARAMS_BYTES = 160;
+const PARAMS_BYTES = 176;
 const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class FieldBoidsController {
@@ -182,7 +182,7 @@ export class FieldBoidsController {
       layout: viewPipelineLayout,
       vertex: { module: viewModule, entryPoint: 'pointVert' },
       fragment: { module: viewModule, entryPoint: 'pointFrag', targets: [{ format: FIELD_FORMAT, blend: additive }] },
-      primitive: { topology: 'point-list' },
+      primitive: { topology: 'triangle-list' },
     });
 
     const postModule = device.createShaderModule({ code: commonSrc + postSrc });
@@ -386,6 +386,12 @@ export class FieldBoidsController {
     v.setUint32(144,  p.curve ?? 3, true);
     v.setUint32(148,  p.tonemap ?? 2, true);
     v.setUint32(152,  p.palette ?? 0, true);
+    const canvas = this.gpu?.canvas;
+    const dpr = (canvas && canvas.width > 0 && canvas.clientWidth > 0) ? canvas.width / canvas.clientWidth : 1;
+    v.setFloat32(156, Math.max(0.5, (p.pointSize ?? 2) * dpr), true);
+    v.setFloat32(160, canvas?.width ?? 1, true);
+    v.setFloat32(164, canvas?.height ?? 1, true);
+    v.setUint32(168,  p.pointShape ?? 0, true);
     return buf;
   }
 
@@ -523,7 +529,7 @@ export class FieldBoidsController {
       });
       pts.setPipeline(this.pointPipeline);
       pts.setBindGroup(0, this.fullBindGroups[this.writeIdx][1 - readIdx]);
-      pts.draw(N);
+      pts.draw(6, N);
       pts.end();
     }
 

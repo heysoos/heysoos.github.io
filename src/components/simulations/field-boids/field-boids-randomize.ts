@@ -1,31 +1,33 @@
 // src/components/simulations/field-boids/field-boids-randomize.ts
-// Random dynamics for the "Randomize" button. Only the physics and field
-// params are touched: particle count, steps per frame, dt, mouse radius and
-// the View section stay as they are (they are performance/display choices,
-// not part of what makes a preset behave differently).
+// Random dynamics for the "Randomize" button: every physics and field param
+// drawn uniformly over its own slider range (log sliders uniform in log
+// space, so the slider thumb lands anywhere with equal probability).
+// Particle count, steps per frame, dt, mouse radius and the Look group stay
+// as they are; the caller restores locked params afterwards.
 
 import type { FieldBoidsParams } from './field-boids-types';
+import { FIELD_BOIDS_GROUPS, type NumSpec } from './field-boids-spec';
 
-const uniform = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
-const logUniform = (lo: number, hi: number) => Math.exp(uniform(Math.log(lo), Math.log(hi)));
-const chance = (p: number) => Math.random() < p;
-const round = (v: number, step: number) => Math.round(v / step) * step;
+const SKIP = new Set<string>(['numParticles', 'stepsPerFrame']);
+
+function roll(spec: NumSpec): number {
+  const lo = spec.scale === 'log' ? Math.log(spec.min) : spec.min;
+  const hi = spec.scale === 'log' ? Math.log(spec.max) : spec.max;
+  let v = lo + Math.random() * (hi - lo);
+  if (spec.scale === 'log') v = Math.exp(v);
+  v = Math.round(v / spec.step) * spec.step;
+  if (spec.int) v = Math.round(v);
+  return Math.min(spec.max, Math.max(spec.min, v));
+}
 
 /** Mutates `p` in place with a fresh random set of dynamics. */
 export function randomizeFieldBoidsParams(p: FieldBoidsParams): void {
-  const attractionRadius = logUniform(0.02, 0.4);
-  // Repulsion radius stays inside the attraction radius so flocks can form.
-  const repulsionRadius = logUniform(0.005, Math.min(0.15, attractionRadius * 0.8));
-
-  p.attractionRadius = round(attractionRadius, 0.005);
-  p.repulsionRadius  = round(repulsionRadius, 0.005);
-  p.attraction       = round(logUniform(0.05, 4), 0.01);
-  p.repulsion        = round(logUniform(0.1, 8), 0.01);
-  p.alignment        = chance(0.2) ? 0 : round(logUniform(0.02, 6), 0.01);
-  p.coneAngle        = round(uniform(-1, 0.9), 0.01);
-  p.friction         = round(logUniform(0.3, 8), 0.1);
-  p.maxSpeed         = round(logUniform(0.05, 0.8), 0.01);
-  p.noise            = chance(0.5) ? 0 : round(logUniform(0.001, 0.05), 0.001);
-  p.memory           = chance(0.3) ? 0 : round(uniform(0.3, 0.97), 0.01);
-  p.splatSize        = round(uniform(0.5, 3), 0.1);
+  const pr = p as unknown as Record<string, number>;
+  for (const group of FIELD_BOIDS_GROUPS) {
+    if (group.name === 'Look') continue;
+    for (const item of group.items) {
+      if (item.kind !== 'num' || SKIP.has(item.key as string)) continue;
+      pr[item.key as string] = roll(item);
+    }
+  }
 }

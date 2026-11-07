@@ -7,7 +7,7 @@ import type { UndoHistory } from '../../../lib/presets/undo-history';
 import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
 import { randomizeFieldBoidsParams } from './field-boids-randomize';
 import type { ParamLocks, ParamLockBinding } from '../../../lib/presets/param-locks';
-import { LOOK_GROUP } from './field-boids-spec';
+import { LOOK_GROUP, type EnumSpec } from './field-boids-spec';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -52,23 +52,35 @@ function heading(parent: HTMLElement, text: string): void {
   parent.appendChild(h);
 }
 
-/** A labelled row of exclusive pills for an enum param. */
-function pillRow(parent: HTMLElement, label: string, names: readonly string[], get: () => number, set: (i: number) => void, history?: UndoHistory): void {
-  const row = el('div', 'display:flex;align-items:center;gap:4px;margin-bottom:0.3rem;flex-wrap:wrap;');
-  row.appendChild(el('span', 'font-size:0.66rem;color:var(--text-muted);min-width:3.6rem;', label));
-  const btns: HTMLButtonElement[] = [];
-  names.forEach((name, i) => {
-    const b = el('button', pillStyle(get() === i), name);
-    b.addEventListener('click', () => {
-      set(i);
-      btns.forEach((x, k) => { x.style.cssText = pillStyle(k === i); });
-      history?.push(label);
+/** One enum control, drawn as the spec says: segmented bar, swatches or select. */
+function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i: number) => void, history?: UndoHistory, after?: () => void): void {
+  const row = el('div', 'display:flex;align-items:center;gap:6px;margin:0 0 0.35rem;');
+  row.appendChild(el('span', 'font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);min-width:4.2rem;', spec.label));
+  const pick = (i: number) => { set(i); history?.push(spec.label); after?.(); };
+  if (spec.ui === 'select') {
+    const sel = document.createElement('select');
+    sel.className = 'look-select';
+    spec.names.forEach((n, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = n; sel.appendChild(o); });
+    sel.value = String(get());
+    sel.addEventListener('change', () => pick(+sel.value));
+    row.appendChild(sel);
+  } else {
+    const bar = el('div', '');
+    bar.className = spec.ui === 'swatches' ? 'look-swatches' : 'look-segmented';
+    const btns = spec.names.map((n, i) => {
+      const b = document.createElement('button');
+      if (spec.ui === 'swatches') { b.className = 'sw'; b.title = n; b.style.background = spec.colors?.[i] ?? 'currentColor'; }
+      else b.textContent = n;
+      b.classList.toggle('on', get() === i);
+      b.addEventListener('click', () => { pick(i); btns.forEach((x, k) => x.classList.toggle('on', k === i)); });
+      bar.appendChild(b);
+      return b;
     });
-    btns.push(b);
-    row.appendChild(b);
-  });
+    row.appendChild(bar);
+  }
   parent.appendChild(row);
 }
+
 const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
 const GRAVITY_KEY = 'field-boids:gravity';
@@ -210,13 +222,16 @@ export function buildFieldBoidsPanel(
   createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
     get: () => p.splatSize, set: v => { p.splatSize = v; }, history, lock: lockFor('splatSize') });
 
-  // Look: enums as pill rows, numbers as sliders, all from the shared spec.
+  // Look: from the shared spec. Enums as segmented bars / swatches / selects,
+  // numbers as sliders; point rows only in the Points view.
   divider(container);
   heading(container, 'Look');
   const pr = p as unknown as Record<string, number>;
+  const rebuild = opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts));
   for (const item of LOOK_GROUP.items) {
+    if (item.showIf && !item.showIf(p)) continue;
     if (item.kind === 'enum') {
-      pillRow(container, item.label, item.names, () => pr[item.key], i => { pr[item.key] = i; }, history);
+      enumRow(container, item, () => pr[item.key], i => { pr[item.key] = i; }, history, item.rebuilds ? rebuild : undefined);
     } else {
       createRangeSlider(container, { label: item.label, min: item.min, max: item.max, step: item.step, scale: item.scale,
         get: () => pr[item.key], set: v => { pr[item.key] = item.int ? Math.round(v) : v; }, history, lock: lockFor(item.key) });

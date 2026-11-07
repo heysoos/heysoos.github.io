@@ -18,7 +18,9 @@ export interface FieldBoidsParams {
   splatSize: number;      // gaussian sigma in field texels
   viewMode: number;       // 0 density, 1 flow (hue by direction), 2 points
   exposure: number;       // density → brightness gain
-  pointAlpha: number;     // per-point alpha in points view
+  pointAlpha: number;     // per-point intensity in points view
+  pointSize: number;      // point sprite diameter, CSS px (points view)
+  pointShape: number;     // 0 disc, 1 soft, 2 ring (points view)
   // Look (display only; nothing below touches the physics)
   curve: number;          // 0 linear, 1 sqrt, 2 log, 3 asinh, 4 gamma
   tonemap: number;        // 0 clip, 1 reinhard, 2 aces
@@ -53,6 +55,8 @@ export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   viewMode: 0,
   exposure: 2.0,
   pointAlpha: 0.15,
+  pointSize: 2,
+  pointShape: 0,
   curve: 3,
   tonemap: 2,
   palette: 0,

@@ -1,7 +1,7 @@
 // src/components/simulations/field-boids/field-boids-spec.ts
-// One description of the tunable params: labels, ranges, enum names, groups.
-// The desktop panel's Look section and the phone scrub list are both built
-// from it, so a new param is added here once.
+// One description of the tunable params: labels, ranges, enum names, groups,
+// and how each enum is drawn. The desktop panel's Look section, the phone
+// scrub list and Randomize are all built from it, so a param is added once.
 
 import type { FieldBoidsParams } from './field-boids-types';
 
@@ -17,6 +17,8 @@ export interface NumSpec {
   scale?: 'linear' | 'log';
   /** Integer-valued param: the setter rounds. */
   int?: boolean;
+  /** Row is shown only when this holds (e.g. point rows in Points view). */
+  showIf?: (p: FieldBoidsParams) => boolean;
 }
 
 export interface EnumSpec {
@@ -24,6 +26,14 @@ export interface EnumSpec {
   key: ParamKey;
   label: string;
   names: readonly string[];
+  /** segmented: one bar of exclusive segments. swatches: colour dots.
+   *  select: native dropdown (for lists that are read, not scanned). */
+  ui: 'segmented' | 'swatches' | 'select';
+  /** swatches: one CSS colour per name. */
+  colors?: readonly string[];
+  /** Changing this re-renders the panel (other rows depend on it). */
+  rebuilds?: boolean;
+  showIf?: (p: FieldBoidsParams) => boolean;
 }
 
 export type ParamSpec = NumSpec | EnumSpec;
@@ -35,12 +45,17 @@ export interface ParamGroup {
 
 export const VIEW_MODES = ['Density', 'Flow', 'Points'] as const;
 export const PALETTES = ['Accent', 'Ember', 'Ice', 'Spectral'] as const;
+export const PALETTE_COLORS = ['var(--accent)', '#e8702a', '#4ab0e8', '#9ee05a'] as const;
 export const CURVES = ['Linear', 'Sqrt', 'Log', 'Asinh', 'Gamma'] as const;
 export const TONEMAPS = ['Clip', 'Reinhard', 'ACES'] as const;
+export const POINT_SHAPES = ['Disc', 'Soft', 'Ring'] as const;
 
 const num = (key: ParamKey, label: string, min: number, max: number, step: number, extra: Partial<NumSpec> = {}): NumSpec =>
   ({ kind: 'num', key, label, min, max, step, ...extra });
-const en = (key: ParamKey, label: string, names: readonly string[]): EnumSpec => ({ kind: 'enum', key, label, names });
+const en = (key: ParamKey, label: string, names: readonly string[], ui: EnumSpec['ui'], extra: Partial<EnumSpec> = {}): EnumSpec =>
+  ({ kind: 'enum', key, label, names, ui, ...extra });
+
+const inPoints = (p: FieldBoidsParams) => p.viewMode === 2;
 
 /** Groups in panel order. The Look group is display-only. */
 export const FIELD_BOIDS_GROUPS: ParamGroup[] = [
@@ -62,14 +77,16 @@ export const FIELD_BOIDS_GROUPS: ParamGroup[] = [
     num('splatSize', 'Splat size', 0.5, 3, 0.1),
   ] },
   { name: 'Look', items: [
-    en('viewMode', 'View', VIEW_MODES),
-    en('palette', 'Palette', PALETTES),
-    en('curve', 'Curve', CURVES),
-    en('tonemap', 'Tonemap', TONEMAPS),
+    en('viewMode', 'View', VIEW_MODES, 'segmented', { rebuilds: true }),
+    en('palette', 'Palette', PALETTES, 'swatches', { colors: PALETTE_COLORS }),
+    en('curve', 'Curve', CURVES, 'select'),
+    en('tonemap', 'Tonemap', TONEMAPS, 'select'),
     num('exposure', 'Exposure', 0.1, 20, 0.1, { scale: 'log' }),
     num('bloom', 'Bloom', 0, 2, 0.05),
     num('longExposure', 'Long exposure', 0, 0.98, 0.01),
-    num('pointAlpha', 'Point alpha', 0.01, 1, 0.01),
+    en('pointShape', 'Point shape', POINT_SHAPES, 'segmented', { showIf: inPoints }),
+    num('pointSize', 'Point size', 1, 12, 0.5, { showIf: inPoints }),
+    num('pointAlpha', 'Point intensity', 0.01, 1, 0.01, { showIf: inPoints }),
   ] },
 ];
 

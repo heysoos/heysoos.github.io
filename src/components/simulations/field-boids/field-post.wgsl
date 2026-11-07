@@ -1,10 +1,16 @@
 // field-post.wgsl — display passes. Own bind group layout (binding 3 is the
 // previous accumulation frame, not the particle buffer).
 //
-//   base:  density field → linear colour (curve, palette, bloom), blended with
-//          the previous accumulation frame (render-only long exposure).
-//          Target: canvas-sized rgba16float. Points mode draws into it after.
-//   post:  accumulation → tonemap → swapchain.
+// The accumulation target holds two things per pixel:
+//   rgb  colour for the Flow view (hue by direction), already a display value
+//   a    scalar intensity for the Density and Points views, linear
+// so the post pass can apply the response curve, palette and tonemap to
+// points exactly as it does to the density field.
+//
+//   base:  field → (flow colour | density intensity, with bloom), blended
+//          with the previous accumulation frame (render-only long exposure).
+//          Points view writes nothing here; the points pass adds intensity.
+//   post:  accumulation → curve → palette → tonemap → swapchain.
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var fieldSampler: sampler;
 @group(0) @binding(2) var fieldTex: texture_2d<f32>;   // full mip chain
@@ -33,7 +39,7 @@ fn hsv2rgb(c: vec3f) -> vec3f {
   return c.z * mix(k.xxx, clamp(p - k.xxx, vec3f(0.0), vec3f(1.0)), c.y);
 }
 
-// Response curve on t ∈ [0,1]. 0 linear (today's 1−e^−x), 1 sqrt, 2 log,
+// Response curve on t ∈ [0,1]. 0 linear (1−e^−x), 1 sqrt, 2 log,
 // 3 asinh (linear near zero, log at the top), 4 gamma 1/2.2.
 fn curve(t: f32) -> f32 {
   switch params.curve {
@@ -45,7 +51,6 @@ fn curve(t: f32) -> f32 {
   }
 }
 
-// Density palettes. 0 is the theme accent (mix from bg); handled by caller.
 fn palette(t: f32) -> vec3f {
   switch params.palette {
     case 1u: { // ember: black → deep red → orange → cream
@@ -68,37 +73,36 @@ fn palette(t: f32) -> vec3f {
   }
 }
 
-fn fieldColour(uv: vec2f) -> vec3f {
-  let f = textureSampleLevel(fieldTex, fieldSampler, uv, 0.0);
-  var x = max(f.r, 0.0) * params.exposure;
-  // Bloom: coarser mip levels of the same density field, added back in.
-  if (params.bloom > 0.0) {
-    let b = textureSampleLevel(fieldTex, fieldSampler, uv, 2.0).r
-          + textureSampleLevel(fieldTex, fieldSampler, uv, 3.5).r
-          + textureSampleLevel(fieldTex, fieldSampler, uv, 5.0).r;
-    x += max(b, 0.0) * params.exposure * params.bloom * 0.35;
-  }
-  let t = curve(1.0 - exp(-x));
-  let bg = vec3f(params.bgR, params.bgG, params.bgB);
-  if (params.viewMode == 1u) {
-    let u = f.gb / max(f.r, 1e-5);
-    let hue = atan2(u.y, u.x) / 6.2831853 + 0.5;
-    let sat = clamp(length(u) / max(params.maxSpeed, 1e-4), 0.0, 1.0);
-    return mix(bg, hsv2rgb(vec3f(hue, 0.35 + 0.65 * sat, 1.0)), t);
-  }
-  if (params.palette == 0u) {
-    return mix(bg, vec3f(params.colorR, params.colorG, params.colorB), t);
-  }
-  return max(palette(t), bg);
+// Bloom term from the coarser mips of the density field. The field exists in
+// every view, so Points gets the same glow as Density.
+fn bloomTerm(uv: vec2f) -> f32 {
+  if (params.bloom <= 0.0) { return 0.0; }
+  let b = textureSampleLevel(fieldTex, fieldSampler, uv, 2.0).r
+        + textureSampleLevel(fieldTex, fieldSampler, uv, 3.5).r
+        + textureSampleLevel(fieldTex, fieldSampler, uv, 5.0).r;
+  return max(b, 0.0) * params.exposure * params.bloom * 0.35;
 }
 
 @fragment
 fn baseFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let prev = textureSampleLevel(accumTex, fieldSampler, uv, 0.0).rgb;
+  let prev = textureSampleLevel(accumTex, fieldSampler, uv, 0.0);
   let le = params.longExposure;
-  var cur = vec3f(0.0);
-  if (params.viewMode != 2u) { cur = fieldColour(uv); }
-  return vec4f(cur * (1.0 - le) + prev * le, 1.0);
+  var cur = vec4f(0.0);
+  if (params.viewMode == 1u) {
+    let f = textureSampleLevel(fieldTex, fieldSampler, uv, 0.0);
+    let x = max(f.r, 0.0) * params.exposure + bloomTerm(uv);
+    let t = curve(1.0 - exp(-x));
+    let u = f.gb / max(f.r, 1e-5);
+    let hue = atan2(u.y, u.x) / 6.2831853 + 0.5;
+    let sat = clamp(length(u) / max(params.maxSpeed, 1e-4), 0.0, 1.0);
+    cur = vec4f(hsv2rgb(vec3f(hue, 0.35 + 0.65 * sat, 1.0)) * t, 0.0);
+  } else if (params.viewMode == 0u) {
+    let f = textureSampleLevel(fieldTex, fieldSampler, uv, 0.0);
+    cur = vec4f(0.0, 0.0, 0.0, max(f.r, 0.0) * params.exposure + bloomTerm(uv));
+  } else {
+    cur = vec4f(0.0, 0.0, 0.0, bloomTerm(uv));
+  }
+  return cur * (1.0 - le) + prev * le;
 }
 
 fn aces(x: vec3f) -> vec3f {
@@ -107,8 +111,19 @@ fn aces(x: vec3f) -> vec3f {
 
 @fragment
 fn postFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
-  var c = textureSampleLevel(accumTex, fieldSampler, uv, 0.0).rgb;
+  let s = textureSampleLevel(accumTex, fieldSampler, uv, 0.0);
   let bg = vec3f(params.bgR, params.bgG, params.bgB);
+  var c: vec3f;
+  if (params.viewMode == 1u) {
+    c = s.rgb;
+  } else {
+    let t = curve(1.0 - exp(-max(s.a, 0.0)));
+    if (params.palette == 0u) {
+      c = mix(bg, vec3f(params.colorR, params.colorG, params.colorB), t);
+    } else {
+      c = palette(t);
+    }
+  }
   switch params.tonemap {
     case 1u: { c = c / (1.0 + c); }
     case 2u: { c = aces(c); }
