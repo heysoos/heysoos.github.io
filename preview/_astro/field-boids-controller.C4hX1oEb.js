@@ -189,9 +189,10 @@ fn pointFrag(@location(0) local: vec2f) -> @location(0) vec4f {\r
     case 2u: { a = smoothstep(0.18, 0.0, abs(r - 0.7)); }       // ring\r
     default: { a = 1.0 - smoothstep(0.85, 1.0, r); }            // disc\r
   }\r
-  // Scale so a 1-px disc at intensity 1 matches the old 1-px point.\r
-  let norm = 4.0 / max(params.pointSize * params.pointSize, 1.0);\r
-  return vec4f(0.0, 0.0, 0.0, a * params.pointAlpha * params.exposure * norm * 4.0);\r
+  // Alpha is per-pixel: a bigger sprite is a bigger, equally bright blob\r
+  // (overlaps add up and the tonemap handles dense regions). The constant\r
+  // keeps the default 2 px sprite at the brightness it had before.\r
+  return vec4f(0.0, 0.0, 0.0, a * params.pointAlpha * params.exposure * 4.0);\r
 }\r
 `,T=`// field-post.wgsl — display passes. Own bind group layout (binding 3 is the\r
 // previous accumulation frame, not the particle buffer).\r
