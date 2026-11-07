@@ -27,6 +27,8 @@ export interface ScrubPanelOpts {
   /** Fills the in-card Presets view; returns a dispose function. */
   buildPresets?: (container: HTMLElement) => () => void;
   onRandomize?: () => void;
+  /** Optional status text shown under an enum row (e.g. "permission denied"). */
+  note?: (key: string) => string;
   /** Called by × and by a plain tap on the canvas while the list is open. */
   onClose?: () => void;
 }
@@ -172,6 +174,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     const wrap = document.createElement('div');
     wrap.className = `scrub-enum ui-${spec.ui}`;
     wrap.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span>`;
+    const note = document.createElement('small');
+    note.className = 'note';
     const pick = (i: number) => {
       set(spec.key as string, i);
       history?.push(spec.label);
@@ -184,6 +188,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       sel.addEventListener('change', () => pick(+sel.value));
       wrap.appendChild(sel);
       row.select = sel;
+      wrap.appendChild(note);
     } else {
       const bar = document.createElement('div');
       bar.className = spec.ui === 'swatches' ? 'swatches' : 'segmented';
@@ -196,6 +201,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         return c;
       });
       wrap.appendChild(bar);
+      wrap.appendChild(note);
     }
     body.appendChild(wrap);
     attachLongPress(wrap, spec.key as string);
@@ -244,6 +250,11 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         r.select.value = String(v);
       } else {
         r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
+      }
+      if (r.spec.kind === 'enum') {
+        const n = r.el.querySelector<HTMLElement>('.note')!;
+        n.textContent = opts.note?.(r.spec.key as string) ?? '';
+        n.hidden = !n.textContent;
       }
     }
     if (cur?.showIf && !cur.showIf(params)) { select(null); return; }

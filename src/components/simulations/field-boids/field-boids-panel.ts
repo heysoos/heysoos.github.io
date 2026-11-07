@@ -83,7 +83,7 @@ function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i
 
 const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
-const GRAVITY_KEY = 'field-boids:gravity';
+export const GRAVITY_KEY = 'field-boids:gravity';
 
 /** "Tilt gravity" switch plus the gravity strength. Device settings, not
  *  preset params: the sensor keeps its own state, the strength is kept in

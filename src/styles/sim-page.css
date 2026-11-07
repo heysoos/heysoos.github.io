@@ -178,6 +178,7 @@
 .scrub-list .locked .lk { display: inline-block; }
 .scrub-list .locked .n { color: var(--accent); }
 .scrub-enum { padding: 3px 6px 5px; display: flex; flex-direction: column; gap: 3px; }
+.scrub-enum .note { font-size: 0.56rem; color: #e08a60; }
 .scrub-enum .n { font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px; }
 
 /* Shared enum widgets (desktop Look section + phone list) */
