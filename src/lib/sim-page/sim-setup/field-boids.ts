@@ -8,6 +8,7 @@ import { buildPresetSection, type PresetSectionHandle } from '../../presets/pres
 import { attachUndoKeys } from '../../presets/undo-history';
 import { isPhoneLayout } from '../bottom-sheet';
 import { createTiltSensor, tiltMaybeAvailable, type TiltSensor } from '../tilt-sensor';
+import { wireHandleHistory } from '../handle-actions';
 
 /** Phones run ~70–80k particles comfortably; presets keep their desktop
  *  count, the clamp is applied at load time only. The slider can go higher. */
@@ -61,6 +62,7 @@ export async function setupFieldBoids(
       onClose: () => { panel.style.display = 'none'; },
       buildPresets: (c) => { section = buildPresetSection(c, mgr); },
       history: mgr.history,
+      locks: mgr.locks,
       tilt,
       rebuild: () => mgr.rebuild(),
     });
@@ -70,5 +72,6 @@ export async function setupFieldBoids(
   buildPanel();
 
   const detachKeys = attachUndoKeys(mgr.history);
-  document.addEventListener('pagehide', () => { detachKeys(); mgr.dispose(); tilt?.dispose(); }, { once: true });
+  const unwireHandle = wireHandleHistory(panel, mgr.history);
+  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); tilt?.dispose(); }, { once: true });
 }

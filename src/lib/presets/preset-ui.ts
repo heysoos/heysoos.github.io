@@ -52,6 +52,7 @@ export function buildPresetSection<P extends ParamRecord>(
 
   // Sub-elements re-rendered by render()
   const header = el('div', 'display:flex;align-items:center;gap:6px;');
+  header.className = 'preset-header';
   const pills = el('div', 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;');
   const toolbar = el('div', 'display:flex;flex-wrap:wrap;gap:4px;');
   const bar = el('div', 'display:none;flex-direction:column;gap:4px;padding:5px 7px;border:1px solid var(--accent);border-radius:4px;');
@@ -214,6 +215,12 @@ export function buildPresetSection<P extends ParamRecord>(
       header.appendChild(el('p', 'font-size:0.6rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;', 'Presets'));
     }
     if (dirty) header.appendChild(el('span', MUTED, 'unsaved changes'));
+    const lockedKeys = mgr.locks.keys();
+    if (lockedKeys.length > 0) {
+      const chip = button(`${lockedKeys.length} locked ×`, BTN_ICON + 'font-size:0.62rem;color:var(--accent);border-color:var(--accent);',
+        () => mgr.locks.clear(), `Locked: ${lockedKeys.join(', ')}. Click to unlock all.`);
+      header.appendChild(chip);
+    }
     if (!mgr.store.storageOk) header.appendChild(el('span', MUTED + 'color:#e05060;', 'storage blocked — custom presets are session-only'));
     const spacer = el('span', 'flex:1;');
     header.appendChild(spacer);
@@ -284,11 +291,12 @@ export function buildPresetSection<P extends ParamRecord>(
 
   const unsubStore = mgr.store.subscribe(render);
   const unsubHistory = mgr.history.subscribe(render);
+  const unsubLocks = mgr.locks.subscribe(render);
   render();
 
   return {
     refresh: render,
-    dispose() { unsubStore(); unsubHistory(); },
+    dispose() { unsubStore(); unsubHistory(); unsubLocks(); },
   };
 }
 

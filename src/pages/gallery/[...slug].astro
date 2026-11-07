@@ -103,6 +103,11 @@ const underConstruction = project.data.underConstruction ?? false;
             <circle cx="3" cy="2" r="1.5"/><circle cx="10" cy="2" r="1.5"/><circle cx="17" cy="2" r="1.5"/>
             <circle cx="3" cy="6" r="1.5"/><circle cx="10" cy="6" r="1.5"/><circle cx="17" cy="6" r="1.5"/>
           </svg>
+          <div class="panel-handle-actions">
+            <button class="panel-handle-undo" aria-label="Undo">↶</button>
+            <button class="panel-handle-redo" aria-label="Redo">↷</button>
+          </div>
+          <button class="panel-handle-close" id="panel-handle-close" aria-label="Close panel">×</button>
         </div>
         <div id="panel-content" class="panel-content"></div>
       </div>
@@ -364,6 +369,12 @@ const underConstruction = project.data.underConstruction ?? false;
     }
   }
   const panelWasOpen = () => panel.style.display !== 'none';
+  // Always-visible close on the handle (phone); the in-content × scrolls away.
+  document.getElementById('panel-handle-close')?.addEventListener('pointerdown', (e) => e.stopPropagation());
+  document.getElementById('panel-handle-close')?.addEventListener('click', () => {
+    panel.style.display = 'none';
+    sessionStorage.setItem(`${sim}-panel-open`, 'false');
+  });
   initLayout();
   window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
     const open = panelWasOpen();

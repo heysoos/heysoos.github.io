@@ -8,6 +8,7 @@ import { applyBoidsPreset, captureBoidsPreset, type BoidsPresetBody } from '../b
 import { createPresetManager } from '../../presets/preset-manager';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
 import { attachUndoKeys } from '../../presets/undo-history';
+import { wireHandleHistory } from '../handle-actions';
 
 type Params = BoidsPresetBody['params'];
 
@@ -61,6 +62,7 @@ export async function setupBoids(
     panelControls = buildBoidsPanel(panelContent, ctrl, {
       reactor,
       history: mgr.history,
+      locks: mgr.locks,
       buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
       onClose: () => {
         panelControls?.teardown();
@@ -99,5 +101,7 @@ export async function setupBoids(
   );
 
   const detachKeys = attachUndoKeys(mgr.history);
+  const unwireHandle = wireHandleHistory(panel, mgr.history);
+  document.addEventListener('pagehide', unwireHandle, { once: true });
   document.addEventListener('pagehide', () => { detachKeys(); mgr.dispose(); }, { once: true });
 }
