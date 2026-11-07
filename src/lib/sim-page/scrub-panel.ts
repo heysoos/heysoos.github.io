@@ -286,6 +286,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       if (r.spec.kind === 'num') {
         r.el.classList.toggle('on', r.spec === cur);
         r.val!.textContent = fmt(r.spec, v);
+        r.el.style.setProperty('--f', frac(r.spec, v).toFixed(4));   // value meter behind the row
       } else if (r.select) {
         r.select.value = String(v);
       } else {

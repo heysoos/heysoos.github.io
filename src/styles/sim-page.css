@@ -146,17 +146,24 @@
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
 }
 .scrub-row, .scrub-enum, .scrub-scroll { touch-action: pan-y; }
+/* Each numeric row is its own meter: a faint fill from the left edge to the
+   value's position in its range (--f, 0..1 in slider space), with a hairline
+   at the fill's end. Brighter while selected or dragging. No extra height. */
 .scrub-row {
+  --f: 0; --meter: color-mix(in srgb, var(--accent) 9%, transparent); --edge: color-mix(in srgb, var(--accent) 45%, transparent);
   display: flex; justify-content: space-between; align-items: center; gap: 4px;
   width: 100%; min-height: 0 !important; padding: 4px 6px;
-  border: none; border-radius: 6px; background: transparent;
+  border: none; border-radius: 6px;
+  background:
+    linear-gradient(90deg, transparent calc(var(--f) * 100% - 1px), var(--edge) calc(var(--f) * 100% - 1px), var(--edge) calc(var(--f) * 100%), transparent calc(var(--f) * 100%)),
+    linear-gradient(90deg, var(--meter) calc(var(--f) * 100%), transparent 0);
   color: var(--text-muted); font-size: 0.7rem; text-align: left; cursor: pointer;
 }
 .scrub-row .n { display: inline-flex; align-items: center; gap: 3px; min-width: 0; line-height: 1.15; }
 .scrub-row .v, .scrub-enum .v { font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; font-variant-numeric: tabular-nums; }
-.scrub-row.on { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.scrub-row.on { color: var(--text-primary); --meter: color-mix(in srgb, var(--accent) 22%, transparent); --edge: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
 .scrub-row.on .v { color: var(--accent); }
-.scrub-row.dragging { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.scrub-row.dragging { color: var(--text-primary); --meter: color-mix(in srgb, var(--accent) 18%, transparent); --edge: var(--accent); }
 .scrub-row.dragging .v { color: var(--accent); }
 /* Collapsed state while a param is selected */
 .scrub-chip {
