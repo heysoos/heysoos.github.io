@@ -4,6 +4,7 @@ import { resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
 import commonSrc from './field-common.wgsl?raw';
 import depositSrc from './field-deposit.wgsl?raw';
 import viewSrc from './field-view.wgsl?raw';
+import postSrc from './field-post.wgsl?raw';
 import computeSrc from './field-boids.wgsl?raw';
 import {
   DEFAULT_FIELD_BOIDS_PARAMS,
@@ -14,7 +15,7 @@ import {
 export type { FieldBoidsParams, FieldBoidsPreset };
 
 export const MAX_PARTICLES = 2_000_000;
-const PARAMS_BYTES = 144;
+const PARAMS_BYTES = 160;
 const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class FieldBoidsController {
@@ -61,6 +62,15 @@ export class FieldBoidsController {
   private downsamplePipeline!: GPURenderPipeline;
   private fieldPipeline!: GPURenderPipeline;
   private pointPipeline!: GPURenderPipeline;
+  // Display: field → linear colour into a canvas-sized accumulation target, then tonemap.
+  private postLayout!: GPUBindGroupLayout;
+  private basePipeline!: GPURenderPipeline;
+  private postPipeline!: GPURenderPipeline;
+  private accumTextures: GPUTexture[] = [];
+  private accumViews: GPUTextureView[] = [];
+  private baseBindGroups: GPUBindGroup[][] = [];       // [field tex][prev accum]
+  private postBindGroups: GPUBindGroup[] = [];         // [accum]
+  private accumIdx = 0;
   private levelBindGroups: GPUBindGroup[][] = [];      // [tex][level] — single-level view
   private fullBindGroups: GPUBindGroup[][] = [];       // [tex][particle buffer] — full view
   private computePipeline!: GPUComputePipeline;
@@ -163,12 +173,34 @@ export class FieldBoidsController {
     this.decayPipeline      = quad('decayFrag',      { format: FIELD_FORMAT });
     this.downsamplePipeline = quad('downsampleFrag', { format: FIELD_FORMAT });
     this.fieldPipeline      = quad('fieldFrag',      { format });
+    // Points draw additively into the accumulation target, so they tonemap
+    // and long-expose like the field view.
     this.pointPipeline = device.createRenderPipeline({
       layout: viewPipelineLayout,
       vertex: { module: viewModule, entryPoint: 'pointVert' },
-      fragment: { module: viewModule, entryPoint: 'pointFrag', targets: [{ format, blend: additive }] },
+      fragment: { module: viewModule, entryPoint: 'pointFrag', targets: [{ format: FIELD_FORMAT, blend: additive }] },
       primitive: { topology: 'point-list' },
     });
+
+    const postModule = device.createShaderModule({ code: commonSrc + postSrc });
+    this.postLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      ],
+    });
+    const postPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.postLayout] });
+    const postQuad = (entry: string, target: GPUColorTargetState): GPURenderPipeline =>
+      device.createRenderPipeline({
+        layout: postPipelineLayout,
+        vertex: { module: postModule, entryPoint: 'postQuadVert' },
+        fragment: { module: postModule, entryPoint: entry, targets: [target] },
+        primitive: { topology: 'triangle-list' },
+      });
+    this.basePipeline = postQuad('baseFrag', { format: FIELD_FORMAT });
+    this.postPipeline = postQuad('postFrag', { format });
 
     const computeModule = device.createShaderModule({ code: commonSrc + computeSrc });
     this.computePipeline = device.createComputePipeline({
@@ -208,6 +240,26 @@ export class FieldBoidsController {
     });
     this.levelBindGroups = this.fieldLevelViews.map(views => views.map(v => mk(v, this.particleBuffers[0])));
     this.fullBindGroups = this.fieldFullViews.map(v => this.particleBuffers.map(b => mk(v, b)));
+
+    // Accumulation targets at canvas resolution (the field is capped at maxFieldSize).
+    this.accumTextures.forEach(t => t.destroy());
+    this.accumTextures = [0, 1].map(() => device.createTexture({
+      size: [Math.max(1, canvasW), Math.max(1, canvasH)],
+      format: FIELD_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    }));
+    this.accumViews = this.accumTextures.map(t => t.createView());
+    const mkPost = (fieldView: GPUTextureView, accumView: GPUTextureView) => device.createBindGroup({
+      layout: this.postLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: this.sampler },
+        { binding: 2, resource: fieldView },
+        { binding: 3, resource: accumView },
+      ],
+    });
+    this.baseBindGroups = this.fieldFullViews.map(fv => this.accumViews.map(av => mkPost(fv, av)));
+    this.postBindGroups = this.accumViews.map(av => mkPost(this.fieldFullViews[0], av));
     this.onFieldTexturesCreated(device);
   }
 
@@ -326,6 +378,11 @@ export class FieldBoidsController {
     v.setFloat32(124, p.gravity ?? 0, true);
     v.setFloat32(128, this.gravityX, true);
     v.setFloat32(132, this.gravityY, true);
+    v.setFloat32(136, p.bloom ?? 0, true);
+    v.setFloat32(140, Math.min(p.longExposure ?? 0, 0.995), true);
+    v.setUint32(144,  p.curve ?? 3, true);
+    v.setUint32(148,  p.tonemap ?? 2, true);
+    v.setUint32(152,  p.palette ?? 0, true);
     return buf;
   }
 
@@ -438,7 +495,37 @@ export class FieldBoidsController {
   }
 
   private runDisplay(encoder: GPUCommandEncoder, context: GPUCanvasContext, readIdx: number, N: number): void {
-    const pass = encoder.beginRenderPass({
+    const prev = this.accumIdx;
+    const cur = 1 - prev;
+    this.accumIdx = cur;
+
+    // 1. Field → linear colour, blended with the previous accumulation frame.
+    const base = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.accumViews[cur],
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    });
+    base.setPipeline(this.basePipeline);
+    base.setBindGroup(0, this.baseBindGroups[this.writeIdx][prev]);
+    base.draw(6);
+    base.end();
+
+    // 2. Points mode: additive points on top of the (empty or long-exposed) base.
+    if (this.params.viewMode === 2) {
+      const pts = encoder.beginRenderPass({
+        colorAttachments: [{ view: this.accumViews[cur], loadOp: 'load', storeOp: 'store' }],
+      });
+      pts.setPipeline(this.pointPipeline);
+      pts.setBindGroup(0, this.fullBindGroups[this.writeIdx][1 - readIdx]);
+      pts.draw(N);
+      pts.end();
+    }
+
+    // 3. Tonemap to the swapchain.
+    const post = encoder.beginRenderPass({
       colorAttachments: [{
         view: context.getCurrentTexture().createView(),
         clearValue: this.bgColor,
@@ -446,16 +533,10 @@ export class FieldBoidsController {
         storeOp: 'store',
       }],
     });
-    if (this.params.viewMode === 2) {
-      pass.setPipeline(this.pointPipeline);
-      pass.setBindGroup(0, this.fullBindGroups[this.writeIdx][1 - readIdx]);
-      pass.draw(N);
-    } else {
-      pass.setPipeline(this.fieldPipeline);
-      pass.setBindGroup(0, this.fullBindGroups[this.writeIdx][readIdx]);
-      pass.draw(6);
-    }
-    pass.end();
+    post.setPipeline(this.postPipeline);
+    post.setBindGroup(0, this.postBindGroups[cur]);
+    post.draw(6);
+    post.end();
   }
 
   // ── Theme ─────────────────────────────────────────────────────────

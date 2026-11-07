@@ -9,6 +9,8 @@ import { attachUndoKeys } from '../../presets/undo-history';
 import { isPhoneLayout } from '../bottom-sheet';
 import { createTiltSensor, tiltMaybeAvailable, type TiltSensor } from '../tilt-sensor';
 import { wireHandleHistory } from '../handle-actions';
+import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
+import { FIELD_BOIDS_GROUPS } from '../../../components/simulations/field-boids/field-boids-spec';
 
 /** Phones run ~70–80k particles comfortably; presets keep their desktop
  *  count, the clamp is applied at load time only. The slider can go higher. */
@@ -53,11 +55,34 @@ export async function setupFieldBoids(
   }
 
   let section: PresetSectionHandle | null = null;
+  let scrub: ScrubPanelHandle | null = null;
+  const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned
+
+  // Phone: params live in the scrub list over the canvas; the sheet keeps
+  // presets, Randomize and tilt. Desktop: the full slider panel.
+  function ensureScrub(): void {
+    const want = isPhoneLayout();
+    if (want && !scrub) {
+      scrub = createScrubPanel({
+        host: viewport,
+        groups: FIELD_BOIDS_GROUPS,
+        get: (k) => (ctrl.params as unknown as Record<string, number>)[k],
+        set: (k, v) => { (ctrl.params as unknown as Record<string, number>)[k] = v; },
+        history: mgr.history,
+        locks: mgr.locks,
+      });
+    } else if (!want && scrub) {
+      scrub.dispose();
+      scrub = null;
+    }
+    scrub?.setVisible(panel.style.display !== 'none');
+  }
 
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
     section?.dispose();
     panelContent.innerHTML = '';
+    ensureScrub();
     buildFieldBoidsPanel(panelContent, ctrl, {
       onClose: () => { panel.style.display = 'none'; },
       buildPresets: (c) => { section = buildPresetSection(c, mgr); },
@@ -65,11 +90,17 @@ export async function setupFieldBoids(
       locks: mgr.locks,
       tilt,
       rebuild: () => mgr.rebuild(),
+      paramsHidden: !!scrub,
     });
+    scrub?.refresh();
     panelContent.scrollTop = scrollTop;
   }
   mgr.onRebuild(buildPanel);
   buildPanel();
+  window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
+  // The scrub list follows the sheet's open/closed state.
+  new MutationObserver(() => scrub?.setVisible(panel.style.display !== 'none'))
+    .observe(panel, { attributes: true, attributeFilter: ['style'] });
 
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
