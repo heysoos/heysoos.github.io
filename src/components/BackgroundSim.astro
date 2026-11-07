@@ -31,7 +31,12 @@ const { sim } = Astro.props;
     position: fixed;
     inset: 0;
     width: 100%;
+    /* lvh, not 100%: on phones the collapsing URL bar changes the dynamic
+       viewport on every scroll, and a canvas resize reallocates the trail
+       and image textures (a visible freeze + flicker). The large viewport
+       is constant, so the canvas only resizes on rotation. */
     height: 100%;
+    height: 100lvh;
     z-index: 0;
     pointer-events: none;
   }

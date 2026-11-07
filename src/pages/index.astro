@@ -87,7 +87,7 @@ const projects = (await getCollection('projects'))
   .hero {
     position: relative;
     min-height: 100vh;
-    min-height: 100dvh;
+    min-height: 100svh; /* small viewport: stable while the phone URL bar collapses */
     display: flex;
     align-items: flex-end;
     padding: 4rem 1.5rem;
