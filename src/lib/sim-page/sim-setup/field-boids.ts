@@ -55,7 +55,7 @@ export async function setupFieldBoids(
     });
   }
 
-  // Touch feedback: a ring under each finger, sized by its pressure, for
+  // Touch feedback: a ring under each finger showing the force radius, for
   // touch and pen only (the mouse already has a cursor).
   const rings = document.createElement('div');
   rings.className = 'touch-rings';
@@ -69,9 +69,8 @@ export async function setupFieldBoids(
       seen.add(p.id);
       let el = ringEls.get(p.id);
       if (!el) { el = document.createElement('div'); el.className = 'touch-ring'; rings.appendChild(el); ringEls.set(p.id, el); }
-      const d = 34 + 30 * p.strength;
+      const d = Math.max(28, 2 * ctrl.pointerRadiusPx());
       el.style.cssText = `left:${p.clientX - host.left}px;top:${p.clientY - host.top}px;width:${d}px;height:${d}px;`;
-      el.textContent = p.strength.toFixed(1);       // what the digitiser reports; handy while tuning
     }
     for (const [id, el] of ringEls) if (!seen.has(id)) { el.remove(); ringEls.delete(id); }
   };

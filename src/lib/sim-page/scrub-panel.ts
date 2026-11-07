@@ -218,6 +218,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     let id = -1, x0 = 0, y0 = 0, s0 = 0, active = false;
     row.addEventListener('pointerdown', (e) => {
       id = e.pointerId; x0 = e.clientX; y0 = e.clientY; active = false;
+      swallowClick = false;   // a touch drag fires no click, so never carry the flag over
       s0 = toSlider(spec, get(spec.key as string));
       // Capture at once: the finger leaves the 25px row long before the
       // drag is recognised. A vertical pan still cancels (touch-action: pan-y).

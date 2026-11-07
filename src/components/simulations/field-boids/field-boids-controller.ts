@@ -42,6 +42,11 @@ export class FieldBoidsController {
   /** Active fingers / mouse on the canvas, NDC. Velocity is an EMA of the
    *  per-frame motion (NDC per second), updated in packUniforms. */
   private pointers = new Map<number, { x: number; y: number; px: number; py: number; vx: number; vy: number; strength: number; type: string; clientX: number; clientY: number }>();
+  /** Force radius in canvas CSS px (mouseRadius is in NDC, y in [-1, 1]). */
+  pointerRadiusPx(): number {
+    const c = this.gpu?.canvas;
+    return (c ? c.clientHeight : 0) * 0.5 * this.params.mouseRadius;
+  }
   /** Page hook for touch feedback: called whenever the pointer set changes. */
   onPointers?: (pts: Array<{ id: number; clientX: number; clientY: number; strength: number; type: string }>) => void;
   /** Unit direction gravity pulls toward, screen space with y up. Straight
@@ -125,13 +130,9 @@ export class FieldBoidsController {
         const rect = canvas.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        // Pressure where the digitiser has it; most phones report a constant
-        // 1 (or 0.5) and only vary the contact size, so fall back to that.
-        const pr = e.pressure;
-        const realPressure = pr > 0 && pr !== 0.5 && pr !== 1 ? pr : 0;
-        const contact = Math.max(e.width, e.height);                 // CSS px
-        const areaPressure = Math.min(1, Math.max(0, (contact - 10) / 40));
-        const strength = e.pointerType === 'mouse' ? 1 : 0.5 + 1.5 * Math.max(realPressure, areaPressure);
+        // Pressure is not used yet: phones tested report a constant value,
+        // so every pointer pulls with the same strength.
+        const strength = 1;
         const cur = this.pointers.get(e.pointerId);
         if (cur) { cur.x = x; cur.y = y; cur.strength = strength; cur.clientX = e.clientX; cur.clientY = e.clientY; }
         else {
