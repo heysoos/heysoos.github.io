@@ -2,6 +2,7 @@
 import type { FieldBoidsController } from './field-boids-controller';
 import type { FieldBoidsPreset } from './field-boids-types';
 import { createRangeSlider } from '../boids/panel/range-slider';
+import { createMeterRow } from '../../../lib/sim-page/meter-row';
 import { pillStyle } from '../boids/panel/panel-styles';
 import type { UndoHistory } from '../../../lib/presets/undo-history';
 import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
@@ -39,19 +40,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-function divider(parent: HTMLElement): void {
-  const d = document.createElement('div');
-  d.className = 'section-divider';
-  parent.appendChild(d);
-}
-
-function heading(parent: HTMLElement, text: string): void {
-  const h = document.createElement('p');
-  h.className = 'section-heading';
-  h.textContent = text;
-  parent.appendChild(h);
-}
-
 /** One enum control, drawn as the spec says: segmented bar, swatches or select. */
 function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i: number) => void, history?: UndoHistory, after?: () => void): void {
   const row = el('div', 'display:flex;align-items:center;gap:6px;margin:0 0 0.35rem;');
@@ -81,7 +69,6 @@ function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i
   parent.appendChild(row);
 }
 
-const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
 export const GRAVITY_KEY = 'field-boids:gravity';
 
@@ -154,22 +141,52 @@ export function buildFieldBoidsPanel(
   const lockFor = (key: keyof typeof p): ParamLockBinding | undefined =>
     opts.locks ? { key: key as string, locks: opts.locks } : undefined;
 
-  // Header
-  const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
-  header.appendChild(el('p',
-    'font-size:0.65rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;',
-    'Field Boids'));
-  if (opts.onClose) {
-    const closeBtn = el('button',
-      'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;line-height:1;padding:0;', '×');
-    closeBtn.addEventListener('click', opts.onClose);
-    header.appendChild(closeBtn);
-  }
-  container.appendChild(header);
+  // Remember which view (params / presets) a rebuild should come back to.
+  const host = container as HTMLElement & { __fbUnsub?: () => void; __fbView?: 'params' | 'presets' };
+  host.__fbUnsub?.();
 
-  // Presets: shared section when provided, plain pill row otherwise (admin)
+  // ── Pinned header: undo · redo · Presets › · Randomize · × ──
+  const head = document.createElement('div');
+  head.className = 'fb-head';
+  const mkBtn = (text: string, cls: string, title?: string): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = cls; b.textContent = text; if (title) b.title = title;
+    head.appendChild(b);
+    return b;
+  };
+  const undoBtn = mkBtn('↶', 'h-undo', 'Undo');
+  const redoBtn = mkBtn('↷', 'h-redo', 'Redo');
+  const presetsBtn = mkBtn('Presets ›', 'h-presets');
+  const randomBtn = mkBtn('⚄ Randomize', 'h-random', 'Random dynamics (particle count and view unchanged)');
+  head.appendChild(el('span', 'flex:1;'));
+  if (opts.onClose) {
+    const closeBtn = mkBtn('×', 'h-close', 'Close');
+    closeBtn.addEventListener('click', opts.onClose);
+  }
+  container.appendChild(head);
+  undoBtn.addEventListener('click', () => history?.undo());
+  redoBtn.addEventListener('click', () => history?.redo());
+  const refreshHist = () => {
+    undoBtn.disabled = !history?.canUndo();
+    redoBtn.disabled = !history?.canRedo();
+    undoBtn.title = history?.undoLabel() ? `Undo ${history.undoLabel()}` : 'Nothing to undo';
+    redoBtn.title = history?.redoLabel() ? `Redo ${history.redoLabel()}` : 'Nothing to redo';
+  };
+  refreshHist();
+  host.__fbUnsub = history?.subscribe(refreshHist);
+  randomBtn.addEventListener('click', () => {
+    randomizeKeepingLocks(ctrl, opts.locks, history);
+    (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
+  });
+
+  // ── Two bodies in the same panel ──
+  const body = document.createElement('div');
+  body.className = 'fb-body';
+  const presetsBody = document.createElement('div');
+  presetsBody.className = 'fb-presets';
+  container.append(body, presetsBody);
   if (opts.buildPresets) {
-    opts.buildPresets(container);
+    opts.buildPresets(presetsBody);
   } else if (opts.presets && opts.presets.length > 0) {
     const pillRow = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin:0 0 0.4rem;');
     for (const preset of opts.presets) {
@@ -177,69 +194,57 @@ export function buildFieldBoidsPanel(
       pill.addEventListener('click', () => opts.onPresetLoad?.(preset));
       pillRow.appendChild(pill);
     }
-    container.appendChild(pillRow);
+    presetsBody.appendChild(pillRow);
   }
+  const setView = (view: 'params' | 'presets') => {
+    host.__fbView = view;
+    body.hidden = view === 'presets';
+    presetsBody.hidden = view === 'params';
+    presetsBtn.textContent = view === 'presets' ? '‹ Params' : 'Presets ›';
+  };
+  presetsBtn.addEventListener('click', () => setView(host.__fbView === 'presets' ? 'params' : 'presets'));
+  setView(host.__fbView ?? 'params');
 
-  // Simulation
-  const simHead = el('div', 'display:flex;justify-content:space-between;align-items:baseline;');
-  if (!opts.paramsHidden) heading(simHead, 'Simulation');
-  const randomBtn = el('button', RANDOM_BTN, '⚄ Randomize');
-  randomBtn.title = 'Random dynamics (particle count and view unchanged)';
-  randomBtn.addEventListener('click', () => {
-    randomizeKeepingLocks(ctrl, opts.locks, history);
-    (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
-  });
-  simHead.appendChild(randomBtn);
-  container.appendChild(simHead);
   if (opts.paramsHidden) {
-    if (opts.tilt) buildTiltRow(container, ctrl, opts.tilt);
+    if (opts.tilt) buildTiltRow(body, ctrl, opts.tilt);
     return;
   }
-  createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
-    get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history, lock: lockFor('numParticles') });
-  createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
-    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); }, history, lock: lockFor('stepsPerFrame') });
-  createRangeSlider(container, { label: 'Attraction radius', min: 0.01, max: 0.5, step: 0.005,
-    get: () => p.attractionRadius, set: v => { p.attractionRadius = v; }, history, lock: lockFor('attractionRadius') });
-  createRangeSlider(container, { label: 'Repulsion radius', min: 0.005, max: 0.2, step: 0.005,
-    get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; }, history, lock: lockFor('repulsionRadius') });
-  createRangeSlider(container, { label: 'Attraction', min: 0, max: 5, step: 0.01,
-    get: () => p.attraction, set: v => { p.attraction = v; }, history, lock: lockFor('attraction') });
-  createRangeSlider(container, { label: 'Repulsion', min: 0, max: 10, step: 0.01,
-    get: () => p.repulsion, set: v => { p.repulsion = v; }, history, lock: lockFor('repulsion') });
-  createRangeSlider(container, { label: 'Alignment', min: 0, max: 10, step: 0.01,
-    get: () => p.alignment, set: v => { p.alignment = v; }, history, lock: lockFor('alignment') });
-  createRangeSlider(container, { label: 'Cone angle', min: -1, max: 1, step: 0.01,
-    get: () => p.coneAngle, set: v => { p.coneAngle = v; }, history, lock: lockFor('coneAngle') });
-  createRangeSlider(container, { label: 'Friction', min: 0, max: 10, step: 0.1,
-    get: () => p.friction, set: v => { p.friction = v; }, history, lock: lockFor('friction') });
-  createRangeSlider(container, { label: 'Max speed', min: 0.01, max: 1, step: 0.01,
-    get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history, lock: lockFor('maxSpeed') });
-  createRangeSlider(container, { label: 'Noise', min: 0, max: 0.1, step: 0.001,
-    get: () => p.noise, set: v => { p.noise = v; }, history, lock: lockFor('noise') });
-  if (opts.tilt) buildTiltRow(container, ctrl, opts.tilt);
 
-  // Field
-  divider(container);
-  heading(container, 'Field');
-  createRangeSlider(container, { label: 'Memory', min: 0, max: 0.99, step: 0.01,
-    get: () => p.memory, set: v => { p.memory = v; }, history, lock: lockFor('memory') });
-  createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
-    get: () => p.splatSize, set: v => { p.splatSize = v; }, history, lock: lockFor('splatSize') });
+  // ── Params: group bands + one-line meter rows ──
+  const group = (name: string) => { const h = document.createElement('h6'); h.className = 'fb-group'; h.textContent = name; body.appendChild(h); };
+  const pr = p as unknown as Record<string, number>;
+  const row = (key: keyof typeof p, label: string, min: number, max: number, step: number, extra: { scale?: 'linear' | 'log'; int?: boolean } = {}) =>
+    createMeterRow(body, { label, min, max, step, ...extra, history, lock: lockFor(key),
+      get: () => pr[key as string], set: v => { pr[key as string] = extra.int ? Math.round(v) : v; } });
+
+  group('Simulation');
+  row('numParticles', 'Particles', 1000, 2000000, 1000, { scale: 'log', int: true });
+  row('stepsPerFrame', 'Steps per frame', 1, 30, 1, { int: true });
+  row('attractionRadius', 'Attraction radius', 0.01, 0.5, 0.005);
+  row('repulsionRadius', 'Repulsion radius', 0.005, 0.2, 0.005);
+  row('attraction', 'Attraction', 0, 5, 0.01);
+  row('repulsion', 'Repulsion', 0, 10, 0.01);
+  row('alignment', 'Alignment', 0, 10, 0.01);
+  row('coneAngle', 'Cone angle', -1, 1, 0.01);
+  row('friction', 'Friction', 0, 10, 0.1);
+  row('maxSpeed', 'Max speed', 0.01, 1, 0.01);
+  row('noise', 'Noise', 0, 0.1, 0.001);
+  if (opts.tilt) buildTiltRow(body, ctrl, opts.tilt);
+
+  group('Field');
+  row('memory', 'Memory', 0, 0.99, 0.01);
+  row('splatSize', 'Splat size', 0.5, 3, 0.1);
 
   // Look: from the shared spec. Enums as segmented bars / swatches / selects,
-  // numbers as sliders; point rows only in the Points view.
-  divider(container);
-  heading(container, 'Look');
-  const pr = p as unknown as Record<string, number>;
+  // numbers as meter rows; point rows only in the Points view.
+  group('Look');
   const rebuild = opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts));
   for (const item of LOOK_GROUP.items) {
     if (item.showIf && !item.showIf(p)) continue;
     if (item.kind === 'enum') {
-      enumRow(container, item, () => pr[item.key], i => { pr[item.key] = i; }, history, item.rebuilds ? rebuild : undefined);
+      enumRow(body, item, () => pr[item.key], i => { pr[item.key] = i; }, history, item.rebuilds ? rebuild : undefined);
     } else {
-      createRangeSlider(container, { label: item.label, min: item.min, max: item.max, step: item.step, scale: item.scale,
-        get: () => pr[item.key], set: v => { pr[item.key] = item.int ? Math.round(v) : v; }, history, lock: lockFor(item.key) });
+      row(item.key, item.label, item.min, item.max, item.step, { scale: item.scale, int: item.int });
     }
   }
 }

@@ -126,7 +126,7 @@ export async function setupFieldBoids(
         note: (k) => (k === 'tiltGravity' ? tiltNote : ''),
         history: mgr.history,
         locks: mgr.locks,
-        buildPresets: (c) => buildPresetSection(c, mgr).dispose,
+        buildPresets: (c) => buildPresetSection(c, mgr, { showTitle: false }).dispose,
         onRandomize: () => { randomizeKeepingLocks(ctrl, mgr.locks, mgr.history); mgr.rebuild(); },
         onClose: () => setScrubOpen(false),
       });
@@ -169,7 +169,7 @@ export async function setupFieldBoids(
     } else {
       buildFieldBoidsPanel(panelContent, ctrl, {
         onClose: () => { panel.style.display = 'none'; },
-        buildPresets: (c) => { section = buildPresetSection(c, mgr); },
+        buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
         history: mgr.history,
         locks: mgr.locks,
         tilt,

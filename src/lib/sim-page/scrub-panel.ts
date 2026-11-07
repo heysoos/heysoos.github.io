@@ -14,6 +14,7 @@
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from '../../components/simulations/field-boids/field-boids-spec';
+import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
 export interface ScrubPanelOpts {
   /** Positioned ancestor of the canvas; the list and overlay are appended here. */
@@ -48,22 +49,6 @@ const ROW_PX = 240;         // same, for a drag that starts on a list row
 const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
 const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
-
-function fmt(spec: NumSpec, v: number): string {
-  if (spec.int || spec.step >= 1) return String(Math.round(v)).replace(/\B(?=(\d{3})+$)/g, ' ');
-  const dec = String(spec.step).split('.')[1]?.length ?? 2;
-  return v.toFixed(dec);
-}
-
-function toSlider(spec: NumSpec, v: number): number {
-  return spec.scale === 'log' ? Math.log(Math.max(v, spec.min)) : v;
-}
-function fromSlider(spec: NumSpec, s: number): number {
-  let v = spec.scale === 'log' ? Math.exp(s) : s;
-  v = Math.round(v / spec.step) * spec.step;
-  if (spec.int) v = Math.round(v);
-  return Math.min(spec.max, Math.max(spec.min, v));
-}
 
 type Row = { spec: ParamSpec; el: HTMLElement; val?: HTMLElement; choices?: HTMLElement[]; select?: HTMLSelectElement };
 
@@ -275,8 +260,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     refresh();
   }
 
-  const frac = (spec: NumSpec, v: number) =>
-    Math.max(0, Math.min(1, (toSlider(spec, v) - toSlider(spec, spec.min)) / (toSlider(spec, spec.max) - toSlider(spec, spec.min))));
+  const frac = sliderFrac;
 
   function refresh(): void {
     for (const r of rows) {
