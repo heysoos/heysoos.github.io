@@ -73,28 +73,40 @@ export async function setupFieldBoids(
         set: (k, v) => { (ctrl.params as unknown as Record<string, number>)[k] = v; },
         history: mgr.history,
         locks: mgr.locks,
-        onPresets: () => { panel.style.display = 'flex'; },
+        onPresets: () => { panel.style.display = 'flex'; setScrubOpen(false); },
         onClose: () => setScrubOpen(false),
       });
-      // The sheet is secondary on phones: closed until "Presets" opens it.
+      // The sheet is secondary on phones: closed until "Presets" opens it,
+      // and the page script must not reopen it from its own saved state.
       panel.style.display = 'none';
-      scrub.setVisible(sessionStorage.getItem(scrubKey) !== 'false');
+      sessionStorage.setItem('field-boids-panel-open', 'false');
+      setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
     } else if (!want && scrub) {
       scrub.dispose();
       scrub = null;
+      viewport.classList.remove('scrub-open');
+      if (settingsIcon) settingsIcon.textContent = '⚙';
     }
   }
+  // ⚙ opens the list and turns into × while it is open; pause/reset and the
+  // fps readout only show alongside the list (see sim-page.css phone rules).
+  const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
+  const settingsIcon = settingsBtn?.querySelector<HTMLElement>('.ctrl-icon') ?? null;
   function setScrubOpen(open: boolean): void {
     scrub?.setVisible(open);
     sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
+    viewport.classList.toggle('scrub-open', open);
+    if (settingsIcon) settingsIcon.textContent = open ? '×' : '⚙';
   }
   // On phones the ⚙ button toggles the scrub list, not the sheet.
-  const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
   settingsBtn?.addEventListener('click', (e) => {
     if (!scrub) return;
     e.stopImmediatePropagation();
     setScrubOpen(!scrub.isVisible());
   }, { capture: true });
+
+  // Closing the sheet from its handle or by swipe brings the list back.
+  panel.addEventListener('sheetclose', () => { if (scrub) setScrubOpen(true); });
 
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
@@ -102,7 +114,7 @@ export async function setupFieldBoids(
     panelContent.innerHTML = '';
     ensureScrub();
     buildFieldBoidsPanel(panelContent, ctrl, {
-      onClose: () => { panel.style.display = 'none'; },
+      onClose: () => { panel.style.display = 'none'; if (scrub) setScrubOpen(true); },
       buildPresets: (c) => { section = buildPresetSection(c, mgr); },
       history: mgr.history,
       locks: mgr.locks,

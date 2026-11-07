@@ -2,10 +2,11 @@
 // Phone control surface: a translucent grouped list of params on the left
 // edge of the sim viewport, and the canvas itself as the scrub area. Tap a
 // name to select it, then drag anywhere on the canvas: horizontal is coarse,
-// vertical is fine. A readout floats above the finger. "Touch" (or tapping
-// the active name again) deselects, and the canvas goes back to being the
-// sim's own pointer force. Long-press a row to lock it. The header has
-// undo/redo, a Presets button (opens the sheet) and a close ×.
+// vertical is fine. While a param is selected the list collapses to a chip
+// (name, value, range) so the sim stays visible; a plain tap on the canvas
+// or ‹ returns to the list. With the list closed the canvas is the sim's own
+// pointer force. Long-press a row (or tap the chip's name) to lock it. The
+// header has undo/redo and a Presets button (opens the sheet).
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
@@ -39,7 +40,7 @@ const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
 
 function fmt(spec: NumSpec, v: number): string {
-  if (spec.int || spec.step >= 1) return String(Math.round(v));
+  if (spec.int || spec.step >= 1) return String(Math.round(v)).replace(/\B(?=(\d{3})+$)/g, ' ');
   const dec = String(spec.step).split('.')[1]?.length ?? 2;
   return v.toFixed(dec);
 }
@@ -87,24 +88,34 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // ── Header: undo / redo · presets · close ──
   const head = document.createElement('div');
   head.className = 'scrub-head';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets</button><button class="h-close" aria-label="Close">×</button>`;
+  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets</button>`;
   list.appendChild(head);
   const undoBtn = head.querySelector<HTMLButtonElement>('.h-undo')!;
   const redoBtn = head.querySelector<HTMLButtonElement>('.h-redo')!;
   undoBtn.addEventListener('click', () => history?.undo());
   redoBtn.addEventListener('click', () => history?.redo());
   head.querySelector('.h-presets')!.addEventListener('click', () => opts.onPresets?.());
-  head.querySelector('.h-close')!.addEventListener('click', () => opts.onClose?.());
   const refreshHistory = () => {
     undoBtn.disabled = !history?.canUndo();
     redoBtn.disabled = !history?.canRedo();
   };
 
-  const touchRow = document.createElement('button');
-  touchRow.className = 'scrub-row touch';
-  touchRow.textContent = '☝ Touch';
-  touchRow.addEventListener('click', () => { select(null); });
-  list.appendChild(touchRow);
+  // Selecting a param collapses the list to this chip so the canvas is
+  // visible while scrubbing. ‹ or a plain tap on the canvas returns to the list.
+  const chip = document.createElement('div');
+  chip.className = 'scrub-chip';
+  chip.innerHTML = `<div class="c-top"><button class="c-back" aria-label="All params">‹</button><span class="c-name"></span><i class="lk"></i></div>
+    <div class="c-val"></div><div class="c-bar"><i></i></div><div class="c-range"><span class="c-min"></span><span class="c-max"></span></div>`;
+  chip.hidden = true;
+  host.appendChild(chip);
+  const chipName = chip.querySelector<HTMLElement>('.c-name')!;
+  const chipVal = chip.querySelector<HTMLElement>('.c-val')!;
+  const chipBar = chip.querySelector<HTMLElement>('.c-bar i')!;
+  chip.querySelector('.c-back')!.addEventListener('click', () => select(null));
+  chip.querySelector<HTMLElement>('.c-top')!.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.c-back')) return;
+    if (cur && locks) locks.toggle(cur.key as string);
+  });
 
   for (const g of groups) {
     const h = document.createElement('h6');
@@ -180,11 +191,15 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   function select(spec: NumSpec | null): void {
     cur = spec;
     overlay.classList.toggle('armed', !!cur);
+    list.hidden = !visible || !!cur;
+    chip.hidden = !visible || !cur;
     refresh();
   }
 
+  const frac = (spec: NumSpec, v: number) =>
+    Math.max(0, Math.min(1, (toSlider(spec, v) - toSlider(spec, spec.min)) / (toSlider(spec, spec.max) - toSlider(spec, spec.min))));
+
   function refresh(): void {
-    touchRow.classList.toggle('on', !cur);
     for (const r of rows) {
       const locked = locks?.isLocked(r.spec.key as string) ?? false;
       r.el.classList.toggle('locked', locked);
@@ -199,15 +214,22 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
       }
     }
-    if (cur?.showIf && !cur.showIf(params)) select(null);
-    hint.innerHTML = cur
-      ? `<b>${cur.label}</b> · ◀ ▶ coarse · ▲ ▼ fine`
-      : 'touch mode · drag to attract';
+    if (cur?.showIf && !cur.showIf(params)) { select(null); return; }
+    if (cur) {
+      const v = get(cur.key as string);
+      chipName.textContent = cur.label;
+      chipVal.textContent = fmt(cur, v);
+      chipBar.style.transform = `scaleX(${frac(cur, v)})`;
+      chip.querySelector<HTMLElement>('.c-min')!.textContent = fmt(cur, cur.min);
+      chip.querySelector<HTMLElement>('.c-max')!.textContent = fmt(cur, cur.max);
+      chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
+    }
+    hint.innerHTML = '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
     refreshHistory();
   }
 
   // ── Scrub gesture on the overlay (only receives events while armed) ──
-  let dragId = -1, sx = 0, sy = 0, ss = 0;
+  let dragId = -1, sx = 0, sy = 0, ss = 0, moved = false;
   const place = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
     guide.style.setProperty('--x', `${e.clientX - r.left}px`);
@@ -217,17 +239,15 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     if (!cur) return;
     readName.textContent = cur.label.toUpperCase();
     readVal.textContent = fmt(cur, v);
-    const t = (toSlider(cur, v) - toSlider(cur, cur.min)) / (toSlider(cur, cur.max) - toSlider(cur, cur.min));
-    readBar.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
+    readBar.style.transform = `scaleX(${frac(cur, v)})`;
   };
   overlay.addEventListener('pointerdown', (e) => {
     if (!cur || dragId !== -1) return;
-    dragId = e.pointerId; sx = e.clientX; sy = e.clientY;
+    dragId = e.pointerId; sx = e.clientX; sy = e.clientY; moved = false;
     ss = toSlider(cur, get(cur.key as string));
     try { overlay.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     history?.beginGesture(cur.label);
     place(e); showRead(get(cur.key as string));
-    guide.classList.add('show');
     e.preventDefault();
   });
   overlay.addEventListener('pointermove', (e) => {
@@ -235,6 +255,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     e.preventDefault();
     const range = toSlider(cur, cur.max) - toSlider(cur, cur.min);
     const dx = e.clientX - sx, dy = -(e.clientY - sy);
+    if (!moved && Math.abs(dx) < PRESS_SLOP && Math.abs(dy) < PRESS_SLOP) return;
+    if (!moved) { moved = true; guide.classList.add('show'); }
     const s = ss + (dx / COARSE_PX) * range + (dy / COARSE_PX) * range * FINE_RATIO;
     const v = fromSlider(cur, Math.min(toSlider(cur, cur.max), Math.max(toSlider(cur, cur.min), s)));
     set(cur.key as string, v);
@@ -246,6 +268,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     dragId = -1;
     guide.classList.remove('show');
     history?.endGesture();
+    if (!moved) select(null);          // plain tap: done with this param
   };
   overlay.addEventListener('pointerup', end);
   overlay.addEventListener('pointercancel', end);
@@ -261,7 +284,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   return {
     refresh,
     isVisible: () => visible,
-    setVisible(on) { visible = on; list.hidden = !on; overlay.hidden = !on; if (!on) select(null); },
-    dispose() { unsubLocks?.(); unsubHistory?.(); list.remove(); overlay.remove(); },
+    setVisible(on) { visible = on; overlay.hidden = !on; select(null); },
+    dispose() { unsubLocks?.(); unsubHistory?.(); list.remove(); chip.remove(); overlay.remove(); },
   };
 }

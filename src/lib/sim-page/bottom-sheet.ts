@@ -77,7 +77,7 @@ export class BottomSheetController {
     if (dy <= -SWIPE_MIN) { this.setExpanded(true); return; }
     if (dy >= SWIPE_MIN) {
       if (this.expanded) this.setExpanded(false);
-      else this.onClose();
+      else { this.onClose(); this.panel.dispatchEvent(new CustomEvent('sheetclose')); }
     }
   };
 
