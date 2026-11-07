@@ -88,7 +88,7 @@ const GRAVITY_KEY = 'field-boids:gravity';
 /** "Tilt gravity" switch plus the gravity strength. Device settings, not
  *  preset params: the sensor keeps its own state, the strength is kept in
  *  localStorage, and neither is saved with or randomized by presets. */
-function buildTiltRow(parent: HTMLElement, ctrl: FieldBoidsController, tilt: TiltSensor): void {
+export function buildTiltRow(parent: HTMLElement, ctrl: FieldBoidsController, tilt: TiltSensor): void {
   const row = document.createElement('div');
   row.className = 'trail-row';
   const label = el('span', '', 'Tilt steers gravity');
@@ -122,6 +122,17 @@ function buildTiltRow(parent: HTMLElement, ctrl: FieldBoidsController, tilt: Til
     get: () => ctrl.gravity,
     set: v => { ctrl.gravity = v; try { localStorage.setItem(GRAVITY_KEY, String(v)); } catch { /* session-only */ } },
   });
+}
+
+/** Randomize the dynamics; locked params survive like they survive a
+ *  preset load. Shared by the desktop button and the phone card header. */
+export function randomizeKeepingLocks(ctrl: FieldBoidsController, locks?: ParamLocks, history?: UndoHistory): void {
+  history?.endGesture();
+  const pr = ctrl.params as unknown as Record<string, number>;
+  const kept = (locks?.keys() ?? []).map(k => [k, pr[k]] as const);
+  randomizeFieldBoidsParams(ctrl.params);
+  for (const [k, v] of kept) pr[k] = v;
+  history?.push('Randomize');
 }
 
 /** Restore the device gravity strength saved by the tilt row. */
@@ -175,13 +186,7 @@ export function buildFieldBoidsPanel(
   const randomBtn = el('button', RANDOM_BTN, '⚄ Randomize');
   randomBtn.title = 'Random dynamics (particle count and view unchanged)';
   randomBtn.addEventListener('click', () => {
-    history?.endGesture();
-    // Locked params survive Randomize like they survive a preset load.
-    const pr = p as unknown as Record<string, number>;
-    const kept = (opts.locks?.keys() ?? []).map(k => [k, pr[k]] as const);
-    randomizeFieldBoidsParams(p);
-    for (const [k, v] of kept) pr[k] = v;
-    history?.push('Randomize');
+    randomizeKeepingLocks(ctrl, opts.locks, history);
     (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
   });
   simHead.appendChild(randomBtn);

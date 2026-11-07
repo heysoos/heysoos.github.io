@@ -5,8 +5,10 @@
 // vertical is fine. While a param is selected the list collapses to a chip
 // (name, value, range) so the sim stays visible; a plain tap on the canvas
 // or ‹ returns to the list. With the list closed the canvas is the sim's own
-// pointer force. Long-press a row (or tap the chip's name) to lock it. The
-// header has undo/redo and a Presets button (opens the sheet).
+// pointer force, and a plain tap on it closes the list. Long-press a row (or
+// tap the chip's name) to lock it. The card header (undo/redo, Presets,
+// Randomize) stays put while the body scrolls; Presets swaps the body for
+// the shared preset section inside the same card.
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
@@ -22,13 +24,17 @@ export interface ScrubPanelOpts {
   params: unknown;
   history?: UndoHistory;
   locks?: ParamLocks;
-  /** Header buttons. */
-  onPresets?: () => void;
+  /** Fills the in-card Presets view; returns a dispose function. */
+  buildPresets?: (container: HTMLElement) => () => void;
+  onRandomize?: () => void;
+  /** Called by × and by a plain tap on the canvas while the list is open. */
   onClose?: () => void;
 }
 
 export interface ScrubPanelHandle {
   refresh(): void;
+  /** Re-render the Presets view (after a preset load / save / rename). */
+  rebuildPresets(): void;
   setVisible(on: boolean): void;
   isVisible(): boolean;
   dispose(): void;
@@ -63,6 +69,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
 
   const list = document.createElement('div');
   list.className = 'scrub-list';
+  const scroll = document.createElement('div');
+  scroll.className = 'scrub-scroll';
+  const body = document.createElement('div');
+  body.className = 'scrub-body';
+  const presetsEl = document.createElement('div');
+  presetsEl.className = 'scrub-presets';
+  presetsEl.hidden = true;
+  scroll.append(body, presetsEl);
   const overlay = document.createElement('div');
   overlay.className = 'scrub-overlay';
   overlay.innerHTML = `
@@ -88,13 +102,31 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // ── Header: undo / redo · presets · close ──
   const head = document.createElement('div');
   head.className = 'scrub-head';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets</button>`;
-  list.appendChild(head);
+  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets ›</button><button class="h-random">⚄ Randomize</button>`;
+  list.append(head, scroll);
+  let presetsMode = false;
+  let disposePresets: (() => void) | null = null;
+  const presetsBtn = head.querySelector<HTMLButtonElement>('.h-presets')!;
+  function rebuildPresets(): void {
+    disposePresets?.(); disposePresets = null;
+    presetsEl.innerHTML = '';
+    if (opts.buildPresets && presetsMode) disposePresets = opts.buildPresets(presetsEl);
+  }
+  function setPresetsMode(on: boolean): void {
+    presetsMode = on;
+    list.classList.toggle('presets-mode', on);
+    body.hidden = on;
+    presetsEl.hidden = !on;
+    presetsBtn.textContent = on ? '‹ Params' : 'Presets ›';
+    rebuildPresets();
+    scroll.scrollTop = 0;
+  }
   const undoBtn = head.querySelector<HTMLButtonElement>('.h-undo')!;
   const redoBtn = head.querySelector<HTMLButtonElement>('.h-redo')!;
   undoBtn.addEventListener('click', () => history?.undo());
   redoBtn.addEventListener('click', () => history?.redo());
-  head.querySelector('.h-presets')!.addEventListener('click', () => opts.onPresets?.());
+  presetsBtn.addEventListener('click', () => setPresetsMode(!presetsMode));
+  head.querySelector('.h-random')!.addEventListener('click', () => { opts.onRandomize?.(); refresh(); });
   const refreshHistory = () => {
     undoBtn.disabled = !history?.canUndo();
     redoBtn.disabled = !history?.canRedo();
@@ -120,14 +152,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
-    list.appendChild(h);
+    body.appendChild(h);
     for (const spec of g.items) {
       if (spec.kind === 'num') {
         const row = document.createElement('button');
         row.className = 'scrub-row';
         row.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span><span class="v"></span>`;
         row.addEventListener('click', () => select(cur === spec ? null : spec));
-        list.appendChild(row);
+        body.appendChild(row);
         rows.push({ spec, el: row, val: row.querySelector<HTMLElement>('.v')! });
         attachLongPress(row, spec.key as string);
       } else {
@@ -165,7 +197,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       });
       wrap.appendChild(bar);
     }
-    list.appendChild(wrap);
+    body.appendChild(wrap);
     attachLongPress(wrap, spec.key as string);
     return row;
   }
@@ -277,14 +309,28 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   overlay.addEventListener('touchmove', (e) => { if (cur) e.preventDefault(); }, { passive: false });
   overlay.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  // A plain tap on the canvas (no drag) while the list is open closes it.
+  let tapId = -1, tx = 0, ty = 0, tt = 0;
+  host.addEventListener('pointerdown', (e) => {
+    if (!visible || cur || (e.target as HTMLElement).tagName !== 'CANVAS') return;
+    tapId = e.pointerId; tx = e.clientX; ty = e.clientY; tt = performance.now();
+  });
+  host.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== tapId) return;
+    tapId = -1;
+    if (Math.abs(e.clientX - tx) < PRESS_SLOP && Math.abs(e.clientY - ty) < PRESS_SLOP && performance.now() - tt < 350) opts.onClose?.();
+  });
+  host.addEventListener('pointercancel', () => { tapId = -1; });
+
   const unsubLocks = locks?.subscribe(refresh);
   const unsubHistory = history?.subscribe(refreshHistory);
   refresh();
 
   return {
     refresh,
+    rebuildPresets,
     isVisible: () => visible,
     setVisible(on) { visible = on; overlay.hidden = !on; select(null); },
-    dispose() { unsubLocks?.(); unsubHistory?.(); list.remove(); chip.remove(); overlay.remove(); },
+    dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); list.remove(); chip.remove(); overlay.remove(); },
   };
 }

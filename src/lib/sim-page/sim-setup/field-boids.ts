@@ -1,6 +1,6 @@
 // src/lib/sim-page/sim-setup/field-boids.ts
 import type { FieldBoidsController } from '../../../components/simulations/field-boids/field-boids-controller';
-import { buildFieldBoidsPanel, restoreDeviceGravity } from '../../../components/simulations/field-boids/field-boids-panel';
+import { buildFieldBoidsPanel, buildTiltRow, randomizeKeepingLocks, restoreDeviceGravity } from '../../../components/simulations/field-boids/field-boids-panel';
 import { DEFAULT_FIELD_BOIDS_PARAMS, type FieldBoidsParams } from '../../../components/simulations/field-boids/field-boids-types';
 import { FIELD_BOIDS_PRESETS } from '../../../data/field-boids-presets';
 import { createPresetManager } from '../../presets/preset-manager';
@@ -59,8 +59,9 @@ export async function setupFieldBoids(
   let scrub: ScrubPanelHandle | null = null;
   const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned
 
-  // Phone: params live in the scrub list over the canvas; the sheet keeps
-  // presets, Randomize and tilt. Desktop: the full slider panel.
+  // Phone: everything lives in the scrub card over the canvas (params,
+  // presets, Randomize, tilt); the bottom sheet is never shown. Desktop: the
+  // full slider panel.
   const scrubKey = 'field-boids-scrub-open';
   function ensureScrub(): void {
     const want = isPhoneLayout();
@@ -73,11 +74,15 @@ export async function setupFieldBoids(
         set: (k, v) => { (ctrl.params as unknown as Record<string, number>)[k] = v; },
         history: mgr.history,
         locks: mgr.locks,
-        onPresets: () => { panel.style.display = 'flex'; setScrubOpen(false); },
+        buildPresets: (c) => {
+          const h = buildPresetSection(c, mgr);
+          if (tilt) buildTiltRow(c, ctrl, tilt);
+          return () => h.dispose();
+        },
+        onRandomize: () => { randomizeKeepingLocks(ctrl, mgr.locks, mgr.history); mgr.rebuild(); },
         onClose: () => setScrubOpen(false),
       });
-      // The sheet is secondary on phones: closed until "Presets" opens it,
-      // and the page script must not reopen it from its own saved state.
+      // The page script must not reopen the sheet from its own saved state.
       panel.style.display = 'none';
       sessionStorage.setItem('field-boids-panel-open', 'false');
       setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
@@ -105,24 +110,24 @@ export async function setupFieldBoids(
     setScrubOpen(!scrub.isVisible());
   }, { capture: true });
 
-  // Closing the sheet from its handle or by swipe brings the list back.
-  panel.addEventListener('sheetclose', () => { if (scrub) setScrubOpen(true); });
-
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
     section?.dispose();
     panelContent.innerHTML = '';
     ensureScrub();
-    buildFieldBoidsPanel(panelContent, ctrl, {
-      onClose: () => { panel.style.display = 'none'; if (scrub) setScrubOpen(true); },
-      buildPresets: (c) => { section = buildPresetSection(c, mgr); },
-      history: mgr.history,
-      locks: mgr.locks,
-      tilt,
-      rebuild: () => mgr.rebuild(),
-      paramsHidden: !!scrub,
-    });
-    scrub?.refresh();
+    if (scrub) {
+      scrub.refresh();
+      scrub.rebuildPresets();
+    } else {
+      buildFieldBoidsPanel(panelContent, ctrl, {
+        onClose: () => { panel.style.display = 'none'; },
+        buildPresets: (c) => { section = buildPresetSection(c, mgr); },
+        history: mgr.history,
+        locks: mgr.locks,
+        tilt,
+        rebuild: () => mgr.rebuild(),
+      });
+    }
     panelContent.scrollTop = scrollTop;
   }
   mgr.onRebuild(buildPanel);
