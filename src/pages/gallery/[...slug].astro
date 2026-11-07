@@ -501,7 +501,9 @@ const underConstruction = project.data.underConstruction ?? false;
             if (!btn) return;
             const action = btn.getAttribute("data-action");
             if (action === "play-pause") {
-              if (playing) { controller.stop(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
+              // Controllers with pause() keep drawing while frozen (zoom, pan, Look stay live).
+              const freeze = (controller as { pause?: () => void }).pause?.bind(controller) ?? controller.stop.bind(controller);
+              if (playing) { freeze(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
               else { controller.start(); btn.querySelector(".ctrl-icon")!.textContent = "⏸"; }
               playing = !playing;
             } else if (action === "reset") {

@@ -25,6 +25,8 @@ const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 export class FieldBoidsController {
   private gpu: WebGPUContext | null = null;
   private running = false;
+  /** Physics off, display on: zoom, pan and Look changes still redraw. */
+  paused = false;
   private animId = 0;
   private lastFrameTime = 0;
   private frame = 0;
@@ -405,13 +407,22 @@ export class FieldBoidsController {
 
   // ── Lifecycle ─────────────────────────────────────────────────────
   start(): void {
+    this.paused = false;
     if (this.running) return;
     this.running = true;
     this.tick();
   }
 
+  /** The play/pause button: freeze the particles but keep rendering so the
+   *  view and the Look controls stay live. stop() is the full halt. */
+  pause(): void {
+    this.paused = true;
+    if (!this.running) { this.running = true; this.tick(); }
+  }
+
   stop(): void {
     this.running = false;
+    this.paused = false;
     cancelAnimationFrame(this.animId);
     clearTimeout(this.animId);
   }
@@ -544,7 +555,18 @@ export class FieldBoidsController {
     }
     const aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 1;
     const N = Math.min(this.params.numParticles, MAX_PARTICLES);
-    const steps = Math.max(1, Math.min(30, Math.round(this.params.stepsPerFrame)));
+    const steps = this.paused ? 0 : Math.max(1, Math.min(30, Math.round(this.params.stepsPerFrame)));
+
+    if (this.paused) {
+      // Redraw the last state: the field written by the last step lives in the
+      // other slot (writeIdx already flipped) and its particles in (frame-1)%2.
+      device.queue.writeBuffer(this.uniformBuffer, 0, this.packUniforms(aspect));
+      const encoder = device.createCommandEncoder();
+      this.writeIdx = 1 - this.writeIdx;
+      this.runDisplay(encoder, context, (this.frame + 1) % 2, N);
+      this.writeIdx = 1 - this.writeIdx;
+      device.queue.submit([encoder.finish()]);
+    }
 
     // One submit per sim step so each step sees its own `tick` uniform (noise seed).
     // Only the last step renders to the swapchain.
