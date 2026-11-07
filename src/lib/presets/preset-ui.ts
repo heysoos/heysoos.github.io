@@ -54,7 +54,7 @@ export function buildPresetSection<P extends ParamRecord>(
   const header = el('div', 'display:flex;align-items:center;gap:6px;');
   header.className = 'preset-header';
   const pills = el('div', 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;');
-  const toolbar = el('div', 'display:flex;flex-wrap:wrap;gap:4px;');
+  const toolbar = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;padding-top:7px;border-top:1px solid var(--bg-surface-border);');
   const bar = el('div', 'display:none;flex-direction:column;gap:4px;padding:5px 7px;border:1px solid var(--accent);border-radius:4px;');
   const trashWrap = el('div', 'display:none;flex-direction:column;gap:3px;');
   root.append(header, pills, toolbar, bar, trashWrap);

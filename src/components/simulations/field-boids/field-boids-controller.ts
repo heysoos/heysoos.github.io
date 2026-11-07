@@ -15,7 +15,8 @@ import {
 export type { FieldBoidsParams, FieldBoidsPreset };
 
 export const MAX_PARTICLES = 2_000_000;
-const PARAMS_BYTES = 176;
+const PARAMS_BYTES = 304;
+const MAX_POINTERS = 4;
 const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class FieldBoidsController {
@@ -38,6 +39,11 @@ export class FieldBoidsController {
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
+  /** Active fingers / mouse on the canvas, NDC. Velocity is an EMA of the
+   *  per-frame motion (NDC per second), updated in packUniforms. */
+  private pointers = new Map<number, { x: number; y: number; px: number; py: number; vx: number; vy: number; strength: number; type: string; clientX: number; clientY: number }>();
+  /** Page hook for touch feedback: called whenever the pointer set changes. */
+  onPointers?: (pts: Array<{ id: number; clientX: number; clientY: number; strength: number; type: string }>) => void;
   /** Unit direction gravity pulls toward, screen space with y up. Straight
    *  down unless a tilt sensor steers it. Not a preset param. */
   private gravityX = 0;
@@ -109,18 +115,36 @@ export class FieldBoidsController {
       // Pointer events cover mouse and touch alike: a finger drag drives the
       // force and lifting it (or a cancelled touch when the page scrolls)
       // releases it. mouseleave alone left the force stuck on after a tap.
+      // Several fingers at once; each is captured so a drag that leaves the
+      // canvas keeps steering. Pressure (where the digitiser reports it)
+      // scales the force: a light touch gathers gently, a press pulls hard.
+      const emit = () => this.onPointers?.([...this.pointers].map(([id, p]) => ({ id, clientX: p.clientX, clientY: p.clientY, strength: p.strength, type: p.type })));
       const setPointer = (e: PointerEvent) => {
+        if (e.type === 'pointermove' && !this.pointers.has(e.pointerId)) return;   // hover without a button
+        if (e.type === 'pointerdown' && this.pointers.size >= MAX_POINTERS) return;
         const rect = canvas.getBoundingClientRect();
-        this.mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        this.mouseY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        this.mouseActive = true;
+        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+        const strength = e.pointerType === 'mouse' ? 1 : 0.5 + 1.5 * Math.min(1, Math.max(0, e.pressure));
+        const cur = this.pointers.get(e.pointerId);
+        if (cur) { cur.x = x; cur.y = y; cur.strength = strength; cur.clientX = e.clientX; cur.clientY = e.clientY; }
+        else {
+          this.pointers.set(e.pointerId, { x, y, px: x, py: y, vx: 0, vy: 0, strength, type: e.pointerType, clientX: e.clientX, clientY: e.clientY });
+          try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+        }
+        this.mouseX = x; this.mouseY = y; this.mouseActive = true;
+        emit();
       };
-      const clearPointer = () => { this.mouseActive = false; };
+      const clearPointer = (e: PointerEvent) => {
+        if (!this.pointers.delete(e.pointerId)) return;
+        this.mouseActive = this.pointers.size > 0;
+        emit();
+      };
       canvas.addEventListener('pointerdown', setPointer);
       canvas.addEventListener('pointermove', setPointer);
       canvas.addEventListener('pointerup', clearPointer);
       canvas.addEventListener('pointercancel', clearPointer);
-      canvas.addEventListener('pointerleave', clearPointer);
+      canvas.addEventListener('lostpointercapture', clearPointer);
       return true;
     } catch (e) {
       console.error('FieldBoidsController init error:', e);
@@ -390,6 +414,21 @@ export class FieldBoidsController {
     const dpr = (canvas && canvas.width > 0 && canvas.clientWidth > 0) ? canvas.width / canvas.clientWidth : 1;
     v.setFloat32(156, Math.max(0.5, (p.pointSize ?? 2) * dpr), true);
     v.setFloat32(160, canvas?.width ?? 1, true);
+    // Pointers: position + pressure, then velocity (EMA of per-frame motion,
+    // in NDC per second so the shader's dt integration moves particles with
+    // the finger). Slots past the active set are zeroed (strength 0).
+    let slot = 0;
+    const dt = Math.max(1e-4, p.dt);
+    for (const pt of this.pointers.values()) {
+      if (slot >= MAX_POINTERS) break;
+      pt.vx = 0.6 * pt.vx + 0.4 * ((pt.x - pt.px) / dt);
+      pt.vy = 0.6 * pt.vy + 0.4 * ((pt.y - pt.py) / dt);
+      pt.px = pt.x; pt.py = pt.y;
+      const o = 176 + slot * 32;
+      v.setFloat32(o, pt.x, true); v.setFloat32(o + 4, pt.y, true); v.setFloat32(o + 8, pt.strength, true);
+      v.setFloat32(o + 16, pt.vx, true); v.setFloat32(o + 20, pt.vy, true);
+      slot++;
+    }
     v.setFloat32(164, canvas?.height ?? 1, true);
     v.setUint32(168,  p.pointShape ?? 0, true);
     return buf;

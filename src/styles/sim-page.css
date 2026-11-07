@@ -122,7 +122,6 @@
   touch-action: pan-y;
   -webkit-touch-callout: none; user-select: none;
 }
-.scrub-list.presets-mode { width: min(300px, calc(100% - 1rem)); }
 .scrub-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 0.3rem 0.35rem 0.8rem; display: flex; flex-direction: column; gap: 1px; }
 .scrub-scroll::-webkit-scrollbar { display: none; }
 .scrub-scroll > *, .scrub-body > * { flex-shrink: 0; }
@@ -146,6 +145,7 @@
   color: var(--accent); border-top: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
 }
+.scrub-row, .scrub-enum, .scrub-scroll { touch-action: pan-y; }
 .scrub-row {
   display: flex; justify-content: space-between; align-items: center; gap: 4px;
   width: 100%; min-height: 0 !important; padding: 4px 6px;
@@ -206,6 +206,14 @@
   font-size: 0.66rem; padding: 3px 6px; min-height: 0 !important;
 }
 
+/* Finger feedback: one ring per active touch, sized by pressure */
+.touch-rings { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.touch-ring {
+  position: absolute; transform: translate(-50%, -50%); border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 75%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: width 0.08s, height 0.08s;
+}
 .scrub-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; touch-action: none; }
 .scrub-overlay.armed { pointer-events: auto; }
 .scrub-overlay.armed .scrub-hint { opacity: 1; }

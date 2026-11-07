@@ -55,6 +55,26 @@ export async function setupFieldBoids(
     });
   }
 
+  // Touch feedback: a ring under each finger, sized by its pressure, for
+  // touch and pen only (the mouse already has a cursor).
+  const rings = document.createElement('div');
+  rings.className = 'touch-rings';
+  (panel.parentElement as HTMLElement).appendChild(rings);
+  const ringEls = new Map<number, HTMLElement>();
+  ctrl.onPointers = (pts) => {
+    const host = rings.getBoundingClientRect();
+    const seen = new Set<number>();
+    for (const p of pts) {
+      if (p.type === 'mouse') continue;
+      seen.add(p.id);
+      let el = ringEls.get(p.id);
+      if (!el) { el = document.createElement('div'); el.className = 'touch-ring'; rings.appendChild(el); ringEls.set(p.id, el); }
+      const d = 34 + 30 * p.strength;
+      el.style.cssText = `left:${p.clientX - host.left}px;top:${p.clientY - host.top}px;width:${d}px;height:${d}px;`;
+    }
+    for (const [id, el] of ringEls) if (!seen.has(id)) { el.remove(); ringEls.delete(id); }
+  };
+
   let section: PresetSectionHandle | null = null;
   let scrub: ScrubPanelHandle | null = null;
   const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned

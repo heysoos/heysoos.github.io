@@ -47,7 +47,10 @@ struct Params {
   canvasH:          f32,  // 164
   pointShape:       u32,  // 168
   pad0:             f32,  // 172
-}                          // 176 bytes total
+  // Up to 4 fingers / mouse. [2i] = (x, y, strength, 0) in NDC, strength 0 =
+  // inactive; [2i+1] = (vx, vy, 0, 0) pointer velocity in NDC per second.
+  pointers:         array<vec4f, 8>,  // 176
+}                          // 304 bytes total
 
 struct Particle {
   pos: vec2f,

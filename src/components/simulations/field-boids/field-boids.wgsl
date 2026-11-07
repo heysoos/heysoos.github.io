@@ -126,13 +126,19 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     vel = vel * (params.maxSpeed / sp);
   }
 
-  // Mouse attraction (screen-space distance for an isotropic radius)
-  if (params.mouseActive > 0.5) {
-    let toMouse = vec2f(params.mouseX, params.mouseY) - pos;
-    let toMouseS = vec2f(toMouse.x * params.aspect, toMouse.y);
-    let mouseDist = length(toMouseS);
-    if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
-      vel += 0.005 * normalize(toMouse) / mouseDist;
+  // Fingers / mouse (screen-space distance for an isotropic radius): each
+  // active pointer attracts in proportion to its pressure, and particles
+  // inside its radius are carried along with the pointer's own motion, so a
+  // drag moves the clump (advection) while a still finger just gathers.
+  for (var i = 0u; i < 4u; i++) {
+    let pp = params.pointers[i * 2u];
+    if (pp.z <= 0.0) { continue; }
+    let toP = pp.xy - pos;
+    let dS = length(vec2f(toP.x * params.aspect, toP.y));
+    if (dS < params.mouseRadius && dS > 0.0001) {
+      vel += 0.005 * pp.z * normalize(toP) / dS;
+      let w = 1.0 - dS / params.mouseRadius;
+      vel += params.pointers[i * 2u + 1u].xy * (0.5 * w * w);
     }
   }
 

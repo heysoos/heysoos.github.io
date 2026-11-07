@@ -219,6 +219,9 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     row.addEventListener('pointerdown', (e) => {
       id = e.pointerId; x0 = e.clientX; y0 = e.clientY; active = false;
       s0 = toSlider(spec, get(spec.key as string));
+      // Capture at once: the finger leaves the 25px row long before the
+      // drag is recognised. A vertical pan still cancels (touch-action: pan-y).
+      try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     });
     row.addEventListener('pointermove', (e) => {
       if (e.pointerId !== id) return;
@@ -227,7 +230,6 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         if (Math.abs(dx) < PRESS_SLOP || Math.abs(dx) < Math.abs(dy)) return;
         active = true; swallowClick = true;
         row.classList.add('dragging');
-        try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
         history?.beginGesture(spec.label);
       }
       e.preventDefault();
