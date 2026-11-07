@@ -15,6 +15,7 @@ import { buildAudioTab, type AudioUpdaterMaps } from './audio-tab';
 import { createRangeSlider } from './range-slider';
 import { pillStyle } from './panel-styles';
 import type { UndoHistory } from '../../../../lib/presets/undo-history';
+import type { ParamLocks } from '../../../../lib/presets/param-locks';
 
 // ── Main panel builder ────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ export interface BoidsPanelOpts {
   buildPresets?: (container: HTMLElement) => void;
   /** Gallery page: param changes record undo entries. */
   history?: UndoHistory;
+  /** Gallery page: sliders can be locked across preset loads. */
+  locks?: ParamLocks;
   /** Optional extra tab appended after Image. Used by the admin page to add a
    *  Presets management tab without forking the panel. `build` runs once when
    *  the tab is created; the body element is empty, sized to fit the panel. */
@@ -164,6 +167,7 @@ export function buildBoidsPanel(
   }
 
   const history = opts.history;
+  const locks = opts.locks;
 
   // ── Preset switcher ───────────────────────────────────────────────────────
   if (opts.buildPresets) {
@@ -230,12 +234,14 @@ export function buildBoidsPanel(
   // ── Appearance ────────────────────────────────────────────────────────────
   const appearanceBody = addSection(paramsBody, 'Appearance');
   createRangeSlider(appearanceBody, { history,
+    lock: locks ? { key: 'size', locks } : undefined,
     label: 'Size', min: 0.001, max: 0.08, step: 0.001,
     get: () => controller.params.size,
     set: v => { controller.params.size = v; },
     scale: 'log',
   });
   createRangeSlider(appearanceBody, { history,
+    lock: locks ? { key: 'opacity', locks } : undefined,
     label: 'Opacity', min: 0.01, max: 1.0, step: 0.01,
     get: () => controller.params.opacity,
     set: v => { controller.params.opacity = v; },
@@ -248,12 +254,14 @@ export function buildBoidsPanel(
   // ── Simulation ────────────────────────────────────────────────────────────
   const simulationBody = addSection(paramsBody, 'Simulation');
   createRangeSlider(simulationBody, { history,
+    lock: locks ? { key: 'dt', locks } : undefined,
     label: 'Time Step', min: 0.001, max: 0.1, step: 0.001,
     get: () => controller.params.dt,
     set: v => { controller.params.dt = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('dt', { wrap: w, fill: f }),
   });
   createRangeSlider(simulationBody, { history,
+    lock: locks ? { key: 'numParticles', locks } : undefined,
     label: 'Particles', min: 10, max: 10000, step: 10,
     get: () => controller.params.numParticles,
     set: v => { controller.params.numParticles = v; },
@@ -267,12 +275,14 @@ export function buildBoidsPanel(
   // ── Perception (sub-section of Simulation) ────────────────────────────────
   addSubheading(simulationBody, 'Perception');
   createRangeSlider(simulationBody, { history,
+    lock: locks ? { key: 'coneAngle', locks } : undefined,
     label: 'Vision Cone', min: -1.0, max: 0.99, step: 0.05,
     get: () => controller.params.coneAngle,
     set: v => { controller.params.coneAngle = v; },
     onIndicatorCreate: (w, f) => updMaps.paramIndicators.set('coneAngle', { wrap: w, fill: f }),
   });
   createRangeSlider(simulationBody, { history,
+    lock: locks ? { key: 'mouseRadius', locks } : undefined,
     label: 'Mouse Radius', min: 0.05, max: 0.5, step: 0.01,
     get: () => controller.params.mouseRadius,
     set: v => { controller.params.mouseRadius = v; },

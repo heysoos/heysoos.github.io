@@ -7,6 +7,7 @@
 import { type ParamRecord, type PresetBody, type BasePreset, bodyOf, bodyKey, cloneBody } from './preset-schema';
 import { createPresetStore, type PresetStore } from './preset-store';
 import { createUndoHistory, type UndoHistory } from './undo-history';
+import { createParamLocks, type ParamLocks } from './param-locks';
 
 export interface PresetBinding<P extends ParamRecord> {
   simId: string;
@@ -20,6 +21,8 @@ export interface PresetBinding<P extends ParamRecord> {
    *  to a preset body before it is loaded *and* before it is compared for
    *  the dirty check, so the adjustment itself never reads as "unsaved". */
   prepare?(body: PresetBody<P>): PresetBody<P>;
+  /** Share a lock set with the panel; the manager creates one if omitted. */
+  locks?: ParamLocks;
 }
 
 // Undo snapshots are the param body only. The active preset id is not part of
@@ -33,6 +36,8 @@ export interface PresetManager<P extends ParamRecord> {
   readonly builtIn: BasePreset<P>[];
   readonly store: PresetStore<P>;
   readonly history: UndoHistory;
+  /** Params that keep their current value across preset loads. */
+  readonly locks: ParamLocks;
   getActiveId(): string | undefined;
   setActiveId(id: string | undefined): void;
   activePreset(): BasePreset<P> | undefined;
@@ -49,6 +54,7 @@ export interface PresetManager<P extends ParamRecord> {
 
 export function createPresetManager<P extends ParamRecord>(binding: PresetBinding<P>): PresetManager<P> {
   const store = createPresetStore<P>(binding.simId, binding.defaults);
+  const locks = binding.locks ?? createParamLocks(binding.simId);
   let activeId: string | undefined;
   let rebuildFn: () => void = () => {};
 
@@ -64,8 +70,15 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
   // Fill missing params from defaults (built-ins written before a param
   // existed), then let the sim adjust (phone cap). Used for both loading and
   // the dirty check so neither step reads as an unsaved change.
+  // Locked params are pinned to the controller's current value here, so a
+  // load keeps them and the dirty check never counts them.
   const prepare = (body: PresetBody<P>): PresetBody<P> => {
     const filled = { ...body, params: { ...binding.defaults, ...body.params } } as PresetBody<P>;
+    const lockedKeys = locks.keys();
+    if (lockedKeys.length > 0) {
+      const current = binding.capture().params;
+      for (const k of lockedKeys) if (k in current) (filled.params as ParamRecord)[k] = current[k];
+    }
     return binding.prepare ? binding.prepare(filled) : filled;
   };
 
@@ -80,6 +93,7 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
     builtIn: binding.builtIn,
     store,
     history,
+    locks,
     getActiveId: () => activeId,
     setActiveId: (id) => { activeId = id; },
     activePreset: () => findPreset(activeId),

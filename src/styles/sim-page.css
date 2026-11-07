@@ -73,6 +73,49 @@
 
 .panel-drag-handle:active { cursor: grabbing; }
 
+.panel-handle-actions {
+  display: none;
+  position: absolute;
+  left: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  gap: 2px;
+}
+.panel-handle-actions button {
+  background: none;
+  border: none;
+  color: var(--text-body);
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.45rem;
+  min-height: 0 !important;
+  cursor: pointer;
+}
+.panel-handle-actions button:disabled { opacity: 0.3; }
+
+.panel-handle-close {
+  display: none;
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.4rem;
+  cursor: pointer;
+}
+
+/* Param locks: alt-click (desktop) / long-press (touch) on a slider row */
+.params-panel .param-row { -webkit-touch-callout: none; }
+.params-panel .param-name { display: inline-flex; align-items: center; gap: 4px; }
+.params-panel .param-lock { display: none; color: var(--accent); line-height: 0; }
+.params-panel .param-row.locked .param-lock { display: inline-flex; }
+.params-panel .param-row.locked .param-name { color: var(--accent); }
+.params-panel .param-row.dragging { user-select: none; }
+
 .panel-content {
   flex: 1;
   min-height: 0;
@@ -644,7 +687,7 @@
     width: auto !important;
     height: auto !important;
     min-width: 0;
-    max-height: 120px;             /* peek: handle + preset row */
+    max-height: 112px;             /* peek: handle + preset row */
     border-radius: var(--border-radius) var(--border-radius) 0 0;
     border-bottom: none;
     transition: max-height 0.2s ease-out;
@@ -656,10 +699,18 @@
   }
 
   .panel-drag-handle {
-    height: 30px;
+    position: relative;
+    height: 22px;
     cursor: pointer;
     touch-action: none;
   }
+  .panel-handle-close { display: block; }
+  .panel-handle-actions { display: flex; }
+
+  /* Touch: the native range only displays; the row handles a relative drag
+     (see range-slider.ts), so scrolling past a slider never moves it. */
+  .params-panel input[type=range].touch-passive { pointer-events: none; }
+  .params-panel .param-row { touch-action: pan-y; }
 
   .panel-content {
     padding: 0.6rem 0.9rem 1.2rem 0.9rem;

@@ -5,6 +5,7 @@ import { createRangeSlider } from '../boids/panel/range-slider';
 import { pillStyle } from '../boids/panel/panel-styles';
 import type { UndoHistory } from '../../../lib/presets/undo-history';
 import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
+import type { ParamLocks, ParamLockBinding } from '../../../lib/presets/param-locks';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -17,6 +18,8 @@ export interface FieldBoidsPanelOpts {
   history?: UndoHistory;
   /** Phone: a tilt toggle steers the gravity direction. Omit on desktop. */
   tilt?: TiltSensor;
+  /** Gallery page: sliders can be locked across preset loads. */
+  locks?: ParamLocks;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -84,6 +87,8 @@ export function buildFieldBoidsPanel(
   container.innerHTML = '';
   const p = ctrl.params;
   const history = opts.history;
+  const lockFor = (key: keyof typeof p): ParamLockBinding | undefined =>
+    opts.locks ? { key: key as string, locks: opts.locks } : undefined;
 
   // Header
   const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
@@ -114,38 +119,38 @@ export function buildFieldBoidsPanel(
   // Simulation
   heading(container, 'Simulation');
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
-    get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history });
+    get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history, lock: lockFor('numParticles') });
   createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
-    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); }, history });
+    get: () => p.stepsPerFrame, set: v => { p.stepsPerFrame = Math.round(v); }, history, lock: lockFor('stepsPerFrame') });
   createRangeSlider(container, { label: 'Attraction radius', min: 0.01, max: 0.5, step: 0.005,
-    get: () => p.attractionRadius, set: v => { p.attractionRadius = v; }, history });
+    get: () => p.attractionRadius, set: v => { p.attractionRadius = v; }, history, lock: lockFor('attractionRadius') });
   createRangeSlider(container, { label: 'Repulsion radius', min: 0.005, max: 0.2, step: 0.005,
-    get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; }, history });
+    get: () => p.repulsionRadius, set: v => { p.repulsionRadius = v; }, history, lock: lockFor('repulsionRadius') });
   createRangeSlider(container, { label: 'Attraction', min: 0, max: 5, step: 0.01,
-    get: () => p.attraction, set: v => { p.attraction = v; }, history });
+    get: () => p.attraction, set: v => { p.attraction = v; }, history, lock: lockFor('attraction') });
   createRangeSlider(container, { label: 'Repulsion', min: 0, max: 10, step: 0.01,
-    get: () => p.repulsion, set: v => { p.repulsion = v; }, history });
+    get: () => p.repulsion, set: v => { p.repulsion = v; }, history, lock: lockFor('repulsion') });
   createRangeSlider(container, { label: 'Alignment', min: 0, max: 10, step: 0.01,
-    get: () => p.alignment, set: v => { p.alignment = v; }, history });
+    get: () => p.alignment, set: v => { p.alignment = v; }, history, lock: lockFor('alignment') });
   createRangeSlider(container, { label: 'Cone angle', min: -1, max: 1, step: 0.01,
-    get: () => p.coneAngle, set: v => { p.coneAngle = v; }, history });
+    get: () => p.coneAngle, set: v => { p.coneAngle = v; }, history, lock: lockFor('coneAngle') });
   createRangeSlider(container, { label: 'Friction', min: 0, max: 10, step: 0.1,
-    get: () => p.friction, set: v => { p.friction = v; }, history });
+    get: () => p.friction, set: v => { p.friction = v; }, history, lock: lockFor('friction') });
   createRangeSlider(container, { label: 'Max speed', min: 0.01, max: 1, step: 0.01,
-    get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history });
+    get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history, lock: lockFor('maxSpeed') });
   createRangeSlider(container, { label: 'Noise', min: 0, max: 0.1, step: 0.001,
-    get: () => p.noise, set: v => { p.noise = v; }, history });
+    get: () => p.noise, set: v => { p.noise = v; }, history, lock: lockFor('noise') });
   createRangeSlider(container, { label: 'Gravity', min: 0, max: 1, step: 0.005,
-    get: () => p.gravity, set: v => { p.gravity = v; }, history });
+    get: () => p.gravity, set: v => { p.gravity = v; }, history, lock: lockFor('gravity') });
   if (opts.tilt) buildTiltRow(container, opts.tilt);
 
   // Field
   divider(container);
   heading(container, 'Field');
   createRangeSlider(container, { label: 'Memory', min: 0, max: 0.99, step: 0.01,
-    get: () => p.memory, set: v => { p.memory = v; }, history });
+    get: () => p.memory, set: v => { p.memory = v; }, history, lock: lockFor('memory') });
   createRangeSlider(container, { label: 'Splat size', min: 0.5, max: 3, step: 0.1,
-    get: () => p.splatSize, set: v => { p.splatSize = v; }, history });
+    get: () => p.splatSize, set: v => { p.splatSize = v; }, history, lock: lockFor('splatSize') });
 
   // View
   divider(container);
@@ -164,7 +169,7 @@ export function buildFieldBoidsPanel(
   });
   container.appendChild(modeRow);
   createRangeSlider(container, { label: 'Exposure', min: 0.1, max: 20, step: 0.1, scale: 'log',
-    get: () => p.exposure, set: v => { p.exposure = v; }, history });
+    get: () => p.exposure, set: v => { p.exposure = v; }, history, lock: lockFor('exposure') });
   createRangeSlider(container, { label: 'Point alpha', min: 0.01, max: 1, step: 0.01,
-    get: () => p.pointAlpha, set: v => { p.pointAlpha = v; }, history });
+    get: () => p.pointAlpha, set: v => { p.pointAlpha = v; }, history, lock: lockFor('pointAlpha') });
 }
