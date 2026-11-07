@@ -213,6 +213,8 @@
   border: 1.5px solid color-mix(in srgb, var(--accent) 75%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent);
   transition: width 0.08s, height 0.08s;
+  display: grid; place-items: center;
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.55rem; color: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .scrub-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; touch-action: none; }
 .scrub-overlay.armed { pointer-events: auto; }

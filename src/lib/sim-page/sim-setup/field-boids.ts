@@ -71,6 +71,7 @@ export async function setupFieldBoids(
       if (!el) { el = document.createElement('div'); el.className = 'touch-ring'; rings.appendChild(el); ringEls.set(p.id, el); }
       const d = 34 + 30 * p.strength;
       el.style.cssText = `left:${p.clientX - host.left}px;top:${p.clientY - host.top}px;width:${d}px;height:${d}px;`;
+      el.textContent = p.strength.toFixed(1);       // what the digitiser reports; handy while tuning
     }
     for (const [id, el] of ringEls) if (!seen.has(id)) { el.remove(); ringEls.delete(id); }
   };

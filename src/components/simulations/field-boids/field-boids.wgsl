@@ -127,9 +127,10 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   }
 
   // Fingers / mouse (screen-space distance for an isotropic radius): each
-  // active pointer attracts in proportion to its pressure, and particles
-  // inside its radius are carried along with the pointer's own motion, so a
-  // drag moves the clump (advection) while a still finger just gathers.
+  // active pointer attracts in proportion to its pressure. The carry
+  // (advection) is applied to position further down, after the speed caps,
+  // so a drag moves particles with the finger regardless of maxSpeed.
+  var carry = vec2f(0.0);
   for (var i = 0u; i < 4u; i++) {
     let pp = params.pointers[i * 2u];
     if (pp.z <= 0.0) { continue; }
@@ -138,7 +139,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     if (dS < params.mouseRadius && dS > 0.0001) {
       vel += 0.005 * pp.z * normalize(toP) / dS;
       let w = 1.0 - dS / params.mouseRadius;
-      vel += params.pointers[i * 2u + 1u].xy * (0.5 * w * w);
+      carry += params.pointers[i * 2u + 1u].xy * sqrt(w);
     }
   }
 
@@ -155,6 +156,12 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (!(dot(vel, vel) < 1e30)) { vel = vec2f(0.0); }
 
   pos = pos + vel * params.deltaTime;
+  // Carried particles move with the finger exactly (per-step displacement)
+  // and keep some of that motion as velocity, so they coast on release.
+  if (dot(carry, carry) > 0.0) {
+    pos = pos + carry;
+    vel = vel + carry * (0.3 / params.deltaTime);
+  }
   // Torus wrap into [-1, 1)
   pos = pos - floor((pos + 1.0) * 0.5) * 2.0;
 

@@ -125,7 +125,13 @@ export class FieldBoidsController {
         const rect = canvas.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        const strength = e.pointerType === 'mouse' ? 1 : 0.5 + 1.5 * Math.min(1, Math.max(0, e.pressure));
+        // Pressure where the digitiser has it; most phones report a constant
+        // 1 (or 0.5) and only vary the contact size, so fall back to that.
+        const pr = e.pressure;
+        const realPressure = pr > 0 && pr !== 0.5 && pr !== 1 ? pr : 0;
+        const contact = Math.max(e.width, e.height);                 // CSS px
+        const areaPressure = Math.min(1, Math.max(0, (contact - 10) / 40));
+        const strength = e.pointerType === 'mouse' ? 1 : 0.5 + 1.5 * Math.max(realPressure, areaPressure);
         const cur = this.pointers.get(e.pointerId);
         if (cur) { cur.x = x; cur.y = y; cur.strength = strength; cur.clientX = e.clientX; cur.clientY = e.clientY; }
         else {
@@ -414,15 +420,15 @@ export class FieldBoidsController {
     const dpr = (canvas && canvas.width > 0 && canvas.clientWidth > 0) ? canvas.width / canvas.clientWidth : 1;
     v.setFloat32(156, Math.max(0.5, (p.pointSize ?? 2) * dpr), true);
     v.setFloat32(160, canvas?.width ?? 1, true);
-    // Pointers: position + pressure, then velocity (EMA of per-frame motion,
-    // in NDC per second so the shader's dt integration moves particles with
-    // the finger). Slots past the active set are zeroed (strength 0).
+    // Pointers: position + pressure, then the per-step displacement (this
+    // frame's motion spread over the substeps, lightly smoothed), so the
+    // shader can move carried particles exactly with the finger.
     let slot = 0;
-    const dt = Math.max(1e-4, p.dt);
+    const steps = Math.max(1, p.stepsPerFrame);
     for (const pt of this.pointers.values()) {
       if (slot >= MAX_POINTERS) break;
-      pt.vx = 0.6 * pt.vx + 0.4 * ((pt.x - pt.px) / dt);
-      pt.vy = 0.6 * pt.vy + 0.4 * ((pt.y - pt.py) / dt);
+      pt.vx = 0.5 * pt.vx + 0.5 * ((pt.x - pt.px) / steps);
+      pt.vy = 0.5 * pt.vy + 0.5 * ((pt.y - pt.py) / steps);
       pt.px = pt.x; pt.py = pt.y;
       const o = 176 + slot * 32;
       v.setFloat32(o, pt.x, true); v.setFloat32(o + 4, pt.y, true); v.setFloat32(o + 8, pt.strength, true);
