@@ -76,7 +76,7 @@ fn pointVert(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -
   let c = corners[vi];
   let half = vec2f(params.pointSize / max(params.canvasW, 1.0), params.pointSize / max(params.canvasH, 1.0));
   var out: PointOut;
-  out.position = vec4f(particles[ii].pos + c * half, 0.0, 1.0);
+  out.position = vec4f(worldToScreen(particles[ii].pos) + c * half, 0.0, 1.0);
   out.local = c;
   return out;
 }

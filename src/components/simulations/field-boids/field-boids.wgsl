@@ -134,11 +134,12 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   for (var i = 0u; i < 4u; i++) {
     let pp = params.pointers[i * 2u];
     if (pp.z <= 0.0) { continue; }
-    let toP = pp.xy - pos;
+    let toP = wrapDelta(pp.xy - pos);                 // shortest way round the torus
     let dS = length(vec2f(toP.x * params.aspect, toP.y));
-    if (dS < params.mouseRadius && dS > 0.0001) {
+    let radius = params.mouseRadius / params.viewZoom; // constant on screen
+    if (dS < radius && dS > 0.0001) {
       vel += 0.005 * pp.z * normalize(toP) / dS;
-      let w = 1.0 - dS / params.mouseRadius;
+      let w = 1.0 - dS / radius;
       carry += params.pointers[i * 2u + 1u].xy * sqrt(w);
     }
   }

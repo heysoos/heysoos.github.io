@@ -50,7 +50,12 @@ struct Params {
   // Up to 4 fingers / mouse. [2i] = (x, y, strength, 0) in NDC, strength 0 =
   // inactive; [2i+1] = (dx, dy, 0, 0) pointer displacement per sim step, NDC.
   pointers:         array<vec4f, 8>,  // 176
-}                          // 304 bytes total
+  // View: zoom about (viewCx, viewCy) in world NDC. 1 = whole torus visible.
+  viewZoom:         f32,  // 304
+  viewCx:           f32,  // 308
+  viewCy:           f32,  // 312
+  pad1:             f32,  // 316
+}                          // 320 bytes total
 
 struct Particle {
   pos: vec2f,
@@ -60,4 +65,19 @@ struct Particle {
 // NDC position → field texture UV. Texture row 0 is clip y = +1, so y flips.
 fn ndcToUv(p: vec2f) -> vec2f {
   return p * vec2f(0.5, -0.5) + vec2f(0.5);
+}
+fn uvToNdc(uv: vec2f) -> vec2f {
+  return (uv - vec2f(0.5)) * vec2f(2.0, -2.0);
+}
+// Shortest torus offset, components in [-1, 1).
+fn wrapDelta(d: vec2f) -> vec2f {
+  return d - round(d * 0.5) * 2.0;
+}
+// Screen NDC -> world NDC (the field texture samples with repeat, so no wrap needed here).
+fn screenToWorld(p: vec2f) -> vec2f {
+  return vec2f(params.viewCx, params.viewCy) + p / params.viewZoom;
+}
+// World NDC -> screen NDC via the shortest torus path, so particles near the seam stay put.
+fn worldToScreen(w: vec2f) -> vec2f {
+  return wrapDelta(w - vec2f(params.viewCx, params.viewCy)) * params.viewZoom;
 }

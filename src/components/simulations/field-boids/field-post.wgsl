@@ -87,20 +87,23 @@ fn bloomTerm(uv: vec2f) -> f32 {
 fn baseFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
   let prev = textureSampleLevel(accumTex, fieldSampler, uv, 0.0);
   let le = params.longExposure;
+  // The field is sampled through the view (zoom / pan); the sampler repeats,
+  // so panning past an edge wraps around the torus.
+  let wuv = ndcToUv(screenToWorld(uvToNdc(uv)));
   var cur = vec4f(0.0);
   if (params.viewMode == 1u) {
-    let f = textureSampleLevel(fieldTex, fieldSampler, uv, 0.0);
-    let x = max(f.r, 0.0) * params.exposure + bloomTerm(uv);
+    let f = textureSampleLevel(fieldTex, fieldSampler, wuv, 0.0);
+    let x = max(f.r, 0.0) * params.exposure + bloomTerm(wuv);
     let t = curve(1.0 - exp(-x));
     let u = f.gb / max(f.r, 1e-5);
     let hue = atan2(u.y, u.x) / 6.2831853 + 0.5;
     let sat = clamp(length(u) / max(params.maxSpeed, 1e-4), 0.0, 1.0);
     cur = vec4f(hsv2rgb(vec3f(hue, 0.35 + 0.65 * sat, 1.0)) * t, 0.0);
   } else if (params.viewMode == 0u) {
-    let f = textureSampleLevel(fieldTex, fieldSampler, uv, 0.0);
-    cur = vec4f(0.0, 0.0, 0.0, max(f.r, 0.0) * params.exposure + bloomTerm(uv));
+    let f = textureSampleLevel(fieldTex, fieldSampler, wuv, 0.0);
+    cur = vec4f(0.0, 0.0, 0.0, max(f.r, 0.0) * params.exposure + bloomTerm(wuv));
   } else {
-    cur = vec4f(0.0, 0.0, 0.0, bloomTerm(uv));
+    cur = vec4f(0.0, 0.0, 0.0, bloomTerm(wuv));
   }
   return cur * (1.0 - le) + prev * le;
 }

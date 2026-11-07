@@ -15,7 +15,10 @@ import {
 export type { FieldBoidsParams, FieldBoidsPreset };
 
 export const MAX_PARTICLES = 2_000_000;
-const PARAMS_BYTES = 304;
+const PARAMS_BYTES = 320;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 12;
+const wrap1 = (v: number): number => v - Math.floor((v + 1) * 0.5) * 2;
 const MAX_POINTERS = 4;
 const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 
@@ -41,7 +44,30 @@ export class FieldBoidsController {
   private mouseActive = false;
   /** Active fingers / mouse on the canvas, NDC. Velocity is an EMA of the
    *  per-frame motion (NDC per second), updated in packUniforms. */
-  private pointers = new Map<number, { x: number; y: number; px: number; py: number; vx: number; vy: number; strength: number; type: string; clientX: number; clientY: number }>();
+  private pointers = new Map<number, { x: number; y: number; px: number; py: number; vx: number; vy: number; strength: number; type: string; clientX: number; clientY: number; sx: number; sy: number; pan: boolean }>();
+  /** Two-finger gesture (pinch zoom + pan) in progress: last midpoint / distance in screen NDC. */
+  private gesture: { mx: number; my: number; d: number } | null = null;
+  private spaceHeld = false;
+  /** View: zoom about a world-space centre. 1 = the whole torus; pans wrap. */
+  viewZoom = 1;
+  viewCx = 0;
+  viewCy = 0;
+  /** Zoom by `factor` keeping the world point under screen NDC (sx, sy) fixed. */
+  zoomAt(factor: number, sx: number, sy: number): void {
+    const z0 = this.viewZoom;
+    const z1 = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z0 * factor));
+    if (z1 === z0) return;
+    const wx = this.viewCx + sx / z0, wy = this.viewCy + sy / z0;
+    this.viewZoom = z1;
+    this.viewCx = wrap1(wx - sx / z1);
+    this.viewCy = wrap1(wy - sy / z1);
+  }
+  /** Pan by a screen-NDC delta (the content follows the pointer). */
+  panBy(dsx: number, dsy: number): void {
+    this.viewCx = wrap1(this.viewCx - dsx / this.viewZoom);
+    this.viewCy = wrap1(this.viewCy - dsy / this.viewZoom);
+  }
+  resetView(): void { this.viewZoom = 1; this.viewCx = 0; this.viewCy = 0; }
   /** Force radius in canvas CSS px (mouseRadius is in NDC, y in [-1, 1]). */
   pointerRadiusPx(): number {
     const c = this.gpu?.canvas;
@@ -123,30 +149,83 @@ export class FieldBoidsController {
       // Several fingers at once; each is captured so a drag that leaves the
       // canvas keeps steering. Pressure (where the digitiser reports it)
       // scales the force: a light touch gathers gently, a press pulls hard.
-      const emit = () => this.onPointers?.([...this.pointers].map(([id, p]) => ({ id, clientX: p.clientX, clientY: p.clientY, strength: p.strength, type: p.type })));
+      // Force pointers only: pan pointers and two-finger gestures drive the view, not the sim.
+      const emit = () => this.onPointers?.(this.gesture ? [] : [...this.pointers].filter(([, p]) => !p.pan).map(([id, p]) => ({ id, clientX: p.clientX, clientY: p.clientY, strength: p.strength, type: p.type })));
+      const toScreen = (e: PointerEvent): [number, number] => {
+        const rect = canvas.getBoundingClientRect();
+        return [((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)];
+      };
+      const toWorld = (sx: number, sy: number): [number, number] =>
+        [wrap1(this.viewCx + sx / this.viewZoom), wrap1(this.viewCy + sy / this.viewZoom)];
+      const touches = () => [...this.pointers.values()].filter(p => p.type !== 'mouse');
+      const gestureFrom = (a: { sx: number; sy: number }, b: { sx: number; sy: number }) =>
+        ({ mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2, d: Math.max(1e-3, Math.hypot(a.sx - b.sx, a.sy - b.sy)) });
       const setPointer = (e: PointerEvent) => {
         if (e.type === 'pointermove' && !this.pointers.has(e.pointerId)) return;   // hover without a button
         if (e.type === 'pointerdown' && this.pointers.size >= MAX_POINTERS) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        // Pressure is not used yet: phones tested report a constant value,
-        // so every pointer pulls with the same strength.
-        const strength = 1;
+        const [sx, sy] = toScreen(e);
         const cur = this.pointers.get(e.pointerId);
-        if (cur) { cur.x = x; cur.y = y; cur.strength = strength; cur.clientX = e.clientX; cur.clientY = e.clientY; }
-        else {
-          this.pointers.set(e.pointerId, { x, y, px: x, py: y, vx: 0, vy: 0, strength, type: e.pointerType, clientX: e.clientX, clientY: e.clientY });
+        if (!cur) {
+          const [x, y] = toWorld(sx, sy);
+          // Space (or the middle button) turns a mouse drag into a pan.
+          const pan = e.pointerType === 'mouse' && (this.spaceHeld || e.button === 1);
+          this.pointers.set(e.pointerId, { x, y, px: x, py: y, vx: 0, vy: 0, strength: 1, type: e.pointerType, clientX: e.clientX, clientY: e.clientY, sx, sy, pan });
           try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+          if (pan) e.preventDefault();
+          const t = touches();
+          if (t.length >= 2) { this.gesture = gestureFrom(t[0], t[1]); this.mouseActive = false; }
+          emit();
+          return;
         }
+        if (cur.pan) {                                   // desktop pan
+          this.panBy(sx - cur.sx, sy - cur.sy);
+          cur.sx = sx; cur.sy = sy; cur.clientX = e.clientX; cur.clientY = e.clientY;
+          return;
+        }
+        cur.sx = sx; cur.sy = sy; cur.clientX = e.clientX; cur.clientY = e.clientY;
+        if (this.gesture) {                              // pinch zoom + two-finger pan
+          const t = touches();
+          if (t.length >= 2) {
+            const g = gestureFrom(t[0], t[1]);
+            this.zoomAt(g.d / this.gesture.d, g.mx, g.my);
+            this.panBy(g.mx - this.gesture.mx, g.my - this.gesture.my);
+            this.gesture = g;
+          }
+          return;
+        }
+        const [x, y] = toWorld(sx, sy);
+        cur.x = x; cur.y = y;
         this.mouseX = x; this.mouseY = y; this.mouseActive = true;
         emit();
       };
       const clearPointer = (e: PointerEvent) => {
         if (!this.pointers.delete(e.pointerId)) return;
-        this.mouseActive = this.pointers.size > 0;
+        const t = touches();
+        if (this.gesture && t.length < 2) {
+          // Back to one finger: it resumes as a force without a velocity jump.
+          this.gesture = null;
+          for (const p of t) { const [x, y] = toWorld(p.sx, p.sy); p.x = p.px = x; p.y = p.py = y; p.vx = p.vy = 0; }
+        }
+        this.mouseActive = !this.gesture && [...this.pointers.values()].some(p => !p.pan);
         emit();
       };
+      // Wheel zooms about the cursor; space held makes a drag pan (see setPointer).
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const [sx, sy] = toScreen(e as unknown as PointerEvent);
+        this.zoomAt(Math.exp(-e.deltaY * 0.0015), sx, sy);
+      }, { passive: false });
+      const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      window.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' || isTyping(e.target) || e.repeat) return;
+        this.spaceHeld = true; canvas.style.cursor = 'grab';
+        if (document.activeElement === document.body) e.preventDefault();   // no page scroll
+      });
+      window.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space') return;
+        this.spaceHeld = false; canvas.style.cursor = '';
+      });
+      canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
       canvas.addEventListener('pointerdown', setPointer);
       canvas.addEventListener('pointermove', setPointer);
       canvas.addEventListener('pointerup', clearPointer);
@@ -428,14 +507,18 @@ export class FieldBoidsController {
     const steps = Math.max(1, p.stepsPerFrame);
     for (const pt of this.pointers.values()) {
       if (slot >= MAX_POINTERS) break;
-      pt.vx = 0.5 * pt.vx + 0.5 * ((pt.x - pt.px) / steps);
-      pt.vy = 0.5 * pt.vy + 0.5 * ((pt.y - pt.py) / steps);
+      if (pt.pan || this.gesture) continue;               // view gestures are not forces
+      pt.vx = 0.5 * pt.vx + 0.5 * (wrap1(pt.x - pt.px) / steps);
+      pt.vy = 0.5 * pt.vy + 0.5 * (wrap1(pt.y - pt.py) / steps);
       pt.px = pt.x; pt.py = pt.y;
       const o = 176 + slot * 32;
       v.setFloat32(o, pt.x, true); v.setFloat32(o + 4, pt.y, true); v.setFloat32(o + 8, pt.strength, true);
       v.setFloat32(o + 16, pt.vx, true); v.setFloat32(o + 20, pt.vy, true);
       slot++;
     }
+    v.setFloat32(304, this.viewZoom, true);
+    v.setFloat32(308, this.viewCx, true);
+    v.setFloat32(312, this.viewCy, true);
     v.setFloat32(164, canvas?.height ?? 1, true);
     v.setUint32(168,  p.pointShape ?? 0, true);
     return buf;
