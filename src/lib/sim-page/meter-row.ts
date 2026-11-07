@@ -49,10 +49,12 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
   };
 
   // ── Drag to scrub ──
-  let id = -1, x0 = 0, s0 = 0, active = false, suppressClick = false;
+  let id = -1, x0 = 0, s0 = 0, active = false, suppressClick = false, downOnValue = false;
   row.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.altKey || (e.target as HTMLElement).tagName === 'INPUT') return;
     id = e.pointerId; x0 = e.clientX; active = false;
+    // Capture retargets the later click to the row, so remember the press target here.
+    downOnValue = !!(e.target as HTMLElement).closest('.v');
     s0 = toSlider(o, o.get());
     try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
   });
@@ -86,7 +88,7 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
   row.addEventListener('click', (e) => {
     if (suppressClick) { suppressClick = false; return; }
     if (e.altKey && o.lock) { e.preventDefault(); o.lock.locks.toggle(o.lock.key); refresh(); return; }
-    if (e.ctrlKey || e.metaKey || (e.target as HTMLElement).closest('.v')) { e.preventDefault(); edit(); }
+    if (e.ctrlKey || e.metaKey || downOnValue) { e.preventDefault(); edit(); }
   });
 
   // ── Double-click the value to type it ──
