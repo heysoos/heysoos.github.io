@@ -62,6 +62,7 @@ export async function setupFieldBoids(
       buildPresets: (c) => { section = buildPresetSection(c, mgr); },
       history: mgr.history,
       tilt,
+      rebuild: () => mgr.rebuild(),
     });
     panelContent.scrollTop = scrollTop;
   }

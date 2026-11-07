@@ -5,6 +5,7 @@ import { createRangeSlider } from '../boids/panel/range-slider';
 import { pillStyle } from '../boids/panel/panel-styles';
 import type { UndoHistory } from '../../../lib/presets/undo-history';
 import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
+import { randomizeFieldBoidsParams } from './field-boids-randomize';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -17,6 +18,9 @@ export interface FieldBoidsPanelOpts {
   history?: UndoHistory;
   /** Phone: a tilt toggle steers the gravity direction. Omit on desktop. */
   tilt?: TiltSensor;
+  /** Re-render the panel after a programmatic param change (Randomize).
+   *  Defaults to rebuilding in place. */
+  rebuild?: () => void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -42,6 +46,7 @@ function heading(parent: HTMLElement, text: string): void {
 }
 
 const VIEW_MODES = ['Density', 'Flow', 'Points'] as const;
+const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
 /** "Tilt gravity" switch. Not a preset param: it is a device setting, and
  *  the sensor keeps its own state so the row survives panel rebuilds. */
@@ -112,7 +117,18 @@ export function buildFieldBoidsPanel(
   }
 
   // Simulation
-  heading(container, 'Simulation');
+  const simHead = el('div', 'display:flex;justify-content:space-between;align-items:baseline;');
+  heading(simHead, 'Simulation');
+  const randomBtn = el('button', RANDOM_BTN, '⚄ Randomize');
+  randomBtn.title = 'Random dynamics (particle count and view unchanged)';
+  randomBtn.addEventListener('click', () => {
+    history?.endGesture();
+    randomizeFieldBoidsParams(p);
+    history?.push('Randomize');
+    (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
+  });
+  simHead.appendChild(randomBtn);
+  container.appendChild(simHead);
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
     get: () => p.numParticles, set: v => { p.numParticles = Math.round(v); }, history });
   createRangeSlider(container, { label: 'Steps per frame', min: 1, max: 30, step: 1,
