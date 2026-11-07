@@ -14,7 +14,7 @@ import {
 export type { FieldBoidsParams, FieldBoidsPreset };
 
 export const MAX_PARTICLES = 2_000_000;
-const PARAMS_BYTES = 128;
+const PARAMS_BYTES = 144;
 const FIELD_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class FieldBoidsController {
@@ -37,6 +37,10 @@ export class FieldBoidsController {
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
+  /** Unit direction gravity pulls toward, screen space with y up. Straight
+   *  down unless a tilt sensor steers it. Not a preset param. */
+  private gravityX = 0;
+  private gravityY = -1;
 
   // GPU resources
   private uniformBuffer!: GPUBuffer;
@@ -272,6 +276,17 @@ export class FieldBoidsController {
     this.writeIdx = 0;
   }
 
+  /** Steer gravity. (0, 0) is accepted and means no pull this frame. */
+  setGravityDirection(x: number, y: number): void {
+    const len = Math.hypot(x, y);
+    if (len > 1e-6 && len > 1) { x /= len; y /= len; }
+    this.gravityX = x;
+    this.gravityY = y;
+  }
+
+  /** Back to straight down. */
+  resetGravityDirection(): void { this.gravityX = 0; this.gravityY = -1; }
+
   // ── Uniforms ──────────────────────────────────────────────────────
   private packUniforms(aspect: number): ArrayBuffer {
     const buf = new ArrayBuffer(PARAMS_BYTES);
@@ -308,6 +323,9 @@ export class FieldBoidsController {
     v.setFloat32(112, this.bgColor.g, true);
     v.setFloat32(116, this.bgColor.b, true);
     v.setFloat32(120, p.pointAlpha, true);
+    v.setFloat32(124, p.gravity ?? 0, true);
+    v.setFloat32(128, this.gravityX, true);
+    v.setFloat32(132, this.gravityY, true);
     return buf;
   }
 

@@ -4,6 +4,7 @@ import type { FieldBoidsPreset } from './field-boids-types';
 import { createRangeSlider } from '../boids/panel/range-slider';
 import { pillStyle } from '../boids/panel/panel-styles';
 import type { UndoHistory } from '../../../lib/presets/undo-history';
+import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -14,6 +15,8 @@ export interface FieldBoidsPanelOpts {
   buildPresets?: (container: HTMLElement) => void;
   /** Gallery page: param changes record undo entries. */
   history?: UndoHistory;
+  /** Phone: a tilt toggle steers the gravity direction. Omit on desktop. */
+  tilt?: TiltSensor;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -39,6 +42,39 @@ function heading(parent: HTMLElement, text: string): void {
 }
 
 const VIEW_MODES = ['Density', 'Flow', 'Points'] as const;
+
+/** "Tilt gravity" switch. Not a preset param: it is a device setting, and
+ *  the sensor keeps its own state so the row survives panel rebuilds. */
+function buildTiltRow(parent: HTMLElement, tilt: TiltSensor): void {
+  const row = document.createElement('div');
+  row.className = 'trail-row';
+  const label = el('span', '', 'Tilt steers gravity');
+  const note = el('span', 'font-size:0.62rem;color:var(--text-muted);margin-left:0.4rem;');
+  const wrap = document.createElement('label');
+  wrap.className = 'toggle-switch';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = tilt.isEnabled();
+  const knob = document.createElement('span');
+  knob.className = 'toggle-slider';
+  wrap.append(input, knob);
+  label.appendChild(note);
+  row.append(label, wrap);
+  parent.appendChild(row);
+
+  input.addEventListener('change', async () => {
+    if (!input.checked) { tilt.disable(); note.textContent = ''; return; }
+    input.disabled = true;
+    note.textContent = '…';
+    const result = await tilt.enable();
+    input.disabled = false;
+    if (result === 'enabled') { note.textContent = ''; return; }
+    input.checked = false;
+    note.textContent = result === 'denied' ? 'permission denied'
+                     : result === 'no-sensor' ? 'no tilt sensor'
+                     : 'unsupported';
+  });
+}
 
 export function buildFieldBoidsPanel(
   container: HTMLElement,
@@ -99,6 +135,9 @@ export function buildFieldBoidsPanel(
     get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history });
   createRangeSlider(container, { label: 'Noise', min: 0, max: 0.1, step: 0.001,
     get: () => p.noise, set: v => { p.noise = v; }, history });
+  createRangeSlider(container, { label: 'Gravity', min: 0, max: 1, step: 0.005,
+    get: () => p.gravity, set: v => { p.gravity = v; }, history });
+  if (opts.tilt) buildTiltRow(container, opts.tilt);
 
   // Field
   divider(container);
