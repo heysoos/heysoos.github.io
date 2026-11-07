@@ -42,8 +42,12 @@ struct Params {
   curve:            u32,  // 144
   tonemap:          u32,  // 148
   palette:          u32,  // 152
-  pad0:             f32,  // 156
-}                          // 160 bytes total
+  pointSize:        f32,  // 156 — sprite diameter, canvas px
+  canvasW:          f32,  // 160
+  canvasH:          f32,  // 164
+  pointShape:       u32,  // 168
+  pad0:             f32,  // 172
+}                          // 176 bytes total
 
 struct Particle {
   pos: vec2f,

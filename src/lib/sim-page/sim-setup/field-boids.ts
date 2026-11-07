@@ -61,23 +61,40 @@ export async function setupFieldBoids(
 
   // Phone: params live in the scrub list over the canvas; the sheet keeps
   // presets, Randomize and tilt. Desktop: the full slider panel.
+  const scrubKey = 'field-boids-scrub-open';
   function ensureScrub(): void {
     const want = isPhoneLayout();
     if (want && !scrub) {
       scrub = createScrubPanel({
         host: viewport,
         groups: FIELD_BOIDS_GROUPS,
+        params: ctrl.params,
         get: (k) => (ctrl.params as unknown as Record<string, number>)[k],
         set: (k, v) => { (ctrl.params as unknown as Record<string, number>)[k] = v; },
         history: mgr.history,
         locks: mgr.locks,
+        onPresets: () => { panel.style.display = 'flex'; },
+        onClose: () => setScrubOpen(false),
       });
+      // The sheet is secondary on phones: closed until "Presets" opens it.
+      panel.style.display = 'none';
+      scrub.setVisible(sessionStorage.getItem(scrubKey) !== 'false');
     } else if (!want && scrub) {
       scrub.dispose();
       scrub = null;
     }
-    scrub?.setVisible(panel.style.display !== 'none');
   }
+  function setScrubOpen(open: boolean): void {
+    scrub?.setVisible(open);
+    sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
+  }
+  // On phones the ⚙ button toggles the scrub list, not the sheet.
+  const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
+  settingsBtn?.addEventListener('click', (e) => {
+    if (!scrub) return;
+    e.stopImmediatePropagation();
+    setScrubOpen(!scrub.isVisible());
+  }, { capture: true });
 
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
@@ -99,9 +116,6 @@ export async function setupFieldBoids(
   mgr.onRebuild(buildPanel);
   buildPanel();
   window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
-  // The scrub list follows the sheet's open/closed state.
-  new MutationObserver(() => scrub?.setVisible(panel.style.display !== 'none'))
-    .observe(panel, { attributes: true, attributeFilter: ['style'] });
 
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);

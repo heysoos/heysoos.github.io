@@ -59,20 +59,38 @@ fn fieldFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
   return vec4f(mix(bg, tint, bright), 1.0);
 }
 
-// Points display: one 1-px point per particle, additive.
+// Points display: one shaped sprite per particle, additive into the
+// accumulation target's intensity channel (.a), so the post pass applies
+// the same curve / palette / tonemap as the density view.
 struct PointOut {
   @builtin(position) position: vec4f,
+  @location(0) local: vec2f,   // −1..1 across the sprite
 }
 
 @vertex
-fn pointVert(@builtin(vertex_index) vi: u32) -> PointOut {
+fn pointVert(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> PointOut {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f( 1.0, -1.0), vec2f(-1.0,  1.0),
+    vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),
+  );
+  let c = corners[vi];
+  let half = vec2f(params.pointSize / max(params.canvasW, 1.0), params.pointSize / max(params.canvasH, 1.0));
   var out: PointOut;
-  out.position = vec4f(particles[vi].pos, 0.0, 1.0);
+  out.position = vec4f(particles[ii].pos + c * half, 0.0, 1.0);
+  out.local = c;
   return out;
 }
 
 @fragment
-fn pointFrag() -> @location(0) vec4f {
-  let a = params.pointAlpha;
-  return vec4f(params.colorR * a, params.colorG * a, params.colorB * a, a);
+fn pointFrag(@location(0) local: vec2f) -> @location(0) vec4f {
+  let r = length(local);
+  var a = 0.0;
+  switch params.pointShape {
+    case 1u: { a = exp(-r * r * 3.0); }                        // soft
+    case 2u: { a = smoothstep(0.18, 0.0, abs(r - 0.7)); }       // ring
+    default: { a = 1.0 - smoothstep(0.85, 1.0, r); }            // disc
+  }
+  // Scale so a 1-px disc at intensity 1 matches the old 1-px point.
+  let norm = 4.0 / max(params.pointSize * params.pointSize, 1.0);
+  return vec4f(0.0, 0.0, 0.0, a * params.pointAlpha * params.exposure * norm * 4.0);
 }
