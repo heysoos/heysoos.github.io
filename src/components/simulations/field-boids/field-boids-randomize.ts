@@ -26,7 +26,6 @@ export function randomizeFieldBoidsParams(p: FieldBoidsParams): void {
   p.friction         = round(logUniform(0.3, 8), 0.1);
   p.maxSpeed         = round(logUniform(0.05, 0.8), 0.01);
   p.noise            = chance(0.5) ? 0 : round(logUniform(0.001, 0.05), 0.001);
-  p.gravity          = chance(0.7) ? 0 : round(logUniform(0.01, 0.3), 0.005);
   p.memory           = chance(0.3) ? 0 : round(uniform(0.3, 0.97), 0.01);
   p.splatSize        = round(uniform(0.5, 3), 0.1);
 }

@@ -71,9 +71,12 @@ function pillRow(parent: HTMLElement, label: string, names: readonly string[], g
 }
 const RANDOM_BTN = 'padding:2px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 
-/** "Tilt gravity" switch. Not a preset param: it is a device setting, and
- *  the sensor keeps its own state so the row survives panel rebuilds. */
-function buildTiltRow(parent: HTMLElement, tilt: TiltSensor): void {
+const GRAVITY_KEY = 'field-boids:gravity';
+
+/** "Tilt gravity" switch plus the gravity strength. Device settings, not
+ *  preset params: the sensor keeps its own state, the strength is kept in
+ *  localStorage, and neither is saved with or randomized by presets. */
+function buildTiltRow(parent: HTMLElement, ctrl: FieldBoidsController, tilt: TiltSensor): void {
   const row = document.createElement('div');
   row.className = 'trail-row';
   const label = el('span', '', 'Tilt steers gravity');
@@ -102,6 +105,19 @@ function buildTiltRow(parent: HTMLElement, tilt: TiltSensor): void {
                      : result === 'no-sensor' ? 'no tilt sensor'
                      : 'unsupported';
   });
+
+  createRangeSlider(parent, { label: 'Gravity', min: 0, max: 1, step: 0.005,
+    get: () => ctrl.gravity,
+    set: v => { ctrl.gravity = v; try { localStorage.setItem(GRAVITY_KEY, String(v)); } catch { /* session-only */ } },
+  });
+}
+
+/** Restore the device gravity strength saved by the tilt row. */
+export function restoreDeviceGravity(ctrl: FieldBoidsController): void {
+  try {
+    const raw = localStorage.getItem(GRAVITY_KEY);
+    if (raw !== null && Number.isFinite(+raw)) ctrl.gravity = Math.min(1, Math.max(0, +raw));
+  } catch { /* storage blocked */ }
 }
 
 export function buildFieldBoidsPanel(
@@ -148,14 +164,18 @@ export function buildFieldBoidsPanel(
   randomBtn.title = 'Random dynamics (particle count and view unchanged)';
   randomBtn.addEventListener('click', () => {
     history?.endGesture();
+    // Locked params survive Randomize like they survive a preset load.
+    const pr = p as unknown as Record<string, number>;
+    const kept = (opts.locks?.keys() ?? []).map(k => [k, pr[k]] as const);
     randomizeFieldBoidsParams(p);
+    for (const [k, v] of kept) pr[k] = v;
     history?.push('Randomize');
     (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
   });
   simHead.appendChild(randomBtn);
   container.appendChild(simHead);
   if (opts.paramsHidden) {
-    if (opts.tilt) buildTiltRow(container, opts.tilt);
+    if (opts.tilt) buildTiltRow(container, ctrl, opts.tilt);
     return;
   }
   createRangeSlider(container, { label: 'Particles', min: 1000, max: 2000000, step: 1000, scale: 'log',
@@ -180,9 +200,7 @@ export function buildFieldBoidsPanel(
     get: () => p.maxSpeed, set: v => { p.maxSpeed = v; }, history, lock: lockFor('maxSpeed') });
   createRangeSlider(container, { label: 'Noise', min: 0, max: 0.1, step: 0.001,
     get: () => p.noise, set: v => { p.noise = v; }, history, lock: lockFor('noise') });
-  createRangeSlider(container, { label: 'Gravity', min: 0, max: 1, step: 0.005,
-    get: () => p.gravity, set: v => { p.gravity = v; }, history, lock: lockFor('gravity') });
-  if (opts.tilt) buildTiltRow(container, opts.tilt);
+  if (opts.tilt) buildTiltRow(container, ctrl, opts.tilt);
 
   // Field
   divider(container);
