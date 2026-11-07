@@ -1,8 +1,8 @@
 // src/lib/sim-page/meter-row.ts
 // Desktop one-line param row: name left, value right, and a faint fill
 // behind the row showing where the value sits in its range. Drag anywhere
-// on the row to scrub (shift = fine), double-click the value to type it,
-// alt-click toggles the lock. The wheel is left alone so it scrolls the panel.
+// on the row to scrub (shift = fine); click the number, ctrl-click the row
+// or double-click the value to type it; alt-click toggles the lock. The wheel is left alone so it scrolls the panel.
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLockBinding } from '../presets/param-locks';
@@ -82,14 +82,15 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
   row.addEventListener('pointerup', end);
   row.addEventListener('pointercancel', end);
 
-  // ── Alt-click locks ──
+  // ── Click: alt locks, ctrl/cmd (or a plain click on the number) types ──
   row.addEventListener('click', (e) => {
     if (suppressClick) { suppressClick = false; return; }
-    if (e.altKey && o.lock) { e.preventDefault(); o.lock.locks.toggle(o.lock.key); refresh(); }
+    if (e.altKey && o.lock) { e.preventDefault(); o.lock.locks.toggle(o.lock.key); refresh(); return; }
+    if (e.ctrlKey || e.metaKey || (e.target as HTMLElement).closest('.v')) { e.preventDefault(); edit(); }
   });
 
   // ── Double-click the value to type it ──
-  const edit = () => {
+  function edit(): void {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'v-edit';
@@ -109,7 +110,7 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); e.stopPropagation(); });
     input.addEventListener('blur', () => finish(true));
     input.addEventListener('pointerdown', (e) => e.stopPropagation());
-  };
+  }
   valEl.addEventListener('dblclick', (e) => { e.stopPropagation(); edit(); });
   valEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') edit(); });
 
