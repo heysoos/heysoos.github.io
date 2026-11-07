@@ -74,7 +74,9 @@ fn pointVert(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -
     vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),
   );
   let c = corners[vi];
-  let half = vec2f(params.pointSize / max(params.canvasW, 1.0), params.pointSize / max(params.canvasH, 1.0));
+  // pointSize is in canvas px at zoom 1; sprites live in the world, so they
+  // grow with the zoom and the pattern you see stays the same pattern.
+  let half = vec2f(params.pointSize / max(params.canvasW, 1.0), params.pointSize / max(params.canvasH, 1.0)) * params.viewZoom;
   var out: PointOut;
   out.position = vec4f(worldToScreen(particles[ii].pos) + c * half, 0.0, 1.0);
   out.local = c;
