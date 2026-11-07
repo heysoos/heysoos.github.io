@@ -141,11 +141,10 @@ export function buildFieldBoidsPanel(
   const lockFor = (key: keyof typeof p): ParamLockBinding | undefined =>
     opts.locks ? { key: key as string, locks: opts.locks } : undefined;
 
-  // Remember which view (params / presets) a rebuild should come back to.
-  const host = container as HTMLElement & { __fbUnsub?: () => void; __fbView?: 'params' | 'presets' };
+  const host = container as HTMLElement & { __fbUnsub?: () => void };
   host.__fbUnsub?.();
 
-  // ── Pinned header: undo · redo · Presets › · Randomize · × ──
+  // ── Pinned header: undo · redo · Randomize · × ──
   const head = document.createElement('div');
   head.className = 'fb-head';
   const mkBtn = (text: string, cls: string, title?: string): HTMLButtonElement => {
@@ -156,7 +155,6 @@ export function buildFieldBoidsPanel(
   };
   const undoBtn = mkBtn('↶', 'h-undo', 'Undo');
   const redoBtn = mkBtn('↷', 'h-redo', 'Redo');
-  const presetsBtn = mkBtn('Presets ›', 'h-presets');
   const randomBtn = mkBtn('⚄ Randomize', 'h-random', 'Random dynamics (particle count and view unchanged)');
   head.appendChild(el('span', 'flex:1;'));
   if (opts.onClose) {
@@ -179,12 +177,12 @@ export function buildFieldBoidsPanel(
     (opts.rebuild ?? (() => buildFieldBoidsPanel(container, ctrl, opts)))();
   });
 
-  // ── Two bodies in the same panel ──
-  const body = document.createElement('div');
-  body.className = 'fb-body';
+  // ── Presets at the top, then the params ──
   const presetsBody = document.createElement('div');
   presetsBody.className = 'fb-presets';
-  container.append(body, presetsBody);
+  const body = document.createElement('div');
+  body.className = 'fb-body';
+  container.append(presetsBody, body);
   if (opts.buildPresets) {
     opts.buildPresets(presetsBody);
   } else if (opts.presets && opts.presets.length > 0) {
@@ -196,15 +194,6 @@ export function buildFieldBoidsPanel(
     }
     presetsBody.appendChild(pillRow);
   }
-  const setView = (view: 'params' | 'presets') => {
-    host.__fbView = view;
-    body.hidden = view === 'presets';
-    presetsBody.hidden = view === 'params';
-    presetsBtn.textContent = view === 'presets' ? '‹ Params' : 'Presets ›';
-  };
-  presetsBtn.addEventListener('click', () => setView(host.__fbView === 'presets' ? 'params' : 'presets'));
-  setView(host.__fbView ?? 'params');
-
   if (opts.paramsHidden) {
     if (opts.tilt) buildTiltRow(body, ctrl, opts.tilt);
     return;

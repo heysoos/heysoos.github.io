@@ -1,8 +1,8 @@
 // src/lib/sim-page/meter-row.ts
 // Desktop one-line param row: name left, value right, and a faint fill
 // behind the row showing where the value sits in its range. Drag anywhere
-// on the row to scrub (shift = fine), wheel nudges one step, double-click
-// the value to type it, alt-click toggles the lock.
+// on the row to scrub (shift = fine), double-click the value to type it,
+// alt-click toggles the lock. The wheel is left alone so it scrolls the panel.
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLockBinding } from '../presets/param-locks';
@@ -87,22 +87,6 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
     if (suppressClick) { suppressClick = false; return; }
     if (e.altKey && o.lock) { e.preventDefault(); o.lock.locks.toggle(o.lock.key); refresh(); }
   });
-
-  // ── Wheel nudges one step (log scale: one step of the slider space / 100) ──
-  row.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const dir = e.deltaY < 0 ? 1 : -1;
-    let v: number;
-    if (o.scale === 'log') {
-      const range = toSlider(o, o.max) - toSlider(o, o.min);
-      v = fromSlider(o, toSlider(o, o.get()) + dir * range / 100);
-    } else {
-      v = fromSlider(o, o.get() + dir * o.step * (e.shiftKey ? 1 : 5));
-    }
-    o.history?.endGesture();
-    commit(v);
-    o.history?.push(o.label);
-  }, { passive: false });
 
   // ── Double-click the value to type it ──
   const edit = () => {

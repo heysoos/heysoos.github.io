@@ -277,7 +277,7 @@
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
 }
 .fb-body > .fb-group:first-child { margin-top: 0.2rem; }
-.fb-presets { padding-top: 0.3rem; }
+.fb-presets { padding: 0.3rem 0 0.2rem; }
 :is(.scrub-presets, .fb-presets) .preset-header > button:nth-last-of-type(-n+2) { display: none; }
 .meter-row {
   --f: 0; --meter: color-mix(in srgb, var(--accent) 9%, transparent); --edge: color-mix(in srgb, var(--accent) 45%, transparent);
