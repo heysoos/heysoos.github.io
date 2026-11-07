@@ -19,6 +19,7 @@ export interface FieldBoidsParams {
   viewMode: number;       // 0 density, 1 flow (hue by direction), 2 points
   exposure: number;       // density → brightness gain
   pointAlpha: number;     // per-point alpha in points view
+  gravity: number;        // constant acceleration along the gravity direction (0 = off)
 }
 
 export interface FieldBoidsPreset {
@@ -47,4 +48,5 @@ export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   viewMode: 0,
   exposure: 2.0,
   pointAlpha: 0.15,
+  gravity: 0,
 };

@@ -34,8 +34,12 @@ struct Params {
   bgG:              f32,  // 112
   bgB:              f32,  // 116
   pointAlpha:       f32,  // 120
-  pad0:             f32,  // 124
-}                          // 128 bytes total
+  gravity:          f32,  // 124 — acceleration magnitude
+  gravityX:         f32,  // 128 — unit direction, screen space (y up)
+  gravityY:         f32,  // 132
+  pad0:             f32,  // 136
+  pad1:             f32,  // 140
+}                          // 144 bytes total
 
 struct Particle {
   pos: vec2f,

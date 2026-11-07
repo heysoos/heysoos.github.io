@@ -113,7 +113,11 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
                 + params.repulsion  * repulse_force / rn;
   align_force   = params.alignment  * align_force   / cn;
 
-  let force = vec2f(spatial_force.x / params.aspect, spatial_force.y) + align_force;
+  // Gravity: constant acceleration along a screen-space direction. Straight
+  // down by default; the phone tilt sensor steers it. Terminal speed against
+  // the quadratic friction is sqrt(gravity / friction).
+  let gravity = params.gravity * vec2f(params.gravityX / params.aspect, params.gravityY);
+  let force = vec2f(spatial_force.x / params.aspect, spatial_force.y) + align_force + gravity;
   let friction = -params.friction * sign(vel) * vel * vel;
   vel = vel + params.deltaTime * (force + friction);
 

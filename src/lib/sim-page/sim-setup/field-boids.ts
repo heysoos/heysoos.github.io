@@ -7,6 +7,7 @@ import { createPresetManager } from '../../presets/preset-manager';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
 import { attachUndoKeys } from '../../presets/undo-history';
 import { isPhoneLayout } from '../bottom-sheet';
+import { createTiltSensor, tiltMaybeAvailable, type TiltSensor } from '../tilt-sensor';
 
 /** Phones run ~70–80k particles comfortably; presets keep their desktop
  *  count, the clamp is applied at load time only. The slider can go higher. */
@@ -39,6 +40,17 @@ export async function setupFieldBoids(
     mgr.history.clear();
   }
 
+  // Tilt sensor: only offered where a sensor is plausible (coarse pointer +
+  // DeviceOrientationEvent). Desktops get no toggle and gravity stays
+  // straight down, so a preset with gravity behaves the same everywhere.
+  let tilt: TiltSensor | undefined;
+  if (tiltMaybeAvailable()) {
+    tilt = createTiltSensor({
+      onDirection: (x, y) => ctrl.setGravityDirection(x, y),
+      onDisabled: () => ctrl.resetGravityDirection(),
+    });
+  }
+
   let section: PresetSectionHandle | null = null;
 
   function buildPanel(): void {
@@ -49,6 +61,7 @@ export async function setupFieldBoids(
       onClose: () => { panel.style.display = 'none'; },
       buildPresets: (c) => { section = buildPresetSection(c, mgr); },
       history: mgr.history,
+      tilt,
     });
     panelContent.scrollTop = scrollTop;
   }
@@ -56,5 +69,5 @@ export async function setupFieldBoids(
   buildPanel();
 
   const detachKeys = attachUndoKeys(mgr.history);
-  document.addEventListener('pagehide', () => { detachKeys(); mgr.dispose(); }, { once: true });
+  document.addEventListener('pagehide', () => { detachKeys(); mgr.dispose(); tilt?.dispose(); }, { once: true });
 }
