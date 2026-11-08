@@ -247,12 +247,18 @@ function imageStrip(container: HTMLElement, ctrl: BoidsController): () => void {
     raf = requestAnimationFrame(loop);
     if (t - last < 250) return;
     last = t;
-    thumbWrap.style.setProperty('--ar', `${proc.canvasWidth} / ${proc.canvasHeight}`);
-    if (!sized && tctx && thumbWrap.clientWidth > 0) {
-      thumb.width = Math.round(thumbWrap.clientWidth * dpr);
-      thumb.height = Math.round(thumbWrap.clientHeight * dpr);
-      proc.setThumbnailContext(tctx);
-      sized = true;
+    // The preview is a blit of the canvas-sized processed texture. Its box
+    // keeps exactly that aspect and is fitted inside 40% of the strip width
+    // by 190px tall, so it only ever shrinks, never stretches.
+    const ar = proc.canvasHeight / Math.max(1, proc.canvasWidth);
+    const maxW = container.clientWidth * 0.4, maxH = 190;
+    let bw = maxW, bh = bw * ar;
+    if (bh > maxH) { bh = maxH; bw = bh / ar; }
+    bw = Math.round(bw); bh = Math.round(bh);
+    if (bw > 0 && (thumbWrap.clientWidth !== bw || thumbWrap.clientHeight !== bh)) {
+      thumbWrap.style.width = `${bw}px`; thumbWrap.style.height = `${bh}px`;
+      thumb.width = Math.round(bw * dpr); thumb.height = Math.round(bh * dpr);
+      if (tctx && !sized) { proc.setThumbnailContext(tctx); sized = true; }
     }
     const cam = ctrl.webcam.status === 'active';
     const has = proc.hasImage || proc.hasPaint;
