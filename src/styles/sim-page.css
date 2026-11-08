@@ -1135,7 +1135,7 @@
   opacity: 0.7; transition: opacity 0.35s ease; cursor: pointer; touch-action: none;
 }
 .cppn-minimap.show, .cppn-minimap:hover { opacity: 1; }
-@media (max-width: 768px) { .cppn-minimap { right: 0.5rem; bottom: calc(0.5rem + 40px + 10px); width: 72px !important; height: 72px !important; } }
+@media (max-width: 768px) { #sim-viewport canvas.cppn-minimap, .sim-viewport canvas.cppn-minimap, .cppn-minimap { right: 0.5rem; bottom: 3.6rem; width: 72px !important; height: 72px !important; } } /* bottom edge level with the scrub list (no hover labels on touch) */
 
 /* ── Desktop CPPN rows: honour [hidden] (showIf) and lay enums out so they fit ── */
 .meter-row[hidden], .cppn-enum-row[hidden], .cppn-layer[hidden] { display: none !important; }
