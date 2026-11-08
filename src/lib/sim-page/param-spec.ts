@@ -25,8 +25,9 @@ export interface EnumSpec<K extends string = string> {
   label: string;
   names: readonly string[];
   /** segmented: one bar of exclusive segments. swatches: colour dots.
-   *  select: native dropdown (for lists that are read, not scanned). */
-  ui: 'segmented' | 'swatches' | 'select';
+   *  select: native dropdown (for lists that are read, not scanned).
+   *  cycle: one-line row showing the current name; a tap advances to the next. */
+  ui: 'segmented' | 'swatches' | 'select' | 'cycle';
   /** swatches: one CSS colour per name. */
   colors?: readonly string[];
   /** Changing this re-renders the panel (other rows depend on it). */
@@ -40,4 +41,6 @@ export type ParamSpec<K extends string = string> = NumSpec<K> | EnumSpec<K>;
 export interface ParamGroup<K extends string = string> {
   name: string;
   items: ParamSpec<K>[];
+  /** Optional status line under the heading (e.g. a parameter budget), re-read on refresh. */
+  note?: () => string;
 }

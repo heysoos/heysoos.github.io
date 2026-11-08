@@ -138,10 +138,17 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     if (cur && locks) locks.toggle(cur.key as string);
   });
 
+  const groupNotes: Array<{ g: ParamGroup; el: HTMLElement }> = [];
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
     body.appendChild(h);
+    if (g.note) {
+      const n = document.createElement('small');
+      n.className = 'scrub-group-note';
+      body.appendChild(n);
+      groupNotes.push({ g, el: n });
+    }
     for (const spec of g.items) {
       if (spec.kind === 'num') {
         const row = document.createElement('button');
@@ -170,6 +177,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       refresh();
     };
     const row: Row = { spec, el: wrap };
+    if (spec.ui === 'cycle') {
+      // Same one-line shape as a numeric row: label left, current name right.
+      const btn = document.createElement('button');
+      btn.className = 'scrub-row scrub-cycle';
+      btn.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span><span class="v"></span>`;
+      btn.addEventListener('click', () => pick((Math.round(get(spec.key as string)) + 1) % spec.names.length));
+      body.appendChild(btn);
+      attachLongPress(btn, spec.key as string);
+      return { spec, el: btn, val: btn.querySelector<HTMLElement>('.v')! };
+    }
     if (spec.ui === 'select') {
       const sel = document.createElement('select');
       spec.names.forEach((name, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = name; sel.appendChild(o); });
@@ -272,12 +289,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         r.el.classList.toggle('on', r.spec === cur);
         r.val!.textContent = fmt(r.spec, v);
         r.el.style.setProperty('--f', frac(r.spec, v).toFixed(4));   // value meter behind the row
+      } else if (r.spec.ui === 'cycle') {
+        r.val!.textContent = r.spec.names[Math.round(v)] ?? '';
       } else if (r.select) {
         r.select.value = String(v);
       } else {
         r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
       }
-      if (r.spec.kind === 'enum') {
+      if (r.spec.kind === 'enum' && r.spec.ui !== 'cycle') {
         const n = r.el.querySelector<HTMLElement>('.note')!;
         n.textContent = opts.note?.(r.spec.key as string) ?? '';
         n.hidden = !n.textContent;
@@ -293,6 +312,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       chip.querySelector<HTMLElement>('.c-max')!.textContent = fmt(cur, cur.max);
       chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
     }
+    for (const { g, el } of groupNotes) el.textContent = g.note!();
     hint.innerHTML = '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
     refreshHistory();
   }

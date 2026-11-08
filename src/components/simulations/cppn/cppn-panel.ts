@@ -1,6 +1,7 @@
 // src/components/simulations/cppn/cppn-panel.ts
 import type { CPPNController, LayerConfig } from './cppn-controller';
-import type { CPPNPreset, Activation, ZBand, WeightDistribution } from './cppn-types';
+import type { CPPNPreset, Activation } from './cppn-types';
+import { paramCount } from './cppn-spec';
 
 export interface CPPNPanelOpts {
   presets?: CPPNPreset[];
@@ -11,7 +12,13 @@ export interface CPPNPanelOpts {
   buildPresets?: (container: HTMLElement) => void;
   /** Called after any control changes the controller (label for undo). */
   onChange?: (label: string) => void;
+  /** Full randomize (architecture, weights, motion). Falls back to new weights only. */
+  onRandomize?: () => void;
+  /** Weight budget shown next to the parameter count. */
+  budget?: number;
 }
+let randomizeHook: (() => void) | null = null;
+let budgetHint = 0;
 
 const ACTIVATIONS: Activation[] = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'];
 
@@ -161,6 +168,11 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
   container.appendChild(el('div',
     'margin-top:4px;padding:4px 6px;border:1px solid var(--bg-surface-border);border-radius:4px;font-size:0.68rem;color:var(--text-muted);text-align:center;',
     'Output: RGB (sigmoid)'));
+  const n = paramCount(ctrl.config.layers);
+  const over = budgetHint > 0 && n > budgetHint;
+  container.appendChild(el('p',
+    `margin:4px 0 0;font-size:0.62rem;text-align:right;color:${over ? '#e0a050' : 'var(--text-muted)'};`,
+    `${n.toLocaleString()} weights${budgetHint ? ` · budget ${budgetHint.toLocaleString()}` : ''}`));
 
   divider(container);
   heading(container, 'Coordinate scale');
@@ -228,8 +240,10 @@ function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
 
   const randBtn = el('button',
     'margin-top:0.3rem;width:100%;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;',
-    '⟳ Randomize') as HTMLButtonElement;
+    randomizeHook ? '⚄ Randomize everything' : '⟳ Randomize weights') as HTMLButtonElement;
+  randBtn.className = 'cppn-random';
   randBtn.addEventListener('click', () => {
+    if (randomizeHook) { randomizeHook(); return; }
     ctrl.randomizeWeights(Date.now() & 0xffffffff);
     notify('Randomize');
     seedInp.value = String(ctrl.seed);
@@ -251,27 +265,23 @@ function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
   animRow.appendChild(animCheck);
 
   divider(container);
-  heading(container, 'Bands');
+  heading(container, 'Latent ladder');
+  container.appendChild(el('p', 'margin:0 0 0.3rem;font-size:0.62rem;color:var(--text-muted);line-height:1.4;',
+    'Band b oscillates at speed·spread^b with amplitude depth·falloff^b; the 16 z dims are split across the bands.'));
+  const m = ctrl.config.motion;
+  slider(container, 'Speed',   0.01, 2.0, 0.01, m.speed,   (v) => { ctrl.setMotion({ speed: v });   notify('Speed'); });
+  slider(container, 'Spread',  1.0,  4.0, 0.05, m.spread,  (v) => { ctrl.setMotion({ spread: v });  notify('Spread'); });
+  slider(container, 'Depth',   0.0,  2.0, 0.05, m.depth,   (v) => { ctrl.setMotion({ depth: v });   notify('Depth'); });
+  slider(container, 'Falloff', 0.1,  1.0, 0.05, m.falloff, (v) => { ctrl.setMotion({ falloff: v }); notify('Falloff'); });
   const bandRow = row(container);
-  bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Num bands'));
-  selectEl(bandRow, ['2', '3', '4'], String(ctrl.config.numBands), (v) => {
-    ctrl.setNumBands(parseInt(v));
+  bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Bands'));
+  selectEl(bandRow, ['1', '2', '3', '4'], String(m.bands), (v) => {
+    ctrl.setMotion({ bands: parseInt(v) });
     notify('Bands');
-    buildZTab(container, ctrl);
   });
 
-  for (let bi = 0; bi < ctrl.config.numBands; bi++) {
-    const band = ctrl.config.zBands[bi];
-    if (!band) continue;
-    divider(container);
-    heading(container, `Band ${bi}`);
-    slider(container, 'Freq',  0.05, 4.0,  0.05, band.freq,      (v) => { ctrl.setZBand(bi, { freq: v }); notify('Freq'); });
-    slider(container, 'Amp',   0.0,  2.0,  0.05, band.amplitude, (v) => { ctrl.setZBand(bi, { amplitude: v }); notify('Amp'); });
-    slider(container, 'Phase', 0.0,  6.28, 0.05, band.phase,     (v) => { ctrl.setZBand(bi, { phase: v }); notify('Phase'); });
-  }
-
   divider(container);
-  smallBtn(container, 'Randomize dim offsets', () => ctrl.randomizeDimOffsets());
+  smallBtn(container, 'Randomize dim offsets', () => { ctrl.randomizeDimOffsets(); });
 }
 
 // ── Main export ───────────────────────────────────────────────────
@@ -283,6 +293,8 @@ export function buildCPPNPanel(
 ): void {
   container.innerHTML = '';
   notify = opts.onChange ?? (() => {});
+  randomizeHook = opts.onRandomize ?? null;
+  budgetHint = opts.budget ?? 0;
 
   // Header
   const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');

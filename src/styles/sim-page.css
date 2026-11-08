@@ -979,3 +979,17 @@
     bottom: calc(100% + 8px);
   }
 }
+
+/* ── CPPN: group status line and compile-in-progress spinner ── */
+.scrub-cycle .v::after { content: ' ›'; opacity: 0.5; }
+.scrub-group-note { display: block; font-size: 0.6rem; color: var(--text-muted); margin: -2px 0 4px 2px; letter-spacing: 0.02em; }
+@keyframes sim-spin { to { transform: rotate(360deg); } }
+.sim-viewport.sim-busy .h-random,
+.sim-viewport.sim-busy .cppn-random { position: relative; color: transparent !important; }
+.sim-viewport.sim-busy .h-random::after,
+.sim-viewport.sim-busy .cppn-random::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -7px 0 0 -7px;
+  border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%;
+  animation: sim-spin 0.7s linear infinite;
+}
+.sim-viewport.sim-busy #fps-value::after { content: ' · compiling'; color: var(--accent); }
