@@ -116,6 +116,26 @@ fn aces(x: vec3f) -> vec3f {
 fn postFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
   let s = textureSampleLevel(accumTex, fieldSampler, uv, 0.0);
   let bg = vec3f(params.bgR, params.bgG, params.bgB);
+  // Light theme (same threshold as boids' _isLight): the field is light
+  // emitted over a dark page, and max(c, bg) below would erase anything
+  // darker than cream. Render it as ink instead: density darkens the page,
+  // with the palette read backwards so dense regions are its dark end.
+  if (bg.r + bg.g + bg.b > 1.5) {
+    var t: f32;
+    var ink: vec3f;
+    if (params.viewMode == 1u) {
+      t = clamp(max(s.r, max(s.g, s.b)), 0.0, 1.0);
+      ink = s.rgb / max(t, 1e-4) * 0.7;
+    } else {
+      t = curve(1.0 - exp(-max(s.a, 0.0)));
+      if (params.palette == 0u) {
+        ink = vec3f(params.colorR, params.colorG, params.colorB);
+      } else {
+        ink = palette(1.0 - t);
+      }
+    }
+    return vec4f(mix(bg, clamp(ink, vec3f(0.0), vec3f(1.0)), t), 1.0);
+  }
   var c: vec3f;
   if (params.viewMode == 1u) {
     c = s.rgb;
