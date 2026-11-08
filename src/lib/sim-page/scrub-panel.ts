@@ -15,7 +15,7 @@ import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
-import { DICE_SVG, UNDO_SVG, REDO_SVG } from './icons';
+import { DICE_SVG, UNDO_SVG, REDO_SVG, EXPAND_SVG, SHRINK_SVG } from './icons';
 import { makeCustomSwatch, type CustomSwatch } from './custom-swatch';
 
 export type ScrubTabSize = 'strip' | 'full';
@@ -112,7 +112,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   head.className = 'scrub-head';
   const tabs = opts.tabs ?? [];
   const tabStrip = tabs.length
-    ? `<div class="scrub-tabs"><button data-tab="">Params</button>${tabs.map(t => `<button data-tab="${t.name}">${t.name}</button>`).join('')}</div><button class="h-size" aria-label="Expand" hidden>⤢</button>`
+    ? `<div class="scrub-tabs"><button data-tab="">Params</button>${tabs.map(t => `<button data-tab="${t.name}">${t.name}</button>`).join('')}</div><button class="h-size" aria-label="Expand" hidden>${EXPAND_SVG}</button>`
     : '';
   head.innerHTML = `<button class="h-undo" aria-label="Undo">${UNDO_SVG}</button><button class="h-redo" aria-label="Redo">${REDO_SVG}</button>${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">${DICE_SVG}<span>Randomize</span></button>`;
   head.classList.toggle('tabbed', tabs.length > 0);
@@ -170,7 +170,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     head.classList.toggle('in-tab', !!tab);
     scroll.hidden = !!tab;
     tabBody.hidden = !tab;
-    if (sizeBtn) { sizeBtn.hidden = !tab; sizeBtn.textContent = size === 'full' ? '⤡' : '⤢'; sizeBtn.setAttribute('aria-label', size === 'full' ? 'Shrink' : 'Expand'); }
+    if (sizeBtn) { sizeBtn.hidden = !tab; sizeBtn.innerHTML = size === 'full' ? SHRINK_SVG : EXPAND_SVG; sizeBtn.setAttribute('aria-label', size === 'full' ? 'Shrink' : 'Expand'); }
     for (const b of head.querySelectorAll<HTMLButtonElement>('.scrub-tabs button')) b.classList.toggle('on', (b.dataset.tab ?? '') === activeTab);
     if (tab) { if (presetsMode) setPresetsMode(false); disposeTab = tab.build(tabBody, size); }
     try {

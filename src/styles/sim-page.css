@@ -1068,11 +1068,11 @@
   border-bottom: 2px solid transparent;
 }
 .scrub-head .scrub-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
-.scrub-head .h-size { font-size: 0.8rem; padding: 2px 6px; }
-.scrub-list.tab-strip { top: auto; bottom: 0.5rem; left: 0.5rem; right: 0.5rem; width: auto; height: auto; max-height: 48vh; }
-/* The strip owns the bottom edge: the ︾ button and fps readout would sit under it. */
-.sim-viewport:has(.scrub-list.tab-strip:not([hidden])) :is(#scroll-down, .fps-display) { display: none; }
-.scrub-list.tab-full { left: 0.5rem; right: 0.5rem; width: auto; top: 3.4rem; }   /* below ⏸ ↺ × */
+.scrub-head .h-size { display: inline-grid; place-items: center; width: 28px; height: 26px; padding: 0; }
+.scrub-head .h-size .ico { display: block; }
+/* Strip and full card sit above the bottom control row (capsule + scroll button, 40px at 0.5rem). */
+.scrub-list.tab-strip { top: auto; bottom: calc(0.5rem + 40px + 8px); left: 0.5rem; right: 0.5rem; width: auto; height: auto; max-height: 48vh; }
+.scrub-list.tab-full { left: 0.5rem; right: 0.5rem; width: auto; top: 0.6rem; bottom: calc(0.5rem + 40px + 8px); }
 .scrub-tab-body input[type=range], .scrub-tab-body input[type=checkbox] { accent-color: var(--accent); }
 .scrub-tab-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; touch-action: pan-y; }
 .scrub-tab-body::-webkit-scrollbar { display: none; }
