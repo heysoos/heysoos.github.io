@@ -29,6 +29,7 @@
   --hero-gradient-end: #f6efe4;
   --viz-canvas-bg: #2a1d0c;
   --row-hover: rgba(42, 29, 12, 0.05);
+  --inset-bg: rgba(60, 40, 20, 0.07);   /* recessed control fill inside panels */
   --row-hover-strong: rgba(42, 29, 12, 0.08);
 
   /* Publication tag colors — Spectrum Pop (light) — darker/more saturated for legibility on cream */

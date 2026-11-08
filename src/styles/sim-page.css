@@ -209,7 +209,7 @@
 
 /* Shared enum widgets (desktop Look section + phone list) */
 .look-segmented, .scrub-enum .segmented {
-  display: inline-flex; border: 1px solid var(--bg-surface-border); border-radius: 6px; overflow: hidden; background: rgba(0,0,0,0.35);
+  display: inline-flex; border: 1px solid var(--bg-surface-border); border-radius: 6px; overflow: hidden; background: var(--inset-bg);
 }
 .look-segmented button, .scrub-enum .segmented button {
   min-height: 0 !important; padding: 4px 7px; border: none; border-right: 1px solid var(--bg-surface-border);
@@ -220,11 +220,11 @@
 .look-swatches, .scrub-enum .swatches { display: inline-flex; gap: 6px; align-items: center; padding: 2px 0; }
 .look-swatches .sw, .scrub-enum .swatches .sw {
   width: 18px; height: 18px; min-height: 0 !important; padding: 0; border-radius: 50%;
-  border: 2px solid transparent; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  border: 2px solid transparent; cursor: pointer; box-shadow: 0 0 0 1px var(--bg-surface-border);
 }
 .look-swatches .sw.on, .scrub-enum .swatches .sw.on { border-color: var(--text-primary); box-shadow: 0 0 0 1px var(--text-primary); }
 .look-select, .scrub-enum select {
-  background: rgba(0,0,0,0.35); color: var(--text-body); border: 1px solid var(--bg-surface-border); border-radius: 6px;
+  background: var(--inset-bg); color: var(--text-body); border: 1px solid var(--bg-surface-border); border-radius: 6px;
   font-size: 0.66rem; padding: 3px 6px; min-height: 0 !important;
 }
 
@@ -322,7 +322,7 @@
 .meter-row.locked .n { color: var(--accent); }
 .meter-row .v-edit {
   width: 5.5em; font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; text-align: right;
-  background: rgba(0,0,0,0.5); border: 1px solid var(--accent); border-radius: 3px; color: var(--text-primary); padding: 0 4px; outline: none;
+  background: var(--inset-bg); border: 1px solid var(--accent); border-radius: 3px; color: var(--text-primary); padding: 0 4px; outline: none;
 }
 
 /* Param locks: alt-click (desktop) / long-press (touch) on a slider row */
@@ -1024,12 +1024,12 @@
 .cppn-layer { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 6px 0 0 !important; }
 .cppn-layer .ix {
   flex: none; width: 26px; align-self: stretch; display: flex; align-items: center; justify-content: center;
-  font-size: 0.58rem; color: var(--text-muted); background: rgba(0, 0, 0, 0.28);
+  font-size: 0.58rem; color: var(--text-body); background: var(--inset-bg);
   border-right: 1px solid color-mix(in srgb, var(--text-muted) 25%, transparent); border-radius: 6px 0 0 6px;
 }
 .cppn-layer .w { flex: 1; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .cppn-layer .w b { font-weight: 500; color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; }
-.cppn-layer.io { background: rgba(255, 255, 255, 0.03); border-radius: 6px; color: var(--text-muted); font-size: 0.62rem; cursor: default; }
+.cppn-layer.io { background: var(--row-hover); border-radius: 6px; color: var(--text-muted); font-size: 0.62rem; cursor: default; }
 .cppn-layer .lk { display: none !important; }
 .cppn-layer.locked .ix { background: var(--accent); color: var(--bg-primary); font-weight: 600; }
 .cppn-layer.locked .w b { color: var(--text-primary); }
@@ -1119,9 +1119,9 @@
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 26px; padding: 0 10px;
   font-size: 0.7rem; letter-spacing: 0.02em; text-transform: none; font-variant-caps: normal; font-weight: 500;
   color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, rgba(0,0,0,0.35));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-.fb-head .h-random:hover, .scrub-head .h-random:hover { background: color-mix(in srgb, var(--accent) 18%, rgba(0,0,0,0.35)); border-color: var(--accent); }
+.fb-head .h-random:hover, .scrub-head .h-random:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); }
 .fb-head .h-random .ico, .scrub-head .h-random .ico { flex: none; }
 .fb-head .h-presets { text-transform: none; font-variant-caps: all-small-caps; font-size: 0.72rem; }
 .fb-head .h-close { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }

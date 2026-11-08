@@ -26,6 +26,7 @@
   --hero-gradient-end: #0a0804;
   --viz-canvas-bg: #06050a;
   --row-hover: rgba(255, 255, 255, 0.03);
+  --inset-bg: rgba(0, 0, 0, 0.35);   /* recessed control fill inside panels */
   --row-hover-strong: rgba(255, 255, 255, 0.06);
   --border-radius: 8px;
   --transition-speed: 0.2s;
