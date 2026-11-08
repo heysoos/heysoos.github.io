@@ -211,6 +211,15 @@ export async function setupCPPN(
   window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
 
   const bar = wireControlBar(viewport, { randomize, help: helpSections });
+  // ↺ (and R) = new seed, same architecture. Routed through setParam so the
+  // Seed row shows it and it is one undo step.
+  document.querySelector('[data-action="reset"]')?.addEventListener('click', (e) => {
+    e.stopImmediatePropagation();
+    mgr.history.endGesture();
+    setParam('seed', Math.floor(Math.random() * 4294967296));
+    mgr.history.push('New seed');
+    mgr.rebuild();
+  }, { capture: true });
 
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
