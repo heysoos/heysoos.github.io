@@ -2,7 +2,7 @@
 title: "Field Boids"
 description: "Boids at physarum scale — millions of agents steering by a shared density and momentum field instead of pairwise neighbours."
 simulation: "field-boids"
-order: 5
+order: 2
 ---
 
 The same three rules as boids — separation, alignment, cohesion — but each agent reads a texture instead of a neighbour list. Every frame the flock deposits its density and momentum into a field; every agent then samples that field in a cone ahead of it. No spatial grid, no sorting: the cost is linear in the number of agents, so the flock can be a million strong.
