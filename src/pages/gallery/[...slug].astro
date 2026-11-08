@@ -406,6 +406,13 @@ const underConstruction = project.data.underConstruction ?? false;
     fpsDisplay.classList.toggle('open');
   });
 
+  // Fullscreen glyph follows the real state (Esc leaves fullscreen too).
+  document.addEventListener("fullscreenchange", () => {
+    const fs = !!document.fullscreenElement;
+    const b = document.querySelector(`#controls-${sim} [data-action="fullscreen"]`);
+    b?.classList.toggle("fs", fs);
+    b?.setAttribute("data-label", fs ? "exit fullscreen" : "fullscreen");
+  });
   // iOS Safari has no element fullscreen; hide the button rather than show a dead one.
   if (!document.fullscreenEnabled) {
     const fsBtn = document.querySelector(`#controls-${sim} [data-action="fullscreen"]`) as HTMLElement | null;
@@ -512,7 +519,7 @@ const underConstruction = project.data.underConstruction ?? false;
             if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
             const k = e.key.toLowerCase();
             if (k === "p") togglePlay();
-            else if (k === "r") controller.reset();
+            else if (k === "r") (controls?.querySelector('[data-action="reset"]') as HTMLElement | null)?.click();
             else if (k === "h") viewport.classList.toggle("ui-hidden");
             else if (e.key === "?") (controls?.querySelector('[data-action="help"]:not([hidden])') as HTMLElement | null)?.click();
             else return;
@@ -527,7 +534,8 @@ const underConstruction = project.data.underConstruction ?? false;
             } else if (action === "reset") {
               controller.reset();
             } else if (action === "fullscreen") {
-              document.getElementById("sim-viewport")?.requestFullscreen();
+              if (document.fullscreenElement) void document.exitFullscreen();
+              else void document.getElementById("sim-viewport")?.requestFullscreen();
             } else if (action === "settings" && hasPanel) {
               const isOpen = panel.style.display !== "none";
               panel.style.display = isOpen ? "none" : "flex";

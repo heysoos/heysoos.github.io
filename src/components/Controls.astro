@@ -1,7 +1,10 @@
 ---
-// Sim page control bar: bare monoline glyphs, no boxes. Hover (fine pointers)
-// lifts a glyph and shows its label with an accent tick. The dice and ? are
-// hidden until a sim's setup wires them (lib/sim-page/control-bar.ts).
+// Sim page control bar: one quiet capsule of monoline glyphs in three
+// groups split by hairlines — ? | pause · reset · fullscreen | dice · ⚙.
+// Hover (fine pointers) lifts a glyph and shows its label above the capsule
+// with an accent tick. The dice and ? are hidden until a sim's setup wires
+// them (lib/sim-page/control-bar.ts). Play/pause, fullscreen and ⚙/× swap
+// glyphs through the `paused`, `fs` and `open` classes, never through text.
 // The sprite below is shared with the ? reference card.
 interface Props {
   simId: string;
@@ -14,6 +17,7 @@ const { simId } = Astro.props;
   <symbol id="ci-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
   <symbol id="ci-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></symbol>
   <symbol id="ci-full" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+  <symbol id="ci-full-exit" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5"/></symbol>
   <symbol id="ci-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/></symbol>
   <symbol id="ci-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5"/><circle cx="12" cy="17" r=".7" fill="currentColor" stroke="none"/></symbol>
   <symbol id="ci-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
@@ -33,26 +37,33 @@ const { simId } = Astro.props;
 </svg>
 
 <div class="controls" id={`controls-${simId}`}>
-  <button class="ctrl-btn" data-action="play-pause" data-label="pause" aria-label="Pause">
-    <svg class="ctrl-icon when-playing"><use href="#ci-pause"/></svg>
-    <svg class="ctrl-icon when-paused"><use href="#ci-play"/></svg>
-  </button>
-  <button class="ctrl-btn" data-action="reset" data-label="reset" aria-label="Reset">
-    <svg class="ctrl-icon"><use href="#ci-reset"/></svg>
-  </button>
-  <button class="ctrl-btn" data-action="fullscreen" data-label="fullscreen" aria-label="Fullscreen">
-    <svg class="ctrl-icon"><use href="#ci-full"/></svg>
-  </button>
-  <button class="ctrl-btn subtle" data-action="help" data-label="controls" aria-label="Controls" hidden>
-    <svg class="ctrl-icon"><use href="#ci-help"/></svg>
-  </button>
-  <button class="ctrl-btn" data-action="randomize" data-label="randomize" aria-label="Randomize" hidden>
-    <svg class="ctrl-icon"><use href="#ci-dice"/></svg>
-  </button>
-  <button class="ctrl-btn" data-action="settings" data-label="parameters" aria-label="Parameters">
-    <svg class="ctrl-icon when-closed"><use href="#ci-sliders"/></svg>
-    <svg class="ctrl-icon when-open"><use href="#ci-close"/></svg>
-  </button>
+  <div class="ctrl-group" hidden>
+    <button class="ctrl-btn subtle" data-action="help" data-label="controls" aria-label="Controls" hidden>
+      <svg class="ctrl-icon"><use href="#ci-help"/></svg>
+    </button>
+  </div>
+  <div class="ctrl-group">
+    <button class="ctrl-btn" data-action="play-pause" data-label="pause" aria-label="Pause">
+      <svg class="ctrl-icon when-playing"><use href="#ci-pause"/></svg>
+      <svg class="ctrl-icon when-paused"><use href="#ci-play"/></svg>
+    </button>
+    <button class="ctrl-btn" data-action="reset" data-label="reset" aria-label="Reset">
+      <svg class="ctrl-icon"><use href="#ci-reset"/></svg>
+    </button>
+    <button class="ctrl-btn" data-action="fullscreen" data-label="fullscreen" aria-label="Fullscreen">
+      <svg class="ctrl-icon when-windowed"><use href="#ci-full"/></svg>
+      <svg class="ctrl-icon when-fs"><use href="#ci-full-exit"/></svg>
+    </button>
+  </div>
+  <div class="ctrl-group">
+    <button class="ctrl-btn" data-action="randomize" data-label="randomize" aria-label="Randomize" hidden>
+      <svg class="ctrl-icon"><use href="#ci-dice"/></svg>
+    </button>
+    <button class="ctrl-btn" data-action="settings" data-label="parameters" aria-label="Parameters">
+      <svg class="ctrl-icon when-closed"><use href="#ci-sliders"/></svg>
+      <svg class="ctrl-icon when-open"><use href="#ci-close"/></svg>
+    </button>
+  </div>
 </div>
 
 <style>
@@ -61,15 +72,30 @@ const { simId } = Astro.props;
     bottom: 0.9rem;
     right: 1rem;
     display: flex;
-    align-items: flex-end;
-    gap: 6px;
+    align-items: center;
+    height: 36px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: rgba(8, 6, 4, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     z-index: 10;
   }
 
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 4px;
+  }
+  .ctrl-group[hidden] { display: none; }
+  .ctrl-group + .ctrl-group { border-left: 1px solid rgba(255, 255, 255, 0.1); }
+
   .ctrl-btn {
     position: relative;
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
     padding: 0;
     border: 0;
     background: none;
@@ -78,31 +104,32 @@ const { simId } = Astro.props;
     cursor: pointer;
     display: grid;
     place-items: center;
+    border-radius: 50%;
     transition: opacity var(--transition-speed), color var(--transition-speed);
     -webkit-tap-highlight-color: transparent;
   }
   .ctrl-btn[hidden] { display: none; }
   .ctrl-btn.subtle { opacity: 0.4; }
   .ctrl-btn:hover, .ctrl-btn:focus-visible, .ctrl-btn.active, .ctrl-btn.open { opacity: 1; }
-  .ctrl-btn:focus-visible { outline: none; }
+  .ctrl-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .ctrl-btn.active, .ctrl-btn.open { color: var(--accent); }
 
   .ctrl-icon {
-    width: 19px;
-    height: 19px;
+    width: 17px;
+    height: 17px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
-    filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.7));
     pointer-events: none;
   }
-  .ctrl-btn .when-paused, .ctrl-btn .when-open { display: none; }
-  .ctrl-btn.paused .when-playing, .ctrl-btn.open .when-closed { display: none; }
-  .ctrl-btn.paused .when-paused, .ctrl-btn.open .when-open { display: block; }
+  .ctrl-btn .when-paused, .ctrl-btn .when-open, .ctrl-btn .when-fs { display: none; }
+  .ctrl-btn.paused .when-playing, .ctrl-btn.open .when-closed, .ctrl-btn.fs .when-windowed { display: none; }
+  .ctrl-btn.paused .when-paused, .ctrl-btn.open .when-open, .ctrl-btn.fs .when-fs { display: block; }
 
-  /* Hover label: small caps above the glyph, accent tick under it. */
+  /* Hover label above the capsule and an accent tick under the glyph — on
+     hover only, so a pinned (active) glyph never stacks a second label. */
   .ctrl-btn::before, .ctrl-btn::after {
     content: '';
     position: absolute;
@@ -114,8 +141,7 @@ const { simId } = Astro.props;
   }
   .ctrl-btn::before {
     content: attr(data-label);
-    bottom: 100%;
-    margin-bottom: 2px;
+    bottom: calc(100% + 9px);
     font-size: 0.6rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -125,25 +151,25 @@ const { simId } = Astro.props;
     transform: translate(-50%, 3px);
   }
   .ctrl-btn::after {
-    bottom: 2px;
-    width: 14px;
+    bottom: 1px;
+    width: 12px;
     height: 1px;
     background: var(--accent);
   }
   @media (hover: hover) and (pointer: fine) {
-    .ctrl-btn:hover::before, .ctrl-btn:focus-visible::before { opacity: 1; transform: translate(-50%, 0); }
-    .ctrl-btn:hover::after, .ctrl-btn:focus-visible::after { opacity: 1; }
+    .ctrl-btn:hover::before { opacity: 1; transform: translate(-50%, 0); }
+    .ctrl-btn:hover::after { opacity: 1; }
   }
 
   @media (max-width: 768px) {
     .controls {
-      top: 0.6rem;
-      right: 0.6rem;
-      bottom: auto;
-      gap: 8px;
+      bottom: 0.5rem;
+      right: 0.5rem;
+      height: 40px;
+      background: rgba(8, 6, 4, 0.5);
     }
-    .ctrl-btn { width: 40px; height: 40px; opacity: 0.75; }
-    .ctrl-btn.subtle { opacity: 0.5; }
-    .ctrl-icon { width: 21px; height: 21px; }
+    .ctrl-btn { width: 36px; height: 36px; opacity: 0.8; }
+    .ctrl-btn.subtle { opacity: 0.55; }
+    .ctrl-icon { width: 19px; height: 19px; }
   }
 </style>

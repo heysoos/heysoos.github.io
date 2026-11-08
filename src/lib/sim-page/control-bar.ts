@@ -26,6 +26,7 @@ export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): Control
     if (!helpBtn || !opts.help) return;
     help?.dispose();
     helpBtn.hidden = false;
+    (helpBtn.parentElement as HTMLElement | null)?.removeAttribute('hidden');
     help = attachHelp(helpBtn, host, opts.help(touchMq.matches));
   };
   buildHelp();
