@@ -979,3 +979,54 @@
     bottom: calc(100% + 8px);
   }
 }
+
+/* ── Scrub card tabs (boids): Params | Audio | Image; Audio/Image at strip or full size ── */
+/* Row 1: undo · redo · tabs (· ⤢); row 2: Presets › · Randomize. The tabs take the
+   rest of row 1 so the preset/random pair always wraps together below it. */
+.scrub-head.tabbed .h-presets { flex: 1 1 52%; }
+.scrub-head.tabbed .h-random { flex: 1 1 36%; font-size: 0.6rem; padding: 4px 5px; }
+.scrub-head.in-tab .h-presets, .scrub-head.in-tab .h-random { display: none; }
+.scrub-tabs { flex: 1 0 auto; display: flex; justify-content: center; gap: 2px; min-width: 0; }
+.scrub-head .scrub-tabs button {
+  border: 0; background: none; padding: 4px 5px; border-radius: 0;
+  font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+.scrub-head .scrub-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.scrub-head .h-size { font-size: 0.8rem; padding: 2px 6px; }
+.scrub-list.tab-strip { top: auto; bottom: 3.6rem; left: 0.5rem; right: 0.5rem; width: auto; height: min(40vh, 320px); }
+.scrub-list.tab-full { left: 0.5rem; right: 0.5rem; width: auto; top: 3.4rem; }   /* below ⏸ ↺ × */
+.scrub-tab-body input[type=range], .scrub-tab-body input[type=checkbox] { accent-color: var(--accent); }
+.scrub-tab-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; touch-action: pan-y; }
+.scrub-tab-body::-webkit-scrollbar { display: none; }
+.scrub-tab-body.pm-full { font-size: 0.78rem; }
+.scrub-tab-body.pm-full input[type=range] { min-height: 22px; }
+/* Monitor strip */
+.pm-strip { display: flex; flex-direction: column; gap: 5px; padding: 6px 8px 8px; font-size: 0.66rem; color: var(--text-muted); }
+.pm-strip.pm-image { flex-direction: row; gap: 8px; }
+.pm-row { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.pm-row > button { font-size: 0.62rem; }
+.pm-lbl { min-width: 54px; font-size: 0.6rem; color: var(--text-muted); }
+.pm-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); margin: 0; }
+.pm-val { min-width: 30px; text-align: right; color: var(--accent); font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.62rem; }
+.pm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); margin-left: auto; flex-shrink: 0; transition: background 0.2s; }
+.pm-dot.on { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+.pm-dot.err { background: #e05060; }
+.pm-err, .pm-empty { font-size: 0.6rem; color: var(--text-muted); }
+.pm-err { color: #e05060; }
+.pm-spec { width: 100%; height: 40px; flex-shrink: 0; border-radius: 3px; background: color-mix(in srgb, var(--bg-surface) 70%, transparent); }
+.pm-bands { display: flex; justify-content: space-between; font-size: 0.5rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 2px; margin-top: -2px; }
+.pm-live { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: center; overflow-y: auto; min-height: 0; }
+.pm-name { font-size: 0.6rem; color: var(--text-body); white-space: nowrap; }
+.pm-bar { position: relative; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text-muted) 25%, transparent); }
+.pm-bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; opacity: 0.9; }
+.pm-bar b { position: absolute; top: -3px; width: 1px; height: 11px; background: var(--text-primary); opacity: 0.7; }
+.pm-delta { min-width: 44px; text-align: right; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.6rem; }
+.pm-thumb { position: relative; flex: 0 0 42%; border: 1px solid var(--bg-surface-border); border-radius: 4px; overflow: hidden; background: #000; }
+.pm-thumb canvas { width: 100%; height: 100%; display: block; }
+.pm-stamp { position: absolute; left: 5px; bottom: 4px; font-size: 0.48rem; letter-spacing: 0.08em; color: var(--accent); text-shadow: 0 0 3px #000; }
+.pm-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pm-head .pm-lbl { text-transform: uppercase; letter-spacing: 0.1em; min-width: 0; }
+.pm-checks { gap: 12px; font-size: 0.62rem; color: var(--text-body); }
+.pm-checks label { display: flex; align-items: center; gap: 4px; }
+.pm-checks input { accent-color: var(--accent); margin: 0; }

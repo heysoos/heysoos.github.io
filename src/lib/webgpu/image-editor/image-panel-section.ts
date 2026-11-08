@@ -258,6 +258,40 @@ export function buildImagePanelSection(
   });
   sharedDiv.appendChild(pillRow);
 
+  // Frame: how the image is laid over the canvas. The processor defaults to
+  // Fit (letterboxed); a phone camera over a portrait canvas usually wants
+  // Fill. Re-applied after the webcam (re)starts, since a new frame size
+  // resets the processor to Fit.
+  type Frame = 'fill' | 'contain' | 'stretch';
+  let frame: Frame = 'contain';
+  function frameTransform(mode: Frame): { offsetX: number; offsetY: number; scaleX: number; scaleY: number } {
+    const cw = processor.canvasWidth, ch = processor.canvasHeight;
+    if (mode === 'stretch') return { offsetX: 0, offsetY: 0, scaleX: cw, scaleY: ch };
+    const ia = processor.imageWidth / processor.imageHeight || 16 / 9;
+    const ca = cw / ch;
+    const wide = ia > ca;
+    let iw: number, ih: number;
+    if ((mode === 'fill') === wide) { ih = ch; iw = ih * ia; } else { iw = cw; ih = iw / ia; }
+    return { offsetX: (cw - iw) / 2, offsetY: (ch - ih) / 2, scaleX: iw, scaleY: ih };
+  }
+  function applyFrame(): void { if (processor.hasImage) processor.setTransform(frameTransform(frame)); }
+  const frameRow = document.createElement('div');
+  frameRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:0.4rem;';
+  const frameLbl = document.createElement('span');
+  frameLbl.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:52px;';
+  frameLbl.textContent = 'Frame';
+  frameRow.appendChild(frameLbl);
+  const frameBtns: HTMLButtonElement[] = [];
+  const paintFrame = () => frameBtns.forEach((b) => { b.style.cssText = pillActiveStyle(b.dataset.frame === frame); b.style.flex = '1'; });
+  for (const [name, mode] of [['Fill', 'fill'], ['Fit', 'contain'], ['Stretch', 'stretch']] as Array<[string, Frame]>) {
+    const b = document.createElement('button');
+    b.textContent = name; b.dataset.frame = mode;
+    b.addEventListener('click', () => { frame = mode; paintFrame(); applyFrame(); });
+    frameBtns.push(b); frameRow.appendChild(b);
+  }
+  paintFrame();
+  sharedDiv.appendChild(frameRow);
+
   // Generic slider helper — returns input element for value-syncing on source switch
   function makeSlider(
     labelText: string, min: number, max: number, val: number, step: number,
@@ -385,6 +419,7 @@ export function buildImagePanelSection(
       if (wasWebcamRunning) {
         void opts.webcam.start(opts.webcam.activeCameraId || undefined).then(() => {
           if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+          applyFrame();
           opts.onRebindGroups();
           refreshUI();
         }).catch(() => refreshUI());
@@ -433,6 +468,7 @@ export function buildImagePanelSection(
       const cameraId = camSelect.value || undefined;
       void opts.webcam.start(cameraId).then(() => {
         if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+        applyFrame();
         opts.onRebindGroups();
         refreshUI();
       }).catch(() => {

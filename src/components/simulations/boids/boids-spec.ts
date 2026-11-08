@@ -4,10 +4,10 @@
 // (XY pads, colour picker, audio), so this only has to agree with it on ranges.
 // `color` and `trails` are virtual keys: the setup routes them to the three
 // colour params and to ctrl.trailsEnabled; `trailDecay` is a controller field.
+// Audio and Image live in their own card tabs (lib/sim-page/boids-phone-tabs.ts).
 
 import type { BoidsParams } from './boids-controller';
 import type { EnumSpec, NumSpec, ParamGroup, ParamKey } from '../field-boids/field-boids-spec';
-import { PARAM_META, MAPPABLE_PARAMS, type BandKey } from './boids-audio';
 
 const K = (k: string) => k as unknown as ParamKey;
 const num = (key: string, label: string, min: number, max: number, step: number, extra: Partial<NumSpec> = {}): NumSpec =>
@@ -27,17 +27,8 @@ export const BOIDS_COLORS = [
   { name: 'White', hex: '#ffffff', r: 1.00, g: 1.00, b: 1.00 },
 ] as const;
 
-type View = { trails: number; camera: number; audioSource: number };
+type View = { trails: number };
 const trailsOn = ((p: View) => p.trails === 1) as unknown as NumSpec['showIf'];
-const cameraOn = ((p: View) => p.camera === 1) as unknown as NumSpec['showIf'];
-
-/** Audio bands, in the order the phone card lists them; `audio:<band>` keys. */
-export const AUDIO_BANDS: readonly BandKey[] = ['bass', 'mid', 'presence', 'hi', 'volume'];
-export const AUDIO_BAND_LABELS: Record<BandKey, string> = { bass: 'Bass', mid: 'Mid', presence: 'Presence', hi: 'Highs', volume: 'Volume' };
-/** Mapping targets per band: index 0 is "none", then MAPPABLE_PARAMS in order. */
-export const AUDIO_TARGETS = ['None', ...MAPPABLE_PARAMS.map(k => PARAM_META[k as string].label)] as const;
-/** Image force modes, same order as ProcessingMode (0–5). */
-export const IMAGE_MODES = ['Light attracts', 'Light repels', 'Gradient flow', 'Gradient attract', 'Threshold', 'Distance field'] as const;
 
 export const BOIDS_GROUPS: ParamGroup[] = [
   { name: 'Simulation', items: [
@@ -62,22 +53,6 @@ export const BOIDS_GROUPS: ParamGroup[] = [
     num('opacity', 'Opacity', 0.01, 1, 0.01),
     en('trails', 'Trails', ['Off', 'On'], 'segmented', { rebuilds: true }),
     num('trailDecay', 'Trail decay', 0.8, 0.99, 0.005, { showIf: trailsOn }),
-  ] },
-  // Audio reactivity: the microphone drives one param per band (add mode,
-  // half depth). The desktop Audio tab has the full per-mapping controls;
-  // mappings made on either are the same list.
-  { name: 'Audio', items: [
-    en('audioSource', 'Microphone', ['Off', 'On'], 'segmented'),
-    num('audioStrength', 'Strength', 0, 2, 0.01),
-    ...AUDIO_BANDS.map(b => en(`audio:${b}`, `${AUDIO_BAND_LABELS[b]} →`, AUDIO_TARGETS, 'select')),
-  ] },
-  // Camera as an image force field (the desktop Image tab's webcam source).
-  { name: 'Camera', items: [
-    en('camera', 'Camera', ['Off', 'On'], 'segmented', { rebuilds: true }),
-    en('cameraMirror', 'Mirror', ['Off', 'On'], 'segmented', { showIf: cameraOn }),
-    en('imageMode', 'Force', IMAGE_MODES, 'select', { showIf: cameraOn }),
-    num('imageStrength', 'Strength', 0, 2, 0.01, { showIf: cameraOn }),
-    en('imageInvert', 'Invert', ['Off', 'On'], 'segmented', { showIf: cameraOn }),
   ] },
 ];
 

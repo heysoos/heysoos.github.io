@@ -11,9 +11,8 @@ import { attachUndoKeys } from '../../presets/undo-history';
 import { wireHandleHistory } from '../handle-actions';
 import { isPhoneLayout } from '../bottom-sheet';
 import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
-import { AUDIO_BANDS, BOIDS_COLORS, BOIDS_GROUPS, colorIndex, randomizeBoidsParams } from '../../../components/simulations/boids/boids-spec';
-import { MAPPABLE_PARAMS, PARAM_META, type BandKey } from '../../../components/simulations/boids/boids-audio';
-import type { ImageForceMode } from '../../../components/simulations/boids/boids-image-force';
+import { BOIDS_COLORS, BOIDS_GROUPS, colorIndex, randomizeBoidsParams } from '../../../components/simulations/boids/boids-spec';
+import { boidsPhoneTabs } from '../boids-phone-tabs';
 
 type Params = BoidsPresetBody['params'];
 
@@ -85,59 +84,10 @@ export async function setupBoids(
   // presets, Randomize); the bottom sheet with the desktop panel is never
   // shown. `color` and `trails` are virtual keys of the spec, routed here.
   const pr = ctrl.params as unknown as Record<string, number>;
-  // Audio: one mapping per band on the phone (the first enabled one wins
-  // when the desktop tab made several).
-  let audioNote = '';
-  const bandTarget = (band: BandKey): number => {
-    const m = reactor.mappings.find(m => m.band === band && m.enabled);
-    const i = m ? MAPPABLE_PARAMS.indexOf(m.param) : -1;
-    return i + 1;
-  };
-  const setBandTarget = (band: BandKey, v: number): void => {
-    reactor.mappings = reactor.mappings.filter(m => m.band !== band);
-    const param = MAPPABLE_PARAMS[Math.round(v) - 1];
-    if (param) {
-      const meta = PARAM_META[param as string];
-      reactor.mappings.push({ param, band, mode: 'add', depth: 0.5, gain: 1, min: meta.min, max: meta.max, enabled: true });
-    }
-    reactor.saveMappings();
-  };
-  const setMic = (on: boolean): void => {
-    if (!on) { reactor.stop(); audioNote = ''; scrub?.refresh(); return; }
-    reactor.start('microphone')
-      .then(() => { audioNote = ''; })
-      .catch(() => { audioNote = reactor.lastError || 'microphone unavailable'; })
-      .then(() => scrub?.refresh());
-  };
-  // Camera: the webcam feeds the image processor; the force reads it.
-  let cameraNote = '';
-  const setCamera = (on: boolean): void => {
-    if (!on) {
-      ctrl.webcam.stop();
-      ctrl.imageProcessor.clearImage();
-      ctrl.rebuildBoidsBindGroups();
-      cameraNote = '';
-      scrub?.refresh();
-      return;
-    }
-    ctrl.imageForce.setEnabled(true);
-    ctrl.webcam.start()
-      .then(() => { ctrl.rebuildBoidsBindGroups(); cameraNote = ctrl.webcam.status === 'error' ? (ctrl.webcam.lastError || 'camera unavailable') : ''; })
-      .catch(() => { cameraNote = ctrl.webcam.lastError || 'camera unavailable'; })
-      .then(() => scrub?.refresh());
-  };
   const getKey = (k: string): number => {
     if (k === 'color') return colorIndex(ctrl.params);
     if (k === 'trails') return ctrl.trailsEnabled ? 1 : 0;
     if (k === 'trailDecay') return ctrl.trailDecay;
-    if (k === 'audioSource') return reactor.isActive() ? 1 : 0;
-    if (k === 'audioStrength') return reactor.globalStrength;
-    if (k.startsWith('audio:')) return bandTarget(k.slice(6) as BandKey);
-    if (k === 'camera') return ctrl.webcam.status === 'active' ? 1 : 0;
-    if (k === 'cameraMirror') return ctrl.webcam.mirrored ? 1 : 0;
-    if (k === 'imageMode') return ctrl.imageForce.getForceMode();
-    if (k === 'imageStrength') return ctrl.imageForce.getStrength();
-    if (k === 'imageInvert') return ctrl.imageForce.getInvert() ? 1 : 0;
     return pr[k] ?? 0;
   };
   const setKey = (k: string, v: number): void => {
@@ -146,17 +96,8 @@ export async function setupBoids(
       if (c) { ctrl.params.colorR = c.r; ctrl.params.colorG = c.g; ctrl.params.colorB = c.b; }
     } else if (k === 'trails') ctrl.trailsEnabled = v === 1;
     else if (k === 'trailDecay') ctrl.trailDecay = v;
-    else if (k === 'audioSource') setMic(v === 1);
-    else if (k === 'audioStrength') { reactor.globalStrength = v; reactor.saveGlobal(); }
-    else if (k.startsWith('audio:')) setBandTarget(k.slice(6) as BandKey, v);
-    else if (k === 'camera') setCamera(v === 1);
-    else if (k === 'cameraMirror') ctrl.webcam.mirrored = v === 1;
-    else if (k === 'imageMode') ctrl.imageForce.setForceMode(Math.round(v) as ImageForceMode);
-    else if (k === 'imageStrength') ctrl.imageForce.setStrength(v);
-    else if (k === 'imageInvert') ctrl.imageForce.setInvert(v === 1);
     else pr[k] = v;
   };
-  const noteFor = (k: string): string => (k === 'audioSource' ? audioNote : k === 'camera' ? cameraNote : '');
   // showIf predicates read through this so virtual keys resolve too.
   const paramView = new Proxy({}, { get: (_t, k) => getKey(String(k)) });
   const randomize = (): void => {
@@ -188,7 +129,9 @@ export async function setupBoids(
         set: setKey,
         history: mgr.history,
         locks: mgr.locks,
-        note: noteFor,
+        // Audio and Image: the desktop tabs at full size, a live monitor strip when shrunk.
+        tabs: boidsPhoneTabs(ctrl, reactor, getBaseParams, viewport),
+        storageKey: 'boids-scrub',
         buildPresets: (c) => buildPresetSection(c, mgr, { showTitle: false }).dispose,
         onRandomize: randomize,
         onClose: () => setScrubOpen(false),

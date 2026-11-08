@@ -16,7 +16,19 @@ import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from '../../components/simulations/field-boids/field-boids-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
+export type ScrubTabSize = 'strip' | 'full';
+/** An extra tab in the card header (Params is always first). `build` fills
+ *  the container for the given size and returns a dispose; strip is a short
+ *  band over the bottom of the canvas, full is the whole card height. */
+export interface ScrubTab {
+  name: string;
+  build(container: HTMLElement, size: ScrubTabSize): () => void;
+}
+
 export interface ScrubPanelOpts {
+  /** Extra tabs after Params; their active state and size persist under `storageKey`. */
+  tabs?: ScrubTab[];
+  storageKey?: string;
   /** Positioned ancestor of the canvas; the list and overlay are appended here. */
   host: HTMLElement;
   groups: ParamGroup[];
@@ -41,6 +53,8 @@ export interface ScrubPanelHandle {
   rebuildPresets(): void;
   setVisible(on: boolean): void;
   isVisible(): boolean;
+  /** Switch to a tab by name ('' = Params). */
+  setTab(name: string): void;
   dispose(): void;
 }
 
@@ -91,8 +105,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // ── Header: undo / redo · presets · close ──
   const head = document.createElement('div');
   head.className = 'scrub-head';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets ›</button><button class="h-random">⚄ Randomize</button>`;
-  list.append(head, scroll);
+  const tabs = opts.tabs ?? [];
+  const tabStrip = tabs.length
+    ? `<div class="scrub-tabs"><button data-tab="">Params</button>${tabs.map(t => `<button data-tab="${t.name}">${t.name}</button>`).join('')}</div><button class="h-size" aria-label="Expand" hidden>⤢</button>`
+    : '';
+  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button>${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">⚄ Randomize</button>`;
+  head.classList.toggle('tabbed', tabs.length > 0);
+  const tabBody = document.createElement('div');
+  tabBody.className = 'scrub-tab-body';
+  tabBody.hidden = true;
+  list.append(head, scroll, tabBody);
   let presetsMode = false;
   let disposePresets: (() => void) | null = null;
   const presetsBtn = head.querySelector<HTMLButtonElement>('.h-presets')!;
@@ -120,6 +142,47 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     undoBtn.disabled = !history?.canUndo();
     redoBtn.disabled = !history?.canRedo();
   };
+
+  // ── Tabs: Params (the list) or one of opts.tabs, at strip or full size ──
+  const sk = opts.storageKey;
+  let activeTab = '';
+  const sizes: Record<string, ScrubTabSize> = {};
+  try {
+    activeTab = sessionStorage.getItem(`${sk}:tab`) ?? '';
+    Object.assign(sizes, JSON.parse(sessionStorage.getItem(`${sk}:sizes`) ?? '{}'));
+  } catch { /* session-only */ }
+  if (!tabs.some(t => t.name === activeTab)) activeTab = '';
+  let disposeTab: (() => void) | null = null;
+  const sizeBtn = head.querySelector<HTMLButtonElement>('.h-size');
+  function mountTab(): void {
+    disposeTab?.(); disposeTab = null;
+    tabBody.innerHTML = '';
+    tabBody.className = 'scrub-tab-body';
+    const tab = tabs.find(t => t.name === activeTab) ?? null;
+    const size: ScrubTabSize = sizes[activeTab] ?? 'strip';
+    list.classList.toggle('tab-strip', !!tab && size === 'strip');
+    list.classList.toggle('tab-full', !!tab && size === 'full');
+    head.classList.toggle('in-tab', !!tab);
+    scroll.hidden = !!tab;
+    tabBody.hidden = !tab;
+    if (sizeBtn) { sizeBtn.hidden = !tab; sizeBtn.textContent = size === 'full' ? '⤡' : '⤢'; sizeBtn.setAttribute('aria-label', size === 'full' ? 'Shrink' : 'Expand'); }
+    for (const b of head.querySelectorAll<HTMLButtonElement>('.scrub-tabs button')) b.classList.toggle('on', (b.dataset.tab ?? '') === activeTab);
+    if (tab) { if (presetsMode) setPresetsMode(false); disposeTab = tab.build(tabBody, size); }
+    try {
+      if (sk) { sessionStorage.setItem(`${sk}:tab`, activeTab); sessionStorage.setItem(`${sk}:sizes`, JSON.stringify(sizes)); }
+    } catch { /* session-only */ }
+  }
+  head.querySelector('.scrub-tabs')?.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tab]');
+    if (!b) return;
+    activeTab = b.dataset.tab ?? '';
+    mountTab();
+  });
+  sizeBtn?.addEventListener('click', () => {
+    sizes[activeTab] = (sizes[activeTab] ?? 'strip') === 'strip' ? 'full' : 'strip';
+    mountTab();
+  });
+  if (tabs.length) mountTab();
 
   // Selecting a param collapses the list to this chip so the canvas is
   // visible while scrubbing. ‹ or a plain tap on the canvas returns to the list.
@@ -368,6 +431,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     rebuildPresets,
     isVisible: () => visible,
     setVisible(on) { visible = on; overlay.hidden = !on; select(null); },
-    dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); list.remove(); chip.remove(); overlay.remove(); },
+    setTab(name) { activeTab = tabs.some(t => t.name === name) ? name : ''; mountTab(); },
+    dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); disposeTab?.(); list.remove(); chip.remove(); overlay.remove(); },
   };
 }
