@@ -36,7 +36,14 @@ struct Params {
   mouseDY:        f32,  // 116
   _pad0:          f32,  // 120
   _pad1:          f32,  // 124
+  viewZoom:       f32,  // 128 — view magnification (1 = whole torus on screen)
+  viewCx:         f32,  // 132 — world position at screen centre
+  viewCy:         f32,  // 136
+  _pad2:          f32,  // 140
 }
+
+/// Shortest offset on the [-1,1) torus.
+fn wrapD2(d: vec2f) -> vec2f { return d - 2.0 * round(d * 0.5); }
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> particlesA: array<Particle>;
@@ -147,11 +154,17 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   let myCellX = i32(clamp(u32((pos.x + 1.0) / cellW), 0u, params.gridDim - 1u));
   let myCellY = i32(clamp(u32((pos.y + 1.0) / cellW), 0u, params.gridDim - 1u));
 
-  // Search radius in cells — with adaptive grid, attractionRadius ≈ cellW, so searchR ≈ 1
-  let searchR = max(1i, i32(ceil(params.attractionRadius / cellW)));
+  // Search radius in cells — covers whichever radius is larger. The radii
+  // are screen-space, cells are clip-space: a clip unit of x spans `aspect`
+  // screen units, so x needs radius/aspect clip units (more cells on a
+  // portrait canvas). Capped so no cell is visited twice round the torus.
+  let maxR = max(params.attractionRadius, params.repulsionRadius);
+  let halfG = max(1i, (gDim - 1) / 2);
+  let searchRx = clamp(i32(ceil(maxR / (cellW * params.aspect))), 1i, halfG);
+  let searchRy = clamp(i32(ceil(maxR / cellW)), 1i, halfG);
 
-  for (var dy = -searchR; dy <= searchR; dy++) {
-    for (var dx = -searchR; dx <= searchR; dx++) {
+  for (var dy = -searchRy; dy <= searchRy; dy++) {
+    for (var dx = -searchRx; dx <= searchRx; dx++) {
       // Torus wrapping for cell indices
       let nx = u32((myCellX + dx + gDim) % gDim);
       let ny = u32((myCellY + dy + gDim) % gDim);
@@ -193,33 +206,36 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     }
   }
 
-  // Convert spatial force from screen space back to clip space, then combine
-  let force = vec2f(spatial_force.x / params.aspect, spatial_force.y) + align_force;
+  // Velocity dynamics in screen space (x scaled by aspect), so friction,
+  // the speed cap, the pointer force and noise are isotropic on screen.
+  // In clip space a unit of x covers `aspect` times the pixels of a unit
+  // of y, which stretched everything along the long axis of the canvas.
+  let asp = vec2f(params.aspect, 1.0);
+  var vS = vel * asp;
+  let forceS = spatial_force + align_force * asp;
 
   // Quadratic friction (from reference: -F * sign(vel) * vel^2)
-  let friction = -params.friction * sign(vel) * vel * vel;
+  let frictionS = -params.friction * sign(vS) * vS * vS;
 
-  // Obstacle repulsion applied before the main integrate+clamp so it
-  // participates in the speed limit and steers rather than just boosting speed.
-  vel = vel + params.deltaTime * (force + friction);
+  vS = vS + params.deltaTime * (forceS + frictionS);
 
   // Clamp to maxSpeed
-  let sp = length(vel);
+  let sp = length(vS);
   if (sp > params.maxSpeed && sp > 0.0001) {
-    vel = vel * (params.maxSpeed / sp);
+    vS = vS * (params.maxSpeed / sp);
   }
-  vel = vel + obstacleForce(pos);
+  vS = vS + obstacleForce(pos) * asp;
 
-  // Mouse attraction (use screen-space distance for isotropic mouseRadius)
+  // Mouse attraction (screen-space distance and direction: isotropic radius)
   if (params.mouseActive > 0.5) {
-    let toMouse = vec2f(params.mouseX, params.mouseY) - pos;
-    let toMouseS = vec2f(toMouse.x * params.aspect, toMouse.y);
+    let toMouse = wrapD2(vec2f(params.mouseX, params.mouseY) - pos);
+    let toMouseS = toMouse * asp;
     let mouseDist = length(toMouseS);
     if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
-      // Screen-space direction converted back to clip space: aspect cancels
-      vel += 0.005 * normalize(toMouse) / mouseDist ;
+      vS += 0.005 * toMouseS / (mouseDist * mouseDist);
     }
   }
+  vel = vS / asp;
 
   // Image force field
   if (params.imageStrength > 0.0) {
@@ -232,13 +248,15 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     vel += vec2f(imgForce.x, -imgForce.y) * params.imageStrength;
   }
 
-  // Random noise perturbation (applied last so it doesn't interfere with steering)
+  // Random noise perturbation (applied last so it doesn't interfere with
+  // steering), isotropic on screen like the rest.
   if (params.noise > 0.0) {
-    vel += rand2(index, params.tick) * params.noise;
-    let nsp = length(vel);
+    var nS = vel * asp + rand2(index, params.tick) * params.noise;
+    let nsp = length(nS);
     if (nsp > params.maxSpeed && nsp > 0.0001) {
-      vel = vel * (params.maxSpeed / nsp);
+      nS = nS * (params.maxSpeed / nsp);
     }
+    vel = nS / asp;
   }
 
   // Drag-to-carry: the pointer's displacement this step is added to the
@@ -248,13 +266,17 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (params.mouseActive > 0.5) {
     let carry = vec2f(params.mouseDX, params.mouseDY);
     let m = vec2f(params.mouseX, params.mouseY);
-    let dNew = m - pos;
-    let dOld = m - carry - pos;
+    let dNew = wrapD2(m - pos);
+    let dOld = wrapD2(m - carry - pos);
     let sNew = length(vec2f(dNew.x * params.aspect, dNew.y));
     let sOld = length(vec2f(dOld.x * params.aspect, dOld.y));
-    if (min(sNew, sOld) < params.mouseRadius) {
-      pos += carry;
-      vel += carry * 0.3 / max(params.deltaTime, 0.0001);
+    let sMin = min(sNew, sOld);
+    if (sMin < params.mouseRadius) {
+      // Soft brush: full carry under the finger, fading to nothing at the
+      // radius (same falloff as field-boids), so the edge is not a hard wall.
+      let w = sqrt(1.0 - sMin / params.mouseRadius);
+      pos += carry * w;
+      vel += carry * w * 0.3 / max(params.deltaTime, 0.0001);
     }
   }
 
@@ -293,8 +315,12 @@ fn vertexMain(
     scaled.x * cosA - scaled.y * sinA,
     scaled.x * sinA + scaled.y * cosA,
   );
+  // View: world → screen along the shortest torus path, sprites magnified
+  // with the zoom so zooming in enlarges the pattern rather than thinning it.
+  let rel = wrapD2(particlePos - vec2f(params.viewCx, params.viewCy)) * params.viewZoom;
+  let sz = rotated * params.viewZoom;
   var out: VertexOutput;
-  out.position = vec4f(particlePos + vec2f(rotated.x / params.aspect, rotated.y), 0.0, 1.0);
+  out.position = vec4f(rel + vec2f(sz.x / params.aspect, sz.y), 0.0, 1.0);
   out.speed = length(particleVel);
   out.uv = vertexPos; // pre-rotation UV for SDF (-1..1)
   return out;

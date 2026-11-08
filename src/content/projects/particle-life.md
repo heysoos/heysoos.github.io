@@ -2,7 +2,7 @@
 title: "Particle Life"
 description: "Emergent structures from simple attraction and repulsion rules between particle species."
 simulation: "particle-life"
-order: 2
+order: 5
 underConstruction: true
 ---
 

@@ -13,6 +13,14 @@ const MAX_GRID_DIM = 64;
 const MAX_GRID_SIZE = MAX_GRID_DIM * MAX_GRID_DIM; // 4096 — buffer allocation size only
 
 // Quad billboard (-1..1), 6 vertices = 2 triangles. Scaled by params.size in vertex shader.
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 12;
+const MAX_POINTERS = 4;
+/** Into [-1, 1). */
+const wrap1 = (v: number): number => v - 2 * Math.floor((v + 1) / 2);
+/** Shortest offset on the [-1, 1) torus. */
+const wrapD = (d: number): number => d - 2 * Math.round(d / 2);
+
 const QUAD_VERTS = new Float32Array([
   -1.0, -1.0,
    1.0, -1.0,
@@ -66,6 +74,15 @@ const DEFAULT_PARAMS: BoidsParams = {
   noise: 0.0,
 };
 
+interface PointerState {
+  sx: number; sy: number;           // screen NDC
+  x: number; y: number;             // world
+  clientX: number; clientY: number;
+  type: string;
+  pan: boolean;                     // desktop pan drag (space / alt / middle)
+  engaged: boolean;                 // drives the force (touch on the page waits for a move)
+}
+
 export class BoidsController {
   private gpu: WebGPUContext | null = null;
 
@@ -111,9 +128,40 @@ export class BoidsController {
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
-  /** Pointer movement accumulated since the last frame, consumed by _packUniforms. */
+  /** Pointer movement (world units) accumulated since the last frame, consumed by _packUniforms. */
   private mouseDX = 0;
   private mouseDY = 0;
+  private pointers = new Map<number, PointerState>();
+  /** Two-finger gesture (pinch zoom + pan) in progress: last midpoint / distance in screen NDC. */
+  private gesture: { mx: number; my: number; d: number } | null = null;
+  private spaceHeld = false;
+  /** View: zoom about the world point (viewCx, viewCy), which sits at screen centre. */
+  viewZoom = 1;
+  viewCx = 0;
+  viewCy = 0;
+  /** Zoom by `factor` keeping the world point under screen (sx, sy) fixed. */
+  zoomAt(factor: number, sx: number, sy: number): void {
+    const z0 = this.viewZoom;
+    const z1 = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z0 * factor));
+    if (z1 === z0) return;
+    const wx = this.viewCx + sx / z0, wy = this.viewCy + sy / z0;
+    this.viewZoom = z1;
+    this.viewCx = wrap1(wx - sx / z1);
+    this.viewCy = wrap1(wy - sy / z1);
+  }
+  /** Pan by a screen-NDC offset (periodic). */
+  panBy(dsx: number, dsy: number): void {
+    this.viewCx = wrap1(this.viewCx - dsx / this.viewZoom);
+    this.viewCy = wrap1(this.viewCy - dsy / this.viewZoom);
+  }
+  resetView(): void { this.viewZoom = 1; this.viewCx = 0; this.viewCy = 0; }
+  /** Force radius on screen, in CSS px (mouseRadius is a fraction of half the height). */
+  pointerRadiusPx(): number {
+    const c = this.gpu?.canvas;
+    return (c ? c.clientHeight : 0) * 0.5 * this.params.mouseRadius;
+  }
+  /** Page hook for touch feedback: called whenever the force pointer set changes. */
+  onPointers?: (pts: Array<{ id: number; clientX: number; clientY: number; strength: number; type: string }>) => void;
   private trailRenderer = new TrailRenderer();
 
   /** Page background color used for trail decay target + no-trails swapchain
@@ -155,7 +203,7 @@ export class BoidsController {
       const { device } = this.gpu;
 
       // ── Uniform / obstacle / vertex buffers ──────────────────────────
-      this.uniformBuffer = createUniformBuffer(device, 128);
+      this.uniformBuffer = createUniformBuffer(device, 144);
       // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
       this.obstacleBuffer = createUniformBuffer(device, 272);
 
@@ -496,67 +544,144 @@ export class BoidsController {
   }
 
   /**
-   * Listen for pointer input on `target` and feed the mouse force + drag-to-carry.
-   * Defaults to the canvas (init binds it, with hover attraction); the
-   * background sim's canvas is pointer-events:none behind the page, so it
-   * binds `window` with `hover: false`: a mouse acts only while a button is
-   * held, and touch only once a drag survives the browser's scroll decision
-   * (body is touch-action: pan-y pinch-zoom, so vertical swipes and pinch
-   * never reach it). Nothing is preventDefault-ed: clicks, text selection
-   * and scrolling keep working; a cancelled touch releases the force.
+   * Listen for pointer input on `target` and feed the mouse force, drag-to-carry
+   * and (with `view`) the zoom/pan gestures. init binds the canvas with the
+   * defaults: hover attracts, a press attracts and carries, a touch does the
+   * same from the moment it lands, two fingers pinch-zoom and pan, the wheel
+   * zooms about the cursor, and space / alt / middle button turn a mouse drag
+   * into a pan. The background sim binds `window` with hover and view off: a
+   * mouse acts only while a button is held, touch only once a drag survived
+   * the browser's scroll decision (body is touch-action: pan-y pinch-zoom),
+   * and nothing is preventDefault-ed so clicks and scrolling keep working.
+   * Mouse position and carry are in world space; the force radius is scaled
+   * in _packUniforms so it stays constant on screen.
    */
-  bindPointer(target: HTMLElement | Window, opts: { hover?: boolean } = {}): void {
+  bindPointer(target: HTMLElement | Window, opts: { hover?: boolean; view?: boolean } = {}): void {
     const canvas = this.gpu?.canvas;
     if (!canvas) return;
     const hover = opts.hover ?? true;
-    let pressed = false;
-    const ndc = (e: PointerEvent): [number, number] => {
+    const view = opts.view ?? true;
+    const toScreen = (e: { clientX: number; clientY: number }): [number, number] => {
       const rect = canvas.getBoundingClientRect();
       return [((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)];
     };
-    const release = () => {
-      pressed = false;
-      this.mouseActive = false;
-      this.mouseDX = 0;
-      this.mouseDY = 0;
-    };
-    const engage = (x: number, y: number) => {
-      this.mouseX = x;
-      this.mouseY = y;
-      this.mouseDX = 0;
-      this.mouseDY = 0;
+    const toWorld = (sx: number, sy: number): [number, number] =>
+      [wrap1(this.viewCx + sx / this.viewZoom), wrap1(this.viewCy + sy / this.viewZoom)];
+    const touches = () => [...this.pointers.values()].filter(p => p.type !== 'mouse');
+    const gestureFrom = (a: { sx: number; sy: number }, b: { sx: number; sy: number }) =>
+      ({ mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2, d: Math.max(1e-3, Math.hypot(a.sx - b.sx, a.sy - b.sy)) });
+    const emit = () => this.onPointers?.(this.gesture ? [] : [...this.pointers].filter(([, p]) => !p.pan && p.engaged)
+      .map(([id, p]) => ({ id, clientX: p.clientX, clientY: p.clientY, strength: 1, type: p.type })));
+    const engage = (p: PointerState, x: number, y: number) => {
+      p.engaged = true; p.x = x; p.y = y;
+      this.mouseX = x; this.mouseY = y;
+      this.mouseDX = 0; this.mouseDY = 0;
       this.mouseActive = true;
     };
     const onDown = (e: PointerEvent) => {
-      if (!e.isPrimary) return;
-      pressed = true;
-      const [x, y] = ndc(e);
-      // Touch waits for a move: a vertical swipe gets pointercancel instead.
-      if (e.pointerType === 'touch') { this.mouseX = x; this.mouseY = y; return; }
-      engage(x, y);
+      if (!view && !e.isPrimary) return;
+      if (this.pointers.size >= MAX_POINTERS || this.pointers.has(e.pointerId)) return;
+      const [sx, sy] = toScreen(e);
+      const [x, y] = toWorld(sx, sy);
+      const pan = view && e.pointerType === 'mouse' && (this.spaceHeld || e.altKey || e.button === 1);
+      const p: PointerState = { sx, sy, x, y, clientX: e.clientX, clientY: e.clientY, type: e.pointerType, pan, engaged: false };
+      this.pointers.set(e.pointerId, p);
+      if (view) {
+        try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+        if (pan) e.preventDefault();
+        const t = touches();
+        if (t.length >= 2) { this.gesture = gestureFrom(t[0], t[1]); this.mouseActive = false; emit(); return; }
+      }
+      // On the page (no view) a touch waits for a move: a vertical swipe gets pointercancel instead.
+      if (!pan && (view || e.pointerType !== 'touch')) engage(p, x, y);
+      emit();
     };
     const onMove = (e: PointerEvent) => {
-      if (!e.isPrimary) return;
-      const [x, y] = ndc(e);
-      if (!this.mouseActive) {
-        if (pressed || (hover && e.pointerType !== 'touch')) engage(x, y);
+      const [sx, sy] = toScreen(e);
+      const cur = this.pointers.get(e.pointerId);
+      if (!cur) {
+        // Hover (mouse, no button): attracts, never carries.
+        if (hover && e.pointerType === 'mouse' && this.pointers.size === 0) {
+          const [x, y] = toWorld(sx, sy);
+          this.mouseX = x; this.mouseY = y; this.mouseActive = true;
+        }
         return;
       }
-      // Movement between frames accumulates; _packUniforms consumes it.
-      this.mouseDX += x - this.mouseX;
-      this.mouseDY += y - this.mouseY;
-      this.mouseX = x;
-      this.mouseY = y;
+      if (cur.pan) {
+        this.panBy(sx - cur.sx, sy - cur.sy);
+        cur.sx = sx; cur.sy = sy; cur.clientX = e.clientX; cur.clientY = e.clientY;
+        return;
+      }
+      cur.sx = sx; cur.sy = sy; cur.clientX = e.clientX; cur.clientY = e.clientY;
+      if (this.gesture) {
+        const t = touches();
+        if (t.length >= 2) {
+          const g = gestureFrom(t[0], t[1]);
+          this.zoomAt(g.d / this.gesture.d, g.mx, g.my);
+          this.panBy(g.mx - this.gesture.mx, g.my - this.gesture.my);
+          this.gesture = g;
+        }
+        return;
+      }
+      const [x, y] = toWorld(sx, sy);
+      if (!cur.engaged) { engage(cur, x, y); emit(); return; }
+      if (this.mouseActive) {
+        // Movement between frames accumulates; _packUniforms consumes it.
+        this.mouseDX += wrapD(x - this.mouseX);
+        this.mouseDY += wrapD(y - this.mouseY);
+      }
+      cur.x = x; cur.y = y;
+      this.mouseX = x; this.mouseY = y; this.mouseActive = true;
+      emit();
     };
+    const onUp = (e: PointerEvent) => {
+      if (!this.pointers.delete(e.pointerId)) return;
+      const t = touches();
+      if (this.gesture && t.length < 2) {
+        // Back to one finger: it resumes as a force.
+        this.gesture = null;
+        for (const p of t) { const [x, y] = toWorld(p.sx, p.sy); p.x = x; p.y = y; p.engaged = true; }
+      }
+      const rem = this.gesture ? undefined : [...this.pointers.values()].find(p => !p.pan && p.engaged);
+      if (rem) { this.mouseX = rem.x; this.mouseY = rem.y; this.mouseActive = true; }
+      else this.mouseActive = false;
+      this.mouseDX = 0; this.mouseDY = 0;
+      emit();
+    };
+    const onLeave = () => { if (this.pointers.size === 0) this.mouseActive = false; };
+    const onBlur = () => { this.pointers.clear(); this.gesture = null; this.mouseActive = false; this.mouseDX = 0; this.mouseDY = 0; emit(); };
     target.addEventListener('pointerdown', onDown as EventListener);
     target.addEventListener('pointermove', onMove as EventListener);
-    target.addEventListener('pointerup', release);
-    target.addEventListener('pointercancel', release);
-    target.addEventListener(target === window ? 'blur' : 'pointerleave', release);
+    target.addEventListener('pointerup', onUp as EventListener);
+    target.addEventListener('pointercancel', onUp as EventListener);
+    if (target === window) target.addEventListener('blur', onBlur);
+    else target.addEventListener('pointerleave', onLeave);
+    if (!view) return;
+    canvas.addEventListener('lostpointercapture', onUp as EventListener);
+    // Wheel zooms about the cursor; space held makes a drag pan (see onDown).
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const [sx, sy] = toScreen(e);
+      this.zoomAt(Math.exp(-e.deltaY * 0.0015), sx, sy);
+    }, { passive: false });
+    const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // Space is a modifier here, never a page scroll or a button press.
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || isTyping(e.target)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      this.spaceHeld = true; canvas.style.cursor = 'grab';
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code !== 'Space' || isTyping(e.target)) return;
+      e.preventDefault();
+      this.spaceHeld = false; canvas.style.cursor = '';
+    });
+    canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
   }
 
   private _packUniforms(aspect: number): ArrayBuffer {
-    const buf = new ArrayBuffer(128);
+    const buf = new ArrayBuffer(144);
     const v   = new DataView(buf);
     v.setFloat32( 0, this.params.dt,                   true);
     v.setFloat32( 4, this.params.attractionRadius,      true);
@@ -570,7 +695,7 @@ export class BoidsController {
     v.setFloat32(36, this.mouseX,                       true);
     v.setFloat32(40, this.mouseY,                       true);
     v.setFloat32(44, this.mouseActive ? 1.0 : 0.0,      true);
-    v.setFloat32(48, this.params.mouseRadius,           true);
+    v.setFloat32(48, this.params.mouseRadius / this.viewZoom, true);   // world radius: constant on screen
     v.setFloat32(52, this.params.coneAngle,             true);
     v.setFloat32(56, aspect,                            true);
     v.setFloat32(60, this.params.size,                  true);
@@ -592,6 +717,9 @@ export class BoidsController {
     v.setFloat32(116, this.mouseDY,                     true);
     this.mouseDX = 0;
     this.mouseDY = 0;
+    v.setFloat32(128, this.viewZoom,                    true);
+    v.setFloat32(132, this.viewCx,                      true);
+    v.setFloat32(136, this.viewCy,                      true);
     return buf;
   }
 

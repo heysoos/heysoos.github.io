@@ -4,7 +4,10 @@ import SimulationCard from '../../components/SimulationCard.astro';
 import { getCollection } from 'astro:content';
 
 const projects = await getCollection('projects');
-const sorted = projects.sort((a, b) => a.data.order - b.data.order);
+// Under-construction entries keep their page (reachable by URL) but get no card.
+const sorted = projects
+  .filter((p) => !p.data.underConstruction)
+  .sort((a, b) => a.data.order - b.data.order);
 ---
 
 <BaseLayout title="Gallery">

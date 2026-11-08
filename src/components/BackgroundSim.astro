@@ -255,7 +255,7 @@ const { sim } = Astro.props;
     // The canvas is pointer-events:none behind the page, so pointer input
     // comes from the window: a held mouse button attracts and carries, a
     // touch drag carries; plain hovering and vertical swipes do nothing.
-    controller.bindPointer(window, { hover: false });
+    controller.bindPointer(window, { hover: false, view: false });
     controller.start();
   } else {
     // No WebGPU: the page is plain; hide the preset picker, which would do nothing.

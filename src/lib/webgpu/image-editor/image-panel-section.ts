@@ -258,6 +258,40 @@ export function buildImagePanelSection(
   });
   sharedDiv.appendChild(pillRow);
 
+  // Frame: how the image is laid over the canvas. The processor defaults to
+  // Fit (letterboxed); a phone camera over a portrait canvas usually wants
+  // Fill. Re-applied after the webcam (re)starts, since a new frame size
+  // resets the processor to Fit.
+  type Frame = 'fill' | 'contain' | 'stretch';
+  let frame: Frame = 'contain';
+  function frameTransform(mode: Frame): { offsetX: number; offsetY: number; scaleX: number; scaleY: number } {
+    const cw = processor.canvasWidth, ch = processor.canvasHeight;
+    if (mode === 'stretch') return { offsetX: 0, offsetY: 0, scaleX: cw, scaleY: ch };
+    const ia = processor.imageWidth / processor.imageHeight || 16 / 9;
+    const ca = cw / ch;
+    const wide = ia > ca;
+    let iw: number, ih: number;
+    if ((mode === 'fill') === wide) { ih = ch; iw = ih * ia; } else { iw = cw; ih = iw / ia; }
+    return { offsetX: (cw - iw) / 2, offsetY: (ch - ih) / 2, scaleX: iw, scaleY: ih };
+  }
+  function applyFrame(): void { if (processor.hasImage) processor.setTransform(frameTransform(frame)); }
+  const frameRow = document.createElement('div');
+  frameRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:0.4rem;';
+  const frameLbl = document.createElement('span');
+  frameLbl.style.cssText = 'font-size:0.6rem;color:var(--text-muted);min-width:52px;';
+  frameLbl.textContent = 'Frame';
+  frameRow.appendChild(frameLbl);
+  const frameBtns: HTMLButtonElement[] = [];
+  const paintFrame = () => frameBtns.forEach((b) => { b.style.cssText = pillActiveStyle(b.dataset.frame === frame); b.style.flex = '1'; });
+  for (const [name, mode] of [['Fill', 'fill'], ['Fit', 'contain'], ['Stretch', 'stretch']] as Array<[string, Frame]>) {
+    const b = document.createElement('button');
+    b.textContent = name; b.dataset.frame = mode;
+    b.addEventListener('click', () => { frame = mode; paintFrame(); applyFrame(); });
+    frameBtns.push(b); frameRow.appendChild(b);
+  }
+  paintFrame();
+  sharedDiv.appendChild(frameRow);
+
   // Generic slider helper — returns input element for value-syncing on source switch
   function makeSlider(
     labelText: string, min: number, max: number, val: number, step: number,
@@ -283,7 +317,7 @@ export function buildImagePanelSection(
     return { row, input: inp };
   }
 
-  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 2, liveParams.strength,   0.01, v => opts.imageForce.setStrength(v));
+  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 10, liveParams.strength,  0.05, v => opts.imageForce.setStrength(v));
   const { row: blurRow,     input: blurInput }     = makeSlider('Blur',     0, 10, liveParams.blurRadius, 0.5,  v => processor.setBlurRadius(v));
   const { row: threshRow,   input: threshInput }   = makeSlider('Threshold',0, 1,  liveParams.threshold,  0.01, v => processor.setThreshold(v));
   sharedDiv.appendChild(strengthRow);
@@ -385,6 +419,7 @@ export function buildImagePanelSection(
       if (wasWebcamRunning) {
         void opts.webcam.start(opts.webcam.activeCameraId || undefined).then(() => {
           if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+          applyFrame();
           opts.onRebindGroups();
           refreshUI();
         }).catch(() => refreshUI());
@@ -433,6 +468,7 @@ export function buildImagePanelSection(
       const cameraId = camSelect.value || undefined;
       void opts.webcam.start(cameraId).then(() => {
         if (thumbCtxWebcam) processor.setThumbnailContext(thumbCtxWebcam);
+        applyFrame();
         opts.onRebindGroups();
         refreshUI();
       }).catch(() => {
@@ -469,12 +505,23 @@ export function buildImagePanelSection(
 
   // ── Resize: keep canvas pixel buffers in sync with CSS width ─────────────
   function resizeThumb(canvas: HTMLCanvasElement, ctx: GPUCanvasContext | null, isActive: boolean): void {
-    const w = canvas.clientWidth;
-    if (w <= 0) return;
-    const h = Math.round(w * THUMB_ASPECT);
+    // Measured from the parent: this function sets the canvas's own size, so
+    // reading the canvas back would feed a shrinking loop through the observer.
+    const avail = canvas.parentElement?.clientWidth ?? canvas.clientWidth;
+    if (avail <= 0) return;
+    // The thumbnail is a blit of the canvas-sized processed texture, so it
+    // must keep the sim canvas's aspect (portrait on a phone) or the image
+    // squashes. When the height cap bites, the width shrinks with it.
+    const ar = processor.canvasWidth > 0 ? processor.canvasHeight / processor.canvasWidth : THUMB_ASPECT;
+    let w = avail, h = w * ar;
+    const maxH = window.innerHeight * 0.4;
+    if (h > maxH) { h = maxH; w = h / ar; }
+    w = Math.round(w); h = Math.round(h);
     canvas.width  = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
+    canvas.style.width  = `${w}px`;
     canvas.style.height = `${h}px`;
+    canvas.style.marginLeft = canvas.style.marginRight = 'auto';
     if (isActive && ctx) {
       processor.setThumbnailContext(ctx);
     }

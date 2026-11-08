@@ -116,14 +116,20 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   // Gravity: constant acceleration along a screen-space direction. Straight
   // down by default; the phone tilt sensor steers it. Terminal speed against
   // the quadratic friction is sqrt(gravity / friction).
-  let gravity = params.gravity * vec2f(params.gravityX / params.aspect, params.gravityY);
-  let force = vec2f(spatial_force.x / params.aspect, spatial_force.y) + align_force + gravity;
-  let friction = -params.friction * sign(vel) * vel * vel;
-  vel = vel + params.deltaTime * (force + friction);
+  // Velocity dynamics in screen space (x scaled by aspect), so friction,
+  // the speed cap, the pointer force and noise are isotropic on screen. In
+  // clip space a unit of x covers `aspect` times the pixels of a unit of y,
+  // which stretched the motion along the long axis of the canvas.
+  let asp = vec2f(params.aspect, 1.0);
+  let gravityS = params.gravity * vec2f(params.gravityX, params.gravityY);
+  let forceS = spatial_force + align_force * asp + gravityS;
+  var vS = vel * asp;
+  let frictionS = -params.friction * sign(vS) * vS * vS;
+  vS = vS + params.deltaTime * (forceS + frictionS);
 
-  let sp = length(vel);
+  let sp = length(vS);
   if (sp > params.maxSpeed && sp > 0.0001) {
-    vel = vel * (params.maxSpeed / sp);
+    vS = vS * (params.maxSpeed / sp);
   }
 
   // Fingers / mouse (screen-space distance for an isotropic radius): each
@@ -135,10 +141,11 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     let pp = params.pointers[i * 2u];
     if (pp.z <= 0.0) { continue; }
     let toP = wrapDelta(pp.xy - pos);                 // shortest way round the torus
-    let dS = length(vec2f(toP.x * params.aspect, toP.y));
+    let toPS = toP * asp;
+    let dS = length(toPS);
     let radius = params.mouseRadius / params.viewZoom; // constant on screen
     if (dS < radius && dS > 0.0001) {
-      vel += 0.005 * pp.z * normalize(toP) / dS;
+      vS += 0.005 * pp.z * toPS / (dS * dS);
       let w = 1.0 - dS / radius;
       carry += params.pointers[i * 2u + 1u].xy * sqrt(w);
     }
@@ -146,12 +153,13 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
 
   // Noise, applied last so it does not interfere with steering
   if (params.noise > 0.0) {
-    vel += rand2(index, params.tick) * params.noise;
-    let nsp = length(vel);
+    vS += rand2(index, params.tick) * params.noise;
+    let nsp = length(vS);
     if (nsp > params.maxSpeed && nsp > 0.0001) {
-      vel = vel * (params.maxSpeed / nsp);
+      vS = vS * (params.maxSpeed / nsp);
     }
   }
+  vel = vS / asp;
 
   // Belt and braces: a non-finite velocity never reaches the buffer.
   if (!(dot(vel, vel) < 1e30)) { vel = vec2f(0.0); }

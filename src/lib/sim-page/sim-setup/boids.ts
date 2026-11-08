@@ -9,6 +9,10 @@ import { createPresetManager } from '../../presets/preset-manager';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
 import { attachUndoKeys } from '../../presets/undo-history';
 import { wireHandleHistory } from '../handle-actions';
+import { isPhoneLayout } from '../bottom-sheet';
+import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
+import { BOIDS_COLORS, BOIDS_GROUPS, colorIndex, randomizeBoidsParams } from '../../../components/simulations/boids/boids-spec';
+import { boidsPhoneTabs } from '../boids-phone-tabs';
 
 type Params = BoidsPresetBody['params'];
 
@@ -53,12 +57,116 @@ export async function setupBoids(
   }
 
   let section: PresetSectionHandle | null = null;
+  let scrub: ScrubPanelHandle | null = null;
+  const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned
+
+  // Touch feedback: a ring under each finger showing the force radius, for
+  // touch and pen only (the mouse already has a cursor).
+  const rings = document.createElement('div');
+  rings.className = 'touch-rings';
+  viewport.appendChild(rings);
+  const ringEls = new Map<number, HTMLElement>();
+  ctrl.onPointers = (pts) => {
+    const host = rings.getBoundingClientRect();
+    const seen = new Set<number>();
+    for (const pt of pts) {
+      if (pt.type === 'mouse') continue;
+      seen.add(pt.id);
+      let el = ringEls.get(pt.id);
+      if (!el) { el = document.createElement('div'); el.className = 'touch-ring'; rings.appendChild(el); ringEls.set(pt.id, el); }
+      const d = Math.max(28, 2 * ctrl.pointerRadiusPx());
+      el.style.cssText = `left:${pt.clientX - host.left}px;top:${pt.clientY - host.top}px;width:${d}px;height:${d}px;`;
+    }
+    for (const [id, el] of ringEls) if (!seen.has(id)) { el.remove(); ringEls.delete(id); }
+  };
+
+  // Phone: the same scrub card as field-boids over the canvas (params,
+  // presets, Randomize); the bottom sheet with the desktop panel is never
+  // shown. `color` and `trails` are virtual keys of the spec, routed here.
+  const pr = ctrl.params as unknown as Record<string, number>;
+  const getKey = (k: string): number => {
+    if (k === 'color') return colorIndex(ctrl.params);
+    if (k === 'trails') return ctrl.trailsEnabled ? 1 : 0;
+    if (k === 'trailDecay') return ctrl.trailDecay;
+    return pr[k] ?? 0;
+  };
+  const setKey = (k: string, v: number): void => {
+    if (k === 'color') {
+      const c = BOIDS_COLORS[Math.round(v)];
+      if (c) { ctrl.params.colorR = c.r; ctrl.params.colorG = c.g; ctrl.params.colorB = c.b; }
+    } else if (k === 'trails') ctrl.trailsEnabled = v === 1;
+    else if (k === 'trailDecay') ctrl.trailDecay = v;
+    else pr[k] = v;
+  };
+  // showIf predicates read through this so virtual keys resolve too.
+  const paramView = new Proxy({}, { get: (_t, k) => getKey(String(k)) });
+  const randomize = (): void => {
+    mgr.history.endGesture();
+    const kept = mgr.locks.keys().map(k => [k, pr[k]] as const);
+    randomizeBoidsParams(ctrl.params);
+    for (const [k, v] of kept) pr[k] = v;
+    mgr.history.push('Randomize');
+    mgr.rebuild();
+  };
+
+  const scrubKey = 'boids-scrub-open';
+  const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
+  const settingsIcon = settingsBtn?.querySelector<HTMLElement>('.ctrl-icon') ?? null;
+  function setScrubOpen(open: boolean): void {
+    scrub?.setVisible(open);
+    sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
+    viewport.classList.toggle('scrub-open', open);
+    if (settingsIcon) settingsIcon.textContent = open ? '×' : '⚙';
+  }
+  function ensureScrub(): void {
+    const want = isPhoneLayout();
+    if (want && !scrub) {
+      scrub = createScrubPanel({
+        host: viewport,
+        groups: BOIDS_GROUPS,
+        params: paramView,
+        get: getKey,
+        set: setKey,
+        history: mgr.history,
+        locks: mgr.locks,
+        // Audio and Image: the desktop tabs at full size, a live monitor strip when shrunk.
+        tabs: boidsPhoneTabs(ctrl, reactor, getBaseParams, viewport),
+        storageKey: 'boids-scrub',
+        buildPresets: (c) => buildPresetSection(c, mgr, { showTitle: false }).dispose,
+        onRandomize: randomize,
+        onClose: () => setScrubOpen(false),
+      });
+      // The page script must not reopen the sheet from its own saved state.
+      panelControls?.teardown();
+      panelControls = null;
+      panel.style.display = 'none';
+      sessionStorage.setItem('boids-panel-open', 'false');
+      setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
+    } else if (!want && scrub) {
+      scrub.dispose();
+      scrub = null;
+      viewport.classList.remove('scrub-open');
+      if (settingsIcon) settingsIcon.textContent = '⚙';
+    }
+  }
+  // On phones the ⚙ button toggles the scrub list, not the sheet.
+  settingsBtn?.addEventListener('click', (e) => {
+    if (!scrub) return;
+    e.stopImmediatePropagation();
+    setScrubOpen(!scrub.isVisible());
+  }, { capture: true });
 
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
     section?.dispose();
     panelControls?.teardown();
     panelContent.innerHTML = '';
+    ensureScrub();
+    if (scrub) {
+      scrub.refresh();
+      scrub.rebuildPresets();
+      return;
+    }
     panelControls = buildBoidsPanel(panelContent, ctrl, {
       reactor,
       history: mgr.history,
@@ -77,6 +185,7 @@ export async function setupBoids(
   }
   mgr.onRebuild(buildPanel);
   buildPanel();
+  window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
 
   const editorWrap   = shaderPanelEl.querySelector('#shader-editor-wrap') as HTMLElement;
   const shaderErrors = shaderPanelEl.querySelector('#shader-errors') as HTMLElement;
