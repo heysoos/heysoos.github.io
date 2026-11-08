@@ -36,7 +36,14 @@ struct Params {
   mouseDY:        f32,  // 116
   _pad0:          f32,  // 120
   _pad1:          f32,  // 124
+  viewZoom:       f32,  // 128 — view magnification (1 = whole torus on screen)
+  viewCx:         f32,  // 132 — world position at screen centre
+  viewCy:         f32,  // 136
+  _pad2:          f32,  // 140
 }
+
+/// Shortest offset on the [-1,1) torus.
+fn wrapD2(d: vec2f) -> vec2f { return d - 2.0 * round(d * 0.5); }
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> particlesA: array<Particle>;
@@ -212,7 +219,7 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
 
   // Mouse attraction (use screen-space distance for isotropic mouseRadius)
   if (params.mouseActive > 0.5) {
-    let toMouse = vec2f(params.mouseX, params.mouseY) - pos;
+    let toMouse = wrapD2(vec2f(params.mouseX, params.mouseY) - pos);
     let toMouseS = vec2f(toMouse.x * params.aspect, toMouse.y);
     let mouseDist = length(toMouseS);
     if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
@@ -248,8 +255,8 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (params.mouseActive > 0.5) {
     let carry = vec2f(params.mouseDX, params.mouseDY);
     let m = vec2f(params.mouseX, params.mouseY);
-    let dNew = m - pos;
-    let dOld = m - carry - pos;
+    let dNew = wrapD2(m - pos);
+    let dOld = wrapD2(m - carry - pos);
     let sNew = length(vec2f(dNew.x * params.aspect, dNew.y));
     let sOld = length(vec2f(dOld.x * params.aspect, dOld.y));
     if (min(sNew, sOld) < params.mouseRadius) {
@@ -293,8 +300,12 @@ fn vertexMain(
     scaled.x * cosA - scaled.y * sinA,
     scaled.x * sinA + scaled.y * cosA,
   );
+  // View: world → screen along the shortest torus path, sprites magnified
+  // with the zoom so zooming in enlarges the pattern rather than thinning it.
+  let rel = wrapD2(particlePos - vec2f(params.viewCx, params.viewCy)) * params.viewZoom;
+  let sz = rotated * params.viewZoom;
   var out: VertexOutput;
-  out.position = vec4f(particlePos + vec2f(rotated.x / params.aspect, rotated.y), 0.0, 1.0);
+  out.position = vec4f(rel + vec2f(sz.x / params.aspect, sz.y), 0.0, 1.0);
   out.speed = length(particleVel);
   out.uv = vertexPos; // pre-rotation UV for SDF (-1..1)
   return out;
