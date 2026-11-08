@@ -8,14 +8,18 @@ export async function createPreviewController(
   canvas: HTMLCanvasElement,
 ): Promise<PreviewController | null> {
   if (sim === 'boids') {
-    const { BoidsController } = await import(
-      '../../components/simulations/boids/boids-controller'
-    )
+    const [{ BoidsController }, { BOIDS_PRESETS }, { applyBoidsPreset }] = await Promise.all([
+      import('../../components/simulations/boids/boids-controller'),
+      import('../../data/boids-presets'),
+      import('../../lib/sim-page/boids-preset-apply'),
+    ])
     const ctrl = new BoidsController()
     const ok = await ctrl.init(canvas)
     if (!ok) return null
-    ctrl.params.numParticles = 150
-    ctrl.params.size = 0.018
+    // Same preset as the home page, thinned for a card-sized canvas.
+    const preset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0]
+    if (preset) await applyBoidsPreset(ctrl, preset)
+    ctrl.params.numParticles = Math.min(ctrl.params.numParticles, 400)
     ctrl.trailsEnabled = false
     return {
       pause: () => ctrl.stop(),

@@ -48,51 +48,94 @@ const { simulation } = Astro.props
     type PreviewController,
   } from '../lib/webgpu/preview-registry'
 
-  const wraps = document.querySelectorAll<HTMLElement>('[data-preview-sim]')
-
-  for (const wrap of wraps) {
-    const sim = wrap.dataset.previewSim!
-    const canvas = wrap.querySelector<HTMLCanvasElement>('.preview-canvas')!
-    const placeholder = wrap.querySelector<HTMLElement>('.preview-placeholder')!
-    const card = wrap.closest<HTMLElement>('.sim-card')
-
-    let controller: PreviewController | null = null
-    let ready = false
-
-    const observer = new IntersectionObserver(
-      async (entries) => {
-        if (!entries[0].isIntersecting) return
-        observer.disconnect()
-
-        controller = await createPreviewController(sim, canvas)
-        if (!controller) return
-
-        controller.resume()
-        await new Promise<void>((r) => setTimeout(r, 800))
-        controller.pause()
-
-        canvas.style.opacity = '1'
-        placeholder.style.opacity = '0'
-        ready = true
-        if (card && card.matches(':hover')) {
-          controller.resume()
-        }
-      },
-      { threshold: 0.1 },
-    )
-
-    if (!card) continue
-
-    observer.observe(wrap)
-
-    card.addEventListener('mouseenter', () => {
-      if (!ready || !controller) return
-      controller.resume()
-    })
-
-    card.addEventListener('mouseleave', () => {
-      if (!ready || !controller) return
-      controller.pause()
-    })
+  // Each card starts cold: import the controller, build pipelines, compile
+  // shaders. Doing that when a card scrolls into view put the whole cost on
+  // the scroll and stuttered. Instead the cards are warmed one at a time in
+  // browser idle time, in page order, on the shared device; a warm card is
+  // revealed once it is also in view. Like Shadertoy, a card then sits on
+  // its last frame and only animates while hovered.
+  interface Entry {
+    sim: string
+    canvas: HTMLCanvasElement
+    placeholder: HTMLElement
+    card: HTMLElement | null
+    controller: PreviewController | null
+    ready: boolean
+    visible: boolean
+    hovered: boolean
+    running: boolean
   }
+
+  const entries: Entry[] = [...document.querySelectorAll<HTMLElement>('[data-preview-sim]')].map((wrap) => ({
+    sim: wrap.dataset.previewSim!,
+    canvas: wrap.querySelector<HTMLCanvasElement>('.preview-canvas')!,
+    placeholder: wrap.querySelector<HTMLElement>('.preview-placeholder')!,
+    card: wrap.closest<HTMLElement>('.sim-card'),
+    controller: null,
+    ready: false,
+    visible: false,
+    hovered: false,
+    running: false,
+  }))
+  const wraps = [...document.querySelectorAll<HTMLElement>('[data-preview-sim]')]
+
+  const idle = (cb: () => void): void => {
+    if ('requestIdleCallback' in window) (window as Window & { requestIdleCallback(cb: () => void, o?: { timeout: number }): number }).requestIdleCallback(cb, { timeout: 1500 })
+    else setTimeout(cb, 150)
+  }
+
+  function setRunning(e: Entry, on: boolean): void {
+    if (!e.controller || e.running === on) return
+    e.running = on
+    if (on) e.controller.resume()
+    else e.controller.pause()
+  }
+
+  function sync(e: Entry): void {
+    if (!e.ready) return
+    if (e.visible && e.canvas.style.opacity !== '1') {
+      e.canvas.style.opacity = '1'
+      e.placeholder.style.opacity = '0'
+    }
+    setRunning(e, e.visible && e.hovered)
+  }
+
+  async function warm(i: number): Promise<void> {
+    const e = entries[i]
+    if (!e) return
+    try {
+      e.controller = await createPreviewController(e.sim, e.canvas)
+      if (e.controller) {
+        // A short run so the first frame shown is a settled one, not the seed.
+        e.controller.resume()
+        await new Promise<void>((r) => setTimeout(r, 800))
+        e.controller.pause()
+        e.ready = true
+        e.hovered = !!e.card?.matches(':hover')
+        sync(e)
+      }
+    } catch (err) {
+      console.warn('preview failed:', e.sim, err)
+    }
+    idle(() => void warm(i + 1))
+  }
+
+  const observer = new IntersectionObserver(
+    (obs) => {
+      for (const o of obs) {
+        const e = entries[wraps.indexOf(o.target as HTMLElement)]
+        if (!e) continue
+        e.visible = o.isIntersecting
+        sync(e)
+      }
+    },
+    { threshold: 0.1 },
+  )
+  for (const [i, e] of entries.entries()) {
+    observer.observe(wraps[i])
+    e.card?.addEventListener('mouseenter', () => { e.hovered = true; sync(e) })
+    e.card?.addEventListener('mouseleave', () => { e.hovered = false; sync(e) })
+  }
+
+  if (entries.length) idle(() => void warm(0))
 </script>
