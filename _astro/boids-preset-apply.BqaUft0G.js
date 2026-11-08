@@ -1,2 +1,0 @@
-const s=a=>a.replace(/\r\n?/g,`
-`);async function i(a,e,n){Object.assign(a.params,e.params),a.trailsEnabled=e.trailsEnabled,a.trailDecay=e.trailDecay;const r=e.shader??a.defaultShaderSource;s(r)!==s(a.shaderSource)&&await a.reloadShader(r),n?.(r)}function d(a,e){const r={params:{...e??a.params},trailsEnabled:a.trailsEnabled,trailDecay:a.trailDecay};return s(a.shaderSource)!==s(a.defaultShaderSource)&&(r.shader=a.shaderSource),r}export{i as applyBoidsPreset,d as captureBoidsPreset};

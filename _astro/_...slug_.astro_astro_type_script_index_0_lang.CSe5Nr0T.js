@@ -1,78 +1,78 @@
-import{B as Ft}from"./boids-controller.B1ws8b-B.js";import{i as _t}from"./device.zTc-m6mA.js";import{c as qt,a as $e,r as Ut}from"./utils.DCtYZSmS.js";import{NCAController as Gt}from"./nca-controller.d7P3rHEq.js";import{C as zt}from"./cppn-controller.2pmOzXbT.js";import{D as Ht,F as Kt}from"./field-boids-controller.DlVOg8NW.js";import{f as Vt,B as Fe,g as Yt,o as Wt,h as Te,i as Xt,d as jt,e as Jt,b as Zt,c as Qt,a as en,P as tn}from"./shader-editor.CpzySqt7.js";import{BOIDS_PRESETS as _e}from"./boids-presets.BduVwpjd.js";import{applyBoidsPreset as nn,captureBoidsPreset as sn}from"./boids-preset-apply.BqaUft0G.js";import{a as ue,n as Le,c as ce,F as ft,d as on,e as an,f as Pe,p as rn,r as ln,g as cn}from"./preset-file.DgT5FAZ8.js";import{p as Ve}from"./panel-styles.BL6JXTHL.js";import{U as dn,R as un,D as pn,t as oe,f as mt,a as ve,s as fn}from"./icons.DlmPMact.js";import{p as Ye,l as Mt,A as Lt,M as Pt,a as We,c as mn,D as hn,d as yn,C as gn,r as bn,e as vn,f as xe,t as qe,b as xn,i as wn,g as En}from"./cppn-panel.CkqOHiwY.js";import{CPPN_PRESETS as Sn}from"./cppn-presets.NFhfBdM3.js";import{b as Mn}from"./nca-panel.I4pCUFbn.js";import{NCA_PRESETS as Ue}from"./nca-presets.B5llx4-J.js";import{r as Ln,b as Pn,F as ht,a as kn,G as In}from"./field-boids-panel.s1hclC9C.js";import{FIELD_BOIDS_PRESETS as Ge}from"./field-boids-presets.Br4aaOia.js";const Cn=`struct Particle {
-  pos: vec2f,
-  vel: vec2f,
-  species: f32,
-  _pad: f32,
-}
-
-struct Params {
-  deltaTime: f32,
-  numParticles: u32,
-  numSpecies: u32,
-  friction: f32,
-}
-
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> particlesIn: array<Particle>;
-@group(0) @binding(2) var<storage, read_write> particlesOut: array<Particle>;
-
-@compute @workgroup_size(64)
-fn computeMain(@builtin(global_invocation_id) id: vec3u) {
-  let i = id.x;
-  if (i >= params.numParticles) { return; }
-
-  var p = particlesIn[i];
-  var force = vec2f(0.0);
-
-  for (var j = 0u; j < params.numParticles; j++) {
-    if (i == j) { continue; }
-    let other = particlesIn[j];
-    let diff = other.pos - p.pos;
-    let dist = length(diff);
-    if (dist > 0.0 && dist < 0.3) {
-      let f = select(0.01, -0.01, dist < 0.05) / dist;
-      force += normalize(diff) * f;
-    }
-  }
-
-  p.vel = (p.vel + force) * params.friction;
-  p.pos = p.pos + p.vel * params.deltaTime;
-
-  if (p.pos.x < -1.0) { p.pos.x += 2.0; }
-  if (p.pos.x > 1.0)  { p.pos.x -= 2.0; }
-  if (p.pos.y < -1.0) { p.pos.y += 2.0; }
-  if (p.pos.y > 1.0)  { p.pos.y -= 2.0; }
-
-  particlesOut[i] = p;
-}
-
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) color: vec3f,
-}
-
-@vertex
-fn vertexMain(
-  @location(0) particlePos: vec2f,
-  @location(1) particleVel: vec2f,
-  @location(2) species: f32,
-  @location(3) vertexPos: vec2f,
-) -> VertexOutput {
-  var out: VertexOutput;
-  out.position = vec4f(particlePos + vertexPos * 0.004, 0.0, 1.0);
-  let hue = species / 6.0;
-  out.color = vec3f(
-    abs(hue * 6.0 - 3.0) - 1.0,
-    2.0 - abs(hue * 6.0 - 2.0),
-    2.0 - abs(hue * 6.0 - 4.0),
-  );
-  return out;
-}
-
-@fragment
-fn fragmentMain(@location(0) color: vec3f) -> @location(0) vec4f {
-  return vec4f(clamp(color, vec3f(0.0), vec3f(1.0)), 1.0);
-}
+import{B as Ft}from"./boids-controller.BorvKQ9M.js";import{i as _t}from"./device.zTc-m6mA.js";import{c as qt,a as $e,r as Ut}from"./utils.DCtYZSmS.js";import{NCAController as Gt}from"./nca-controller.d7P3rHEq.js";import{C as zt}from"./cppn-controller.2pmOzXbT.js";import{D as Ht,F as Kt}from"./field-boids-controller.DlVOg8NW.js";import{f as Vt,B as Fe,g as Yt,o as Wt,h as Te,i as Xt,d as jt,e as Jt,b as Zt,c as Qt,a as en,P as tn}from"./shader-editor.Cx-Z4bgt.js";import{B as _e,a as nn,c as sn}from"./boids-preset-apply.CyaQWFEl.js";import{a as ue,n as Le,c as ce,F as ft,d as on,e as an,f as Pe,p as rn,r as ln,g as cn}from"./preset-file.DgT5FAZ8.js";import{p as Ve}from"./panel-styles.BL6JXTHL.js";import{U as dn,R as un,D as pn,t as oe,f as mt,a as ve,s as fn}from"./icons.DlmPMact.js";import{p as Ye,l as Mt,A as Lt,M as Pt,a as We,c as mn,D as hn,d as yn,C as gn,r as bn,e as vn,f as xe,t as qe,b as xn,i as wn,g as En}from"./cppn-panel.CkqOHiwY.js";import{CPPN_PRESETS as Sn}from"./cppn-presets.NFhfBdM3.js";import{b as Mn}from"./nca-panel.I4pCUFbn.js";import{NCA_PRESETS as Ue}from"./nca-presets.B5llx4-J.js";import{r as Ln,b as Pn,F as ht,a as kn,G as In}from"./field-boids-panel.s1hclC9C.js";import{FIELD_BOIDS_PRESETS as Ge}from"./field-boids-presets.Br4aaOia.js";const Cn=`struct Particle {\r
+  pos: vec2f,\r
+  vel: vec2f,\r
+  species: f32,\r
+  _pad: f32,\r
+}\r
+\r
+struct Params {\r
+  deltaTime: f32,\r
+  numParticles: u32,\r
+  numSpecies: u32,\r
+  friction: f32,\r
+}\r
+\r
+@group(0) @binding(0) var<uniform> params: Params;\r
+@group(0) @binding(1) var<storage, read> particlesIn: array<Particle>;\r
+@group(0) @binding(2) var<storage, read_write> particlesOut: array<Particle>;\r
+\r
+@compute @workgroup_size(64)\r
+fn computeMain(@builtin(global_invocation_id) id: vec3u) {\r
+  let i = id.x;\r
+  if (i >= params.numParticles) { return; }\r
+\r
+  var p = particlesIn[i];\r
+  var force = vec2f(0.0);\r
+\r
+  for (var j = 0u; j < params.numParticles; j++) {\r
+    if (i == j) { continue; }\r
+    let other = particlesIn[j];\r
+    let diff = other.pos - p.pos;\r
+    let dist = length(diff);\r
+    if (dist > 0.0 && dist < 0.3) {\r
+      let f = select(0.01, -0.01, dist < 0.05) / dist;\r
+      force += normalize(diff) * f;\r
+    }\r
+  }\r
+\r
+  p.vel = (p.vel + force) * params.friction;\r
+  p.pos = p.pos + p.vel * params.deltaTime;\r
+\r
+  if (p.pos.x < -1.0) { p.pos.x += 2.0; }\r
+  if (p.pos.x > 1.0)  { p.pos.x -= 2.0; }\r
+  if (p.pos.y < -1.0) { p.pos.y += 2.0; }\r
+  if (p.pos.y > 1.0)  { p.pos.y -= 2.0; }\r
+\r
+  particlesOut[i] = p;\r
+}\r
+\r
+struct VertexOutput {\r
+  @builtin(position) position: vec4f,\r
+  @location(0) color: vec3f,\r
+}\r
+\r
+@vertex\r
+fn vertexMain(\r
+  @location(0) particlePos: vec2f,\r
+  @location(1) particleVel: vec2f,\r
+  @location(2) species: f32,\r
+  @location(3) vertexPos: vec2f,\r
+) -> VertexOutput {\r
+  var out: VertexOutput;\r
+  out.position = vec4f(particlePos + vertexPos * 0.004, 0.0, 1.0);\r
+  let hue = species / 6.0;\r
+  out.color = vec3f(\r
+    abs(hue * 6.0 - 3.0) - 1.0,\r
+    2.0 - abs(hue * 6.0 - 2.0),\r
+    2.0 - abs(hue * 6.0 - 4.0),\r
+  );\r
+  return out;\r
+}\r
+\r
+@fragment\r
+fn fragmentMain(@location(0) color: vec3f) -> @location(0) vec4f {\r
+  return vec4f(clamp(color, vec3f(0.0), vec3f(1.0)), 1.0);\r
+}\r
 `,re=1e3,ze=6,Tn=new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]);class Bn{gpu=null;computePipeline;renderPipeline;particleBuffers;uniformBuffer;vertexBuffer;bindGroups;frame=0;running=!1;animId=0;async init(t){try{if(this.gpu=await _t(t),!this.gpu)return!1;const{device:n,format:s}=this.gpu,a=n.createShaderModule({code:Cn});this.uniformBuffer=qt(n,16);const o=new Float32Array(re*6);for(let r=0;r<re;r++)o[r*6+0]=(Math.random()-.5)*1.8,o[r*6+1]=(Math.random()-.5)*1.8,o[r*6+2]=0,o[r*6+3]=0,o[r*6+4]=Math.floor(Math.random()*ze),o[r*6+5]=0;const p=GPUBufferUsage.STORAGE|GPUBufferUsage.VERTEX;this.particleBuffers=[$e(n,o,p),$e(n,o,p)],this.vertexBuffer=$e(n,Tn,GPUBufferUsage.VERTEX);const l=n.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.COMPUTE,buffer:{type:"read-only-storage"}},{binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:"storage"}}]});return this.computePipeline=n.createComputePipeline({layout:n.createPipelineLayout({bindGroupLayouts:[l]}),compute:{module:a,entryPoint:"computeMain"}}),this.bindGroups=[n.createBindGroup({layout:l,entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:{buffer:this.particleBuffers[0]}},{binding:2,resource:{buffer:this.particleBuffers[1]}}]}),n.createBindGroup({layout:l,entries:[{binding:0,resource:{buffer:this.uniformBuffer}},{binding:1,resource:{buffer:this.particleBuffers[1]}},{binding:2,resource:{buffer:this.particleBuffers[0]}}]})],this.renderPipeline=n.createRenderPipeline({layout:"auto",vertex:{module:a,entryPoint:"vertexMain",buffers:[{arrayStride:24,stepMode:"instance",attributes:[{shaderLocation:0,offset:0,format:"float32x2"},{shaderLocation:1,offset:8,format:"float32x2"},{shaderLocation:2,offset:16,format:"float32"}]},{arrayStride:8,stepMode:"vertex",attributes:[{shaderLocation:3,offset:0,format:"float32x2"}]}]},fragment:{module:a,entryPoint:"fragmentMain",targets:[{format:s,blend:{color:{srcFactor:"src-alpha",dstFactor:"one",operation:"add"},alpha:{srcFactor:"one",dstFactor:"one",operation:"add"}}}]},primitive:{topology:"triangle-list"}}),!0}catch(n){return console.error("ParticleLifeController init error:",n),!1}}start(){this.running||(this.running=!0,this.tick())}stop(){this.running=!1,cancelAnimationFrame(this.animId)}reset(){if(!this.gpu)return;const{device:t}=this.gpu,n=new Float32Array(re*6);for(let s=0;s<re;s++)n[s*6+0]=(Math.random()-.5)*1.8,n[s*6+1]=(Math.random()-.5)*1.8,n[s*6+4]=Math.floor(Math.random()*ze);t.queue.writeBuffer(this.particleBuffers[0],0,n),t.queue.writeBuffer(this.particleBuffers[1],0,n),this.frame=0}tick=()=>{if(!this.running||!this.gpu)return;const{device:t,context:n,canvas:s}=this.gpu;Ut(s);const a=new ArrayBuffer(16),o=new DataView(a);o.setFloat32(0,1,!0),o.setUint32(4,re,!0),o.setUint32(8,ze,!0),o.setFloat32(12,.98,!0),t.queue.writeBuffer(this.uniformBuffer,0,a);const p=t.createCommandEncoder(),l=p.beginComputePass();l.setPipeline(this.computePipeline),l.setBindGroup(0,this.bindGroups[this.frame%2]),l.dispatchWorkgroups(Math.ceil(re/64)),l.end();const r=p.beginRenderPass({colorAttachments:[{view:n.getCurrentTexture().createView(),clearValue:{r:.039,g:.031,b:.016,a:1},loadOp:"clear",storeOp:"store"}]});r.setPipeline(this.renderPipeline),r.setVertexBuffer(0,this.particleBuffers[(this.frame+1)%2]),r.setVertexBuffer(1,this.vertexBuffer),r.draw(6,re),r.end(),t.queue.submit([p.finish()]),this.frame++,this.animId=requestAnimationFrame(this.tick)}}const An="(max-width: 768px)";function de(){return typeof window<"u"&&window.matchMedia(An).matches}const Rn=8,yt=30;class Dn{constructor(t,n,s){this.panel=t,this.stateKey=n,this.onClose=s,this.handle=t.querySelector(".panel-drag-handle")}panel;stateKey;onClose;expanded=!1;startY=0;tracking=!1;handle;init(){this.panel.classList.add("bottom-sheet"),this.expanded=sessionStorage.getItem(this.stateKey)==="expanded",this.apply(),this.handle&&(this.handle.addEventListener("pointerdown",this.onDown),this.handle.addEventListener("pointermove",this.onMove),this.handle.addEventListener("pointerup",this.onUp),this.handle.addEventListener("pointercancel",this.onCancel))}dispose(){this.panel.classList.remove("bottom-sheet","sheet-expanded"),this.handle&&(this.handle.removeEventListener("pointerdown",this.onDown),this.handle.removeEventListener("pointermove",this.onMove),this.handle.removeEventListener("pointerup",this.onUp),this.handle.removeEventListener("pointercancel",this.onCancel))}setExpanded(t){this.expanded=t,sessionStorage.setItem(this.stateKey,t?"expanded":"peek"),this.apply()}apply(){this.panel.classList.toggle("sheet-expanded",this.expanded)}onDown=t=>{this.tracking=!0,this.startY=t.clientY,this.handle?.setPointerCapture(t.pointerId),t.preventDefault()};onMove=t=>{this.tracking&&t.preventDefault()};onUp=t=>{if(!this.tracking)return;this.tracking=!1;const n=t.clientY-this.startY;if(Math.abs(n)<=Rn){this.setExpanded(!this.expanded);return}if(n<=-yt){this.setExpanded(!0);return}n>=yt&&(this.expanded?this.setExpanded(!1):(this.onClose(),this.panel.dispatchEvent(new CustomEvent("sheetclose"))))};onCancel=()=>{this.tracking=!1}}const gt=20;function On(e,t){const n=`presets:${e}`,s=`presets:${e}:trash`;let a=!0;const o=new Set;function p(c){try{const m=localStorage.getItem(c);if(!m)return[];const h=JSON.parse(m),E=typeof h.version=="number"?h.version:ft;return(Array.isArray(h.presets)?h.presets:[]).map(R=>{const q=on(R,t,E);if(!q)return null;const g=R.deletedAt;return typeof g=="string"?{...q,deletedAt:g}:q}).filter(R=>R!==null)}catch{return a=!1,[]}}let l=p(n),r=p(s);function d(c,m){try{localStorage.setItem(c,JSON.stringify({version:ft,presets:m})),a=!0}catch{a=!1}}function f(){d(n,l),d(s,r);for(const c of o)c()}function w(c,m){const h=Le();return{...ce(ue(m)),id:an(),name:c.trim()||"Untitled",createdAt:h,updatedAt:h}}return{simId:e,get storageOk(){return a},list:()=>l.slice(),get:c=>l.find(m=>m.id===c),add(c,m){const h=w(c,m);return l.push(h),f(),h},update(c,m,h){const E=l.findIndex(q=>q.id===c);if(E<0)return;const P=l[E],R={...ce(ue(m)),id:c,name:(h??P.name).trim()||P.name,createdAt:P.createdAt,updatedAt:Le()};return l[E]=R,f(),R},rename(c,m){const h=l.find(E=>E.id===c);return!h||!m.trim()||(h.name=m.trim(),h.updatedAt=Le(),f()),h},duplicate(c,m){const h=l.find(P=>P.id===c);if(!h)return;const E=w(m??`${h.name} copy`,ue(h));return l.push(E),f(),E},remove(c){const m=l.findIndex(E=>E.id===c);if(m<0)return;const[h]=l.splice(m,1);r.unshift({...h,deletedAt:Le()}),r.length>gt&&(r.length=gt),f()},restore(c){const m=r.findIndex(R=>R.id===c);if(m<0)return;const[{deletedAt:h,...E}]=r.splice(m,1),P=E;return l.push(P),f(),P},listTrash:()=>r.slice(),emptyTrash(){r=[],f()},importPresets(c){const m=c.map(h=>w(h.name,ue(h)));return l.push(...m),f(),m},subscribe(c){return o.add(c),()=>{o.delete(c)}}}}const Nn=100,$n=800;function Fn(e){const t=e.limit??Nn,n=e.gestureTimeoutMs??$n,s=e.isEqual??((P,R)=>JSON.stringify(P)===JSON.stringify(R));let a=e.getSnapshot(),o=[],p=[],l=null,r=0;const d=new Set,f=()=>{for(const P of d)P()};function w(P){const R=e.getSnapshot();s(a,R)||(o.push({label:P,before:a,after:R}),o.length>t&&o.shift(),p=[],a=R,f())}function c(){r&&(clearTimeout(r),r=0)}function m(){c(),r=window.setTimeout(()=>{r=0,h()},n)}function h(){if(l===null)return;const P=l;l=null,c(),w(P)}async function E(P,R){a=R,await e.applySnapshot(R),f()}return{push(P){h(),w(P)},beginGesture(P){l!==null&&h(),l=P,m()},touch(){l!==null&&m()},endGesture:h,isGestureOpen:()=>l!==null,undo(){h();const P=o.pop();return P?(p.push(P),E(P,P.before),!0):!1},redo(){h();const P=p.pop();return P?(o.push(P),E(P,P.after),!0):!1},canUndo:()=>o.length>0,canRedo:()=>p.length>0,undoLabel:()=>o[o.length-1]?.label,redoLabel:()=>p[p.length-1]?.label,resetBaseline(){h(),a=e.getSnapshot()},clear(){h(),o=[],p=[],a=e.getSnapshot(),f()},subscribe(P){return d.add(P),()=>{d.delete(P)}},dispose(){c(),d.clear()}}}function je(e){const t=n=>{if(!(n.ctrlKey||n.metaKey))return;const s=n.target;if(s&&(s.tagName==="INPUT"||s.tagName==="TEXTAREA"||s.isContentEditable))return;const a=n.key.toLowerCase();a==="z"&&!n.shiftKey?(n.preventDefault(),e.undo()):(a==="z"&&n.shiftKey||a==="y")&&(n.preventDefault(),e.redo())};return document.addEventListener("keydown",t),()=>document.removeEventListener("keydown",t)}function _n(e){const t=`presets:${e}:locks`,n=new Set,s=new Set;try{const o=localStorage.getItem(t);if(o)for(const p of JSON.parse(o))typeof p=="string"&&n.add(p)}catch{}function a(){try{localStorage.setItem(t,JSON.stringify([...n]))}catch{}for(const o of s)o()}return{isLocked:o=>n.has(o),toggle(o){n.has(o)?n.delete(o):n.add(o),a()},set(o,p){p!==n.has(o)&&(p?n.add(o):n.delete(o),a())},clear(){n.size!==0&&(n.clear(),a())},keys:()=>[...n],subscribe(o){return s.add(o),()=>{s.delete(o)}}}}function Je(e){const t=On(e.simId,e.defaults),n=e.locks??_n(e.simId);let s,a=()=>{};const o=Fn({getSnapshot:()=>ce(e.capture()),applySnapshot:async r=>{await e.apply(ce(r)),a()},isEqual:(r,d)=>Pe(r)===Pe(d)}),p=r=>{const d={...e.defaults,...r.params},f=Object.fromEntries(Object.keys(e.defaults).map(m=>[m,d[m]])),w={...r,params:f},c=n.keys();if(c.length>0){const m=e.capture().params;for(const h of c)h in m&&(w.params[h]=m[h])}return e.prepare?e.prepare(w):w};function l(r){if(r)return e.builtIn.find(d=>d.id===r)??t.get(r)}return{simId:e.simId,defaults:e.defaults,builtIn:e.builtIn,store:t,history:o,locks:n,getActiveId:()=>s,setActiveId:r=>{s=r},activePreset:()=>l(s),isBuiltIn:r=>e.builtIn.some(d=>d.id===r),isDirty(){const r=l(s);return r?Pe(p(ce(ue(r))))!==Pe(e.capture()):!1},capture:()=>ce(e.capture()),async load(r){o.endGesture(),s=r.id,await e.apply(p(ce(ue(r)))),o.push(`Load ${r.name}`),a()},onRebuild(r){a=r},rebuild(){a()},dispose(){o.dispose()}}}const we="padding:3px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;",He=we+"border-color:var(--accent);color:var(--accent);",bt=we+"border-color:#e05060;color:#e05060;",Ke="background:none;border:1px solid var(--bg-surface-border);border-radius:4px;color:var(--text-body);cursor:pointer;font-size:0.8rem;line-height:1;padding:2px 7px;",qn="flex:1;min-width:0;background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:3px 6px;color:var(--text-body);font-size:0.72rem;",ke="font-size:0.62rem;color:var(--text-muted);";function H(e,t,n){const s=document.createElement(e);return t&&(s.style.cssText=t),n!==void 0&&(s.textContent=n),s}function ie(e,t,n,s){const a=H("button",t,e);return s&&(a.title=s),a.addEventListener("click",o=>{o.preventDefault(),n()}),a}function pe(e,t,n={}){const s=H("div","display:flex;flex-direction:column;gap:5px;margin-bottom:0.4rem;");e.appendChild(s);const a=H("div","display:flex;align-items:center;gap:6px;");a.className="preset-header";const o=H("div","display:flex;flex-wrap:wrap;gap:4px;align-items:center;"),p=H("div","display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;padding-top:7px;border-top:1px solid var(--bg-surface-border);"),l=H("div","display:none;flex-direction:column;gap:4px;padding:5px 7px;border:1px solid var(--accent);border-radius:4px;"),r=H("div","display:none;flex-direction:column;gap:3px;");s.append(a,o,p,l,r);const d=H("input","display:none;");d.type="file",d.accept=".json,application/json",s.appendChild(d);function f(){l.style.display="none",l.innerHTML=""}function w(u,S){l.innerHTML="",l.style.display="flex",l.appendChild(H("div","font-size:0.68rem;color:var(--text-body);",u));const O=H("div","display:flex;gap:4px;flex-wrap:wrap;");for(const y of S){const A=y.style==="accent"?He:y.style==="danger"?bt:we;O.appendChild(ie(y.label,A,()=>{f(),y.onPick()}))}l.appendChild(O)}function c(u,S,O,y){l.innerHTML="",l.style.display="flex",l.appendChild(H("div","font-size:0.68rem;color:var(--text-body);",u));const A=H("div","display:flex;gap:4px;"),F=H("input",qn);F.type="text",F.value=S,F.placeholder="preset name";const K=()=>{const L=F.value.trim();if(!L){F.style.borderColor="#e05060";return}f(),y(L)};F.addEventListener("keydown",L=>{L.key==="Enter"&&K(),L.key==="Escape"&&f()}),A.append(F,ie(O,He,K),ie("Cancel",we,f)),l.appendChild(A),requestAnimationFrame(()=>{F.focus(),F.select()})}function m(u){const S=t.activePreset(),O=S?t.isBuiltIn(S.id)?`${S.name} copy`:S.name:"Untitled";c("Save current settings as",O,"Save",y=>{const A=t.store.add(y,t.capture());t.setActiveId(A.id),t.history.resetBaseline(),I(),u?.()})}function h(u){const S=t.activePreset();if(!S||t.isBuiltIn(S.id)){m(u);return}w(`Overwrite "${S.name}" with the current settings?`,[{label:"Overwrite",style:"accent",onPick:()=>{t.store.update(S.id,t.capture()),t.history.resetBaseline(),I(),u?.()}},{label:"Cancel",onPick:()=>{}}])}function E(u){const S=t.activePreset();if(!S||!t.isDirty()){u();return}const O=t.isBuiltIn(S.id);w(`Unsaved changes in "${S.name}".`,[{label:O?"Save as…":"Save",style:"accent",onPick:()=>O?m(u):h(u)},{label:"Discard",style:"danger",onPick:u},{label:"Cancel",onPick:()=>{}}])}function P(u){E(()=>{t.load(u)})}function R(){const u=t.activePreset();!u||t.isBuiltIn(u.id)||c(`Rename "${u.name}"`,u.name,"Rename",S=>{t.store.rename(u.id,S),I()})}function q(){const u=t.activePreset();if(!u)return;const S=t.isBuiltIn(u.id)?t.store.add(`${u.name} copy`,{...u}):t.store.duplicate(u.id);S&&(t.setActiveId(S.id),t.history.resetBaseline()),I()}function g(){const u=t.activePreset();!u||t.isBuiltIn(u.id)||w(`Delete "${u.name}"? It can be restored from Recently deleted.`,[{label:"Delete",style:"danger",onPick:()=>{t.store.remove(u.id),t.setActiveId(void 0),t.history.resetBaseline(),I()}},{label:"Cancel",onPick:()=>{}}])}function v(){const u=t.store.list();if(u.length===0){w("No custom presets to export yet.",[{label:"OK",onPick:()=>{}}]);return}cn(t.simId,u)}function C(){d.value="",d.click()}d.addEventListener("change",async()=>{const u=d.files?.[0];if(!u)return;let S;try{S=rn(await ln(u),t.defaults)}catch(N){w(`Could not read file: ${N.message}`,[{label:"OK",onPick:()=>{}}]);return}const{presets:O,sim:y,warnings:A}=S;if(O.length===0){w(["Nothing to import.",...A].join(" "),[{label:"OK",onPick:()=>{}}]);return}const F=y!==void 0&&y!==t.simId,K=[`${O.length} preset${O.length===1?"":"s"} from "${y??"unknown sim"}".`,F?`This is ${t.simId}; params may not match.`:"",...A].filter(Boolean).join(" "),L=()=>{t.store.importPresets(O),I()};w(K,F?[{label:"Cancel",style:"accent",onPick:()=>{}},{label:"Import anyway",style:"danger",onPick:L}]:[{label:"Import",style:"accent",onPick:L},{label:"Cancel",onPick:()=>{}}])});function I(){const u=t.getActiveId(),S=t.activePreset(),O=t.isDirty(),y=!!S&&!t.isBuiltIn(S.id);a.innerHTML="",n.showTitle!==!1&&a.appendChild(H("p","font-size:0.6rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;","Presets")),O&&a.appendChild(H("span",ke,"unsaved changes"));const A=t.locks.keys();if(A.length>0){const G=ie(`${A.length} locked ×`,Ke+"font-size:0.62rem;color:var(--accent);border-color:var(--accent);",()=>t.locks.clear(),`Locked: ${A.join(", ")}. Click to unlock all.`);a.appendChild(G)}t.store.storageOk||a.appendChild(H("span",ke+"color:#e05060;","storage blocked — custom presets are session-only"));const F=H("span","flex:1;");a.appendChild(F);const K=ie("↶",Ke,()=>t.history.undo(),t.history.undoLabel()?`Undo ${t.history.undoLabel()}`:"Nothing to undo"),L=ie("↷",Ke,()=>t.history.redo(),t.history.redoLabel()?`Redo ${t.history.redoLabel()}`:"Nothing to redo");K.disabled=!t.history.canUndo(),L.disabled=!t.history.canRedo();for(const G of[K,L])G.disabled&&(G.style.opacity="0.35");a.append(K,L),o.innerHTML="";const N=G=>{const V=G.id===u,ae=H("button",Ve(V),G.name+(V&&O?" •":""));ae.addEventListener("click",()=>P(G)),o.appendChild(ae)};t.builtIn.forEach(N);const Y=t.store.list();Y.length>0&&(o.appendChild(H("span","width:1px;height:14px;background:var(--bg-surface-border);margin:0 2px;")),Y.forEach(N)),p.innerHTML="";const z=(G,V,ae=!0,De)=>{const me=ie(G,we,V,De);me.disabled=!ae,ae||(me.style.opacity="0.35"),p.appendChild(me)};z("Save",()=>h(),!0,y?"Overwrite the active custom preset":"Save as a new custom preset"),z("Save as",()=>m()),z("Rename",R,y),z("Duplicate",q,!!S),z("Delete",g,y),z("Export",v,!0,"Download all custom presets as JSON"),z("Import",C,!0,"Load presets from a JSON file"),x()}let b=!1;function x(){const u=t.store.listTrash();if(r.innerHTML="",u.length===0){r.style.display="none";return}r.style.display="flex";const S=H("div","display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;"+ke);if(S.textContent=`${b?"▾":"▸"} Recently deleted (${u.length})`,S.addEventListener("click",()=>{b=!b,x()}),r.appendChild(S),!!b){for(const O of u){const y=H("div","display:flex;align-items:center;gap:6px;padding:3px 6px;border:1px solid var(--bg-surface-border);border-radius:4px;");y.appendChild(H("span","flex:1;font-size:0.7rem;color:var(--text-body);",O.name)),y.appendChild(H("span",ke,new Date(O.deletedAt).toLocaleString())),y.appendChild(ie("Restore",He,()=>{const A=t.store.restore(O.id);A&&t.setActiveId(A.id),I()})),r.appendChild(y)}r.appendChild(ie("Empty recently deleted",bt,()=>{w("Permanently delete everything in Recently deleted?",[{label:"Empty",style:"danger",onPick:()=>{t.store.emptyTrash(),I()}},{label:"Cancel",onPick:()=>{}}])}))}}const k=t.store.subscribe(I),T=t.history.subscribe(I),D=t.locks.subscribe(I);return I(),{refresh:I,dispose(){k(),T(),D()}}}function Ze(e,t){const n=e.querySelector(".panel-handle-undo"),s=e.querySelector(".panel-handle-redo");if(!n||!s)return()=>{};const a=p=>p.stopPropagation();n.addEventListener("pointerdown",a),s.addEventListener("pointerdown",a),n.addEventListener("click",()=>t.undo()),s.addEventListener("click",()=>t.redo());const o=()=>{n.disabled=!t.canUndo(),s.disabled=!t.canRedo(),n.title=t.undoLabel()?`Undo ${t.undoLabel()}`:"Nothing to undo",s.title=t.redoLabel()?`Redo ${t.redoLabel()}`:"Nothing to redo"};return o(),t.subscribe(o)}const vt=220,xt=(e,t,n)=>Math.min(e.max,Math.max(e.min,t+Math.round(n)*e.step)),Un=240,Gn=.08,zn=450,le=8;function Qe(e){const{host:t,groups:n,get:s,set:a,history:o,locks:p}=e,l=e.params,r=document.createElement("div");r.className="scrub-list";const d=document.createElement("div");d.className="scrub-scroll";const f=document.createElement("div");f.className="scrub-body";const w=document.createElement("div");w.className="scrub-presets",w.hidden=!0,d.append(f,w);const c=document.createElement("div");c.className="scrub-overlay",c.innerHTML=`
     <div class="scrub-guide">
       <div class="g-h"></div><div class="g-v"></div><div class="g-ticks"></div>

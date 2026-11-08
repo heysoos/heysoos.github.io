@@ -1,1 +1,0 @@
-const r=144e4,e=.2;function n(E,a){const t=Math.max(0,E)*Math.max(0,a);return t<=0?1:Math.min(1,Math.max(.2,t/144e4))}function o(E,a,t){return Math.max(1,Math.round(E*n(a,t)))}export{e as HERO_MIN_SCALE,r as HERO_REFERENCE_AREA,n as heroParticleScale,o as scaledHeroCount};
