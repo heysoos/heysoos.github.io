@@ -256,6 +256,15 @@ const { sim } = Astro.props;
     // comes from the window: a held mouse button attracts and carries, a
     // touch drag carries; plain hovering and vertical swipes do nothing.
     controller.bindPointer(window, { hover: false, view: false });
+    // A mouse press on empty page (not on text, links or controls) is a
+    // swarm drag, so it must not start a text selection that then sweeps
+    // across the copy as the drag passes over it.
+    const TEXTUAL = 'a, button, input, textarea, select, label, p, h1, h2, h3, h4, li, blockquote, code, pre, time, [contenteditable], .prose';
+    window.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const t = e.target as Element | null;
+      if (t && !t.closest(TEXTUAL)) e.preventDefault();
+    });
     controller.start();
   } else {
     // No WebGPU: the page is plain; hide the preset picker, which would do nothing.
