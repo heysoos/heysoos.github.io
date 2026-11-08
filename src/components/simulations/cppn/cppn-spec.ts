@@ -169,7 +169,7 @@ export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
     num('glorotScale', 'Glorot scale', 0.1, 5, 0.05, { showIf: isDist(2) }),
     num('sparsity', 'Sparsity', 0, 0.99, 0.01, { showIf: isDist(3) }),
     num('magnitude', 'Magnitude', 0.1, 10, 0.1, { showIf: isDist(3) }),
-    num('seed', 'Seed', 0, 4_294_967_295, 1, { int: true }),
+    num('seed', 'Seed', 0, 4_294_967_295, 1, { int: true, stepDrag: 24 }),
   ] },
   { name: 'Motion', items: [
     en('animate', 'Animate', ['Off', 'On'], 'segmented'),

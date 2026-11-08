@@ -1,14 +1,15 @@
 // src/components/simulations/cppn/cppn-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { generateShader, computeWeightLayout, packWeights, Z_DIM, type WeightLayout } from './cppn-codegen';
+import { generateShader, computeWeightLayout, packWeights, Z_DIM, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
 import { normalizeConfig, DEFAULT_MOTION, type CPPNConfig, type CPPNPreset, type LayerConfig, type LegacyCPPNConfig, type MotionLadder, type WeightDistribution } from './cppn-types';
 
 export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, MotionLadder };
 export type { Activation, DistributionType } from './cppn-types';
 
-// Params uniform: [resX, resY, time, scale, z0..z15] = 20 f32 = 80 bytes
-const PARAMS_FLOATS = 4 + Z_DIM;
+// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw] = 28 × 4 = 112 bytes
+const PARAMS_FLOATS = 4 + Z_DIM + 8;
 const PARAMS_BYTES  = PARAMS_FLOATS * 4;
+const ACTS_OFFSET   = 4 + Z_DIM;
 
 // ── PRNG (mulberry32) ─────────────────────────────────────────────
 export function makePRNG(seed: number): () => number {
@@ -156,8 +157,9 @@ export class CPPNController {
   // ── Compile — only when layer widths/activations change ──────
   // Weights live in a storage buffer, so randomize / distribution changes
   // are a buffer write, not a recompile.
+  // Activations live in the uniform, so only widths (and count) define a pipeline.
   private archKey(): string {
-    return this.config.layers.map(l => `${l.width}:${l.activation}`).join(',');
+    return this.config.layers.map(l => l.width).join(',');
   }
 
   private _ensurePipeline(): Promise<void> {
@@ -394,6 +396,8 @@ export class CPPNController {
     params[2] = t;
     params[3] = this.config.scale;
     params.set(z, 4);
+    const acts = new Uint32Array(params.buffer, ACTS_OFFSET * 4, 8);
+    this.config.layers.slice(0, 8).forEach((l, i) => { acts[i] = Math.max(0, ACTIVATION_IDS.indexOf(l.activation)); });
     device.queue.writeBuffer(this.paramsBuffer, 0, params);
 
     const encoder = device.createCommandEncoder();

@@ -1,6 +1,7 @@
 // src/components/simulations/cppn/cppn-codegen.ts
 import type { CPPNConfig, Activation } from './cppn-types';
 
+
 export const Z_DIM = 16; // fixed — not user-configurable
 
 export interface WeightLayout {
@@ -44,14 +45,17 @@ export function computeWeightLayout(config: CPPNConfig): WeightLayout {
   };
 }
 
-function actExpr(act: Activation, x: string): string {
-  switch (act) {
-    case 'tanh':    return `tanh(${x})`;
-    case 'sin':     return `sin(${x})`;
-    case 'cos':     return `cos(${x})`;
-    case 'abs':     return `abs(${x})`;
-    case 'sigmoid': return `sigmoid_f(${x})`;
-  }
+/** Activation ids as packed into Params.acts0/acts1 (two vec4<u32> = 8 layers). */
+export const ACTIVATION_IDS: readonly Activation[] = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'];
+export const MAX_SHADER_LAYERS = 8;
+
+// Activations are uniforms, not literals: the switch is uniform across all
+// pixels so the GPU takes one path, and changing an activation is a buffer
+// write instead of a recompile. `li` is static per layer at codegen time.
+function actExpr(li: number, x: string): string {
+  const vec = li < 4 ? 'acts0' : 'acts1';
+  const comp = 'xyzw'[li % 4];
+  return `act(params.${vec}.${comp}, ${x})`;
 }
 
 // ── Weight packing ────────────────────────────────────────────────
@@ -170,6 +174,18 @@ struct Params {
   time       : f32,
   scale      : f32,
   z          : array<f32, ${Z_DIM}>,
+  acts0      : vec4<u32>,
+  acts1      : vec4<u32>,
+}
+
+fn act(id: u32, x: f32) -> f32 {
+  switch id {
+    case 0u: { return tanh(x); }
+    case 1u: { return sin(x); }
+    case 2u: { return cos(x); }
+    case 3u: { return abs(x); }
+    default: { return sigmoid_f(x); }
+  }
 }
 
 @group(0) @binding(0) var<uniform> params : Params;
@@ -206,7 +222,7 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
     for (const zv of ['z0', 'z1', 'z2', 'z3']) {
       expr += ` + dot(${zv}, wv[${nextSlot()}])`;
     }
-    src += `  let h0_${i} = ${actExpr(layers[0].activation, expr)};\n`;
+    src += `  let h0_${i} = ${actExpr(0, expr)};\n`;
   }
   src += '\n';
 
@@ -214,11 +230,10 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   for (let li = 0; li < layers.length - 1; li++) {
     const inW  = layers[li].width;
     const outW = layers[li + 1].width;
-    const act  = layers[li + 1].activation;
     for (let i = 0; i < outW; i++) {
       const bias = `wv[${nextSlot()}].x`;
       const expr = dot4Sum(inW, (j) => `h${li}_${j}`, nextSlot, bias);
-      src += `  let h${li + 1}_${i} = ${actExpr(act, expr)};\n`;
+      src += `  let h${li + 1}_${i} = ${actExpr(li + 1, expr)};\n`;
     }
     src += '\n';
   }

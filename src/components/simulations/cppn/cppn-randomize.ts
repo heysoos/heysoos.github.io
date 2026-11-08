@@ -40,26 +40,19 @@ const randomLayer = (): LayerConfig => ({
   activation: pick(ACTIVATIONS, ACT_WEIGHTS),
 });
 
-export interface ArchResult {
-  layers: LayerConfig[];
-  /** For each fixed layer passed in, its index in the new stack. */
-  fixedAt: number[];
-}
-
 /**
- * A random architecture that keeps `fixed` layers exactly (width and
- * activation) at random positions, fills the rest with random layers and
- * scales only the free layers' widths until the weight count fits.
- * `count`, when given, pins the layer count (the Layers row is locked).
+ * A random architecture that keeps each layer in `fixed` exactly (width,
+ * activation *and* position), fills the other slots with random layers and
+ * scales only the free layers' widths until the weight count fits. The
+ * stack is at least deep enough to hold the deepest fixed layer. `count`,
+ * when given, pins the layer count (the Layers row is locked).
  */
-export function randomArchitecture(budget: number, fixed: LayerConfig[] = [], count?: number): ArchResult {
-  const n = Math.min(MAX_LAYERS, Math.max(fixed.length, count ?? rollLayerCount()));
+export function randomArchitecture(budget: number, fixed: Map<number, LayerConfig> = new Map(), count?: number): LayerConfig[] {
+  const deepest = Math.max(-1, ...fixed.keys()) + 1;
+  const n = Math.min(MAX_LAYERS, Math.max(deepest, count ?? rollLayerCount()));
   const slots: Array<LayerConfig | null> = Array.from({ length: n }, () => null);
   const free: number[] = [];
-  // Place the fixed layers at distinct random positions.
-  const positions = Array.from({ length: n }, (_, i) => i);
-  for (let i = positions.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [positions[i], positions[j]] = [positions[j], positions[i]]; }
-  const fixedAt = fixed.map((l, k) => { slots[positions[k]] = { ...l }; return positions[k]; });
+  for (const [i, l] of fixed) if (i < n) slots[i] = { ...l };
   for (let i = 0; i < n; i++) if (!slots[i]) { slots[i] = randomLayer(); free.push(i); }
   let layers = slots as LayerConfig[];
   // Fit the budget by scaling the free widths together (weights are
@@ -70,35 +63,25 @@ export function randomArchitecture(budget: number, fixed: LayerConfig[] = [], co
     layers = layers.map((l, i) => free.includes(i) ? { ...l, width: Math.max(MIN_WIDTH, Math.floor(l.width * k)) } : l);
     if (free.every(i => layers[i].width === MIN_WIDTH)) break;
   }
-  return { layers, fixedAt };
+  return layers;
 }
 
-export interface RandomizeResult {
-  flat: CPPNFlatParams;
-  /** Architecture lock keys after the shuffle (locked layers moved with their rows). */
-  archLocks: string[];
-}
-
-export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number): RandomizeResult {
+export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number): CPPNFlatParams {
   const locked = new Set(lockedKeys);
   const f: CPPNFlatParams = { ...current };
   const set = (k: FlatKey, v: number) => { if (!locked.has(k)) f[k] = v; };
 
-  // Network: a locked layer (its width or activation row) is kept as a unit
-  // but may land anywhere in the new stack; everything else is rolled.
+  // Network: a locked layer (its width or activation row) stays exactly
+  // where it is; the stack around it is rolled, at least deep enough to
+  // reach it.
   const cur = layersFromFlat(current);
-  const fixedIdx = cur.map((_, i) => i).filter(i => locked.has(`layer${i}Width`) || locked.has(`layer${i}Act`));
-  const { layers, fixedAt } = randomArchitecture(budget, fixedIdx.map(i => cur[i]), locked.has('layers') ? cur.length : undefined);
+  const fixed = new Map<number, LayerConfig>();
+  cur.forEach((l, i) => { if (locked.has(`layer${i}Width`) || locked.has(`layer${i}Act`)) fixed.set(i, l); });
+  const layers = randomArchitecture(budget, fixed, locked.has('layers') ? cur.length : undefined);
   f.layers = layers.length;
   layers.forEach((l, i) => {
     f[`layer${i}Width`] = l.width;
     f[`layer${i}Act`] = Math.max(0, ACTIVATIONS.indexOf(l.activation));
-  });
-  const archLocks: string[] = locked.has('layers') ? ['layers'] : [];
-  fixedIdx.forEach((oldI, k) => {
-    const newI = fixedAt[k];
-    if (locked.has(`layer${oldI}Width`)) archLocks.push(`layer${newI}Width`);
-    if (locked.has(`layer${oldI}Act`)) archLocks.push(`layer${newI}Act`);
   });
 
   // Weights. What makes an image read is the *gain* into each activation,
@@ -129,7 +112,7 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   set('falloff', +(0.5 + rnd() * 0.5).toFixed(2));
   set('bands', 1 + Math.floor(rnd() * 4));
 
-  return { flat: f, archLocks };
+  return f;
 }
 
 /** For a budget readout: the count the current flat architecture implies. */

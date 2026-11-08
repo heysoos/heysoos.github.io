@@ -96,6 +96,11 @@ export async function setupCPPN(
       return;
     }
     const f = { ...flat(), [k]: v } as CPPNFlatParams;
+    if (k.endsWith('Act')) {                      // activations are uniforms: live, no recompile
+      if (pendingFlat) pendingFlat[k] = v;
+      ctrl.config = configFromFlat(ctrl.config, f);
+      return;
+    }
     if (isArchKey(k)) {
       pendingFlat = f;
       if (archTimer) clearTimeout(archTimer);
@@ -108,10 +113,7 @@ export async function setupCPPN(
   };
   const randomize = (): void => {
     mgr.history.endGesture();
-    const { flat: f, archLocks } = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), mgr.locks.keys(), budget());
-    // Locked layers moved with their rows: re-point the lock keys.
-    for (const k of mgr.locks.keys()) if (isArchKey(k)) mgr.locks.set(k, false);
-    for (const k of archLocks) mgr.locks.set(k, true);
+    const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), mgr.locks.keys(), budget());
     ctrl.setAnimate(f.animate !== 0);
     void ctrl.setState(configFromFlat(ctrl.config, f), f.seed).then(() => {
       mgr.history.push('Randomize');

@@ -14,6 +14,10 @@ export interface NumSpec<K extends string = string> {
   scale?: 'linear' | 'log';
   /** Integer-valued param: the setter rounds. */
   int?: boolean;
+  /** Drag moves the value by `step` per this many px instead of mapping
+   *  travel onto the range (for a seed, where the range is huge and
+   *  neighbouring values are what you want to walk through). */
+  stepDrag?: number;
   /** Row is shown only when this holds (e.g. point rows in Points view). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   showIf?: (p: any) => boolean;
@@ -60,6 +64,7 @@ export interface CustomRowApi {
   /** Long-press toggles the lock on `key`. */
   attachLongPress(el: HTMLElement, key: string): void;
   isLocked(key: string): boolean;
+  setLocked(key: string, on: boolean): void;
   /** Re-render every row (after a change that affects other rows). */
   refresh(): void;
 }
