@@ -245,15 +245,15 @@ function helpSections(touch: boolean): HelpSection[] {
     : { title: 'Canvas', rows: [
         { glyph: 'hp-point', label: 'drag', effect: 'latent scrub · motion holds' },
         { glyph: 'hp-wheel', label: 'wheel', effect: 'zoom at cursor' },
-        { glyph: 'hp-move', label: 'alt / mid / space', effect: '+ drag pans' },
+        { glyph: 'hp-move', label: 'alt / mid / space + drag', effect: 'pan' },
         { glyph: 'hp-map', label: 'minimap', effect: 'reset view · ×2 reset latent' },
       ] };
   const params: HelpSection = { title: 'Parameters', rows: [
     ...(touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE),
     { glyph: IX, label: 'drag', effect: 'reorder layer' },
     { glyph: CHIP, label: touch ? 'tap' : 'click', effect: 'next activation' },
-    { glyph: CHIP, label: 'hold · slide', effect: 'scrub activations' },
+    { glyph: CHIP, label: 'hold + slide', effect: 'scrub activations' },
   ] };
-  const keys = KEY_ROWS.map(r => (r.label === 'P · R · H' ? { ...r, effect: 'pause · new seed · hide UI' } : r));
+  const keys = KEY_ROWS.map(r => (r.label === 'P / R / H' ? { ...r, effect: 'pause / new seed / hide UI' } : r));
   return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: keys }];
 }
