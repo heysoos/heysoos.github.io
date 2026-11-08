@@ -88,6 +88,9 @@ export async function setupCPPN(
   const flushArch = () => {
     archTimer = 0;
     if (!pendingFlat) return;
+    // Mid-scrub: wait for the finger to lift rather than compiling every
+    // width it rests on for 180ms.
+    if (mgr.history.isGestureOpen()) { archTimer = window.setTimeout(flushArch, ARCH_DEBOUNCE_MS); return; }
     const f = pendingFlat;
     pendingFlat = null;
     ctrl.config = configFromFlat(ctrl.config, f);
