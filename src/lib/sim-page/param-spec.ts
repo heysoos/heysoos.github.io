@@ -43,4 +43,23 @@ export interface ParamGroup<K extends string = string> {
   items: ParamSpec<K>[];
   /** Optional status line under the heading (e.g. a parameter budget), re-read on refresh. */
   note?: () => string;
+  /** Optional custom block rendered before the items (e.g. the CPPN layer
+   *  stack). It gets the panel's gesture helpers so its rows scrub and lock
+   *  like built-in ones, and is refreshed with them. */
+  render?: (container: HTMLElement, api: CustomRowApi) => { refresh(): void };
+}
+
+/** What a group's custom block may use from the hosting panel. */
+export interface CustomRowApi {
+  get(key: string): number;
+  set(key: string, value: number): void;
+  /** Record one undo entry after a discrete change (tap, +/−). */
+  commit(label: string): void;
+  /** Make `row` scrub `spec` with a sideways drag (gesture coalesced into one undo entry). */
+  attachRowDrag(row: HTMLElement, spec: NumSpec): void;
+  /** Long-press toggles the lock on `key`. */
+  attachLongPress(el: HTMLElement, key: string): void;
+  isLocked(key: string): boolean;
+  /** Re-render every row (after a change that affects other rows). */
+  refresh(): void;
 }

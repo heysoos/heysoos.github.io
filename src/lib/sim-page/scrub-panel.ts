@@ -13,7 +13,7 @@
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
-import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from './param-spec';
+import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
 export interface ScrubPanelOpts {
@@ -139,6 +139,15 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   });
 
   const groupNotes: Array<{ g: ParamGroup; el: HTMLElement }> = [];
+  const customBlocks: Array<{ refresh(): void }> = [];
+  const customApi: CustomRowApi = {
+    get, set,
+    commit: (label) => { history?.push(label); refresh(); },
+    attachRowDrag: (row, spec) => attachRowDrag(row, spec),
+    attachLongPress: (el, key) => attachLongPress(el, key),
+    isLocked: (key) => locks?.isLocked(key) ?? false,
+    refresh: () => refresh(),
+  };
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
@@ -148,6 +157,12 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       n.className = 'scrub-group-note';
       body.appendChild(n);
       groupNotes.push({ g, el: n });
+    }
+    if (g.render) {
+      const c = document.createElement('div');
+      c.className = 'scrub-custom';
+      body.appendChild(c);
+      customBlocks.push(g.render(c, customApi));
     }
     for (const spec of g.items) {
       if (spec.kind === 'num') {
@@ -313,6 +328,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
     }
     for (const { g, el } of groupNotes) el.textContent = g.note!();
+    for (const b of customBlocks) b.refresh();
     hint.innerHTML = '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
     refreshHistory();
   }

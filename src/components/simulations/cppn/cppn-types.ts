@@ -31,7 +31,7 @@ export interface MotionLadder {
   bands: number;    // 1..4
 }
 
-export const DEFAULT_MOTION: MotionLadder = { speed: 0.2, spread: 2.0, depth: 1.0, falloff: 0.7, bands: 4 };
+export const DEFAULT_MOTION: MotionLadder = { speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4 };
 
 export interface CPPNConfig {
   zDim: number;            // always 16 — not user-configurable in this iteration
@@ -80,8 +80,8 @@ export function normalizeConfig(raw: CPPNConfig | LegacyCPPNConfig): CPPNConfig 
       const slope = Math.min(Math.log(hi), Math.max(Math.log(lo), sxy / sxx));
       return [Math.exp(ym - slope * xm), Math.exp(slope)];
     };
-    const [speed, spread] = fit(bands.map(b => b.freq), 1, 4);
-    const [depth, falloff] = fit(bands.map(b => b.amplitude), 0.1, 1);
+    const [speed, spread] = fit(bands.map(b => b.freq), 1, 2.5);
+    const [depth, falloff] = fit(bands.map(b => b.amplitude), 0.3, 1);
     motion = { speed, spread, depth, falloff, bands: bands.length };
   } else {
     motion = { ...DEFAULT_MOTION };

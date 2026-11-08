@@ -269,10 +269,10 @@ function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
   container.appendChild(el('p', 'margin:0 0 0.3rem;font-size:0.62rem;color:var(--text-muted);line-height:1.4;',
     'Band b oscillates at speed·spread^b with amplitude depth·falloff^b; the 16 z dims are split across the bands.'));
   const m = ctrl.config.motion;
-  slider(container, 'Speed',   0.01, 2.0, 0.01, m.speed,   (v) => { ctrl.setMotion({ speed: v });   notify('Speed'); });
-  slider(container, 'Spread',  1.0,  4.0, 0.05, m.spread,  (v) => { ctrl.setMotion({ spread: v });  notify('Spread'); });
-  slider(container, 'Depth',   0.0,  2.0, 0.05, m.depth,   (v) => { ctrl.setMotion({ depth: v });   notify('Depth'); });
-  slider(container, 'Falloff', 0.1,  1.0, 0.05, m.falloff, (v) => { ctrl.setMotion({ falloff: v }); notify('Falloff'); });
+  slider(container, 'Speed (Hz)', 0.005, 0.3, 0.005, m.speed,   (v) => { ctrl.setMotion({ speed: v });   notify('Speed'); });
+  slider(container, 'Spread',     1.0,   2.5, 0.05,  m.spread,  (v) => { ctrl.setMotion({ spread: v });  notify('Spread'); });
+  slider(container, 'Depth',      0.02,  0.6, 0.01,  m.depth,   (v) => { ctrl.setMotion({ depth: v });   notify('Depth'); });
+  slider(container, 'Falloff',    0.3,   1.0, 0.05,  m.falloff, (v) => { ctrl.setMotion({ falloff: v }); notify('Falloff'); });
   const bandRow = row(container);
   bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Bands'));
   selectEl(bandRow, ['1', '2', '3', '4'], String(m.bands), (v) => {

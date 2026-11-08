@@ -66,7 +66,7 @@ export const DEFAULT_FLAT: CPPNFlatParams = {
   layer3Width: 16, layer3Act: 0, layer4Width: 16, layer4Act: 0, layer5Width: 16, layer5Act: 0,
   layer6Width: 16, layer6Act: 0, layer7Width: 16, layer7Act: 0,
   distType: 0, sigma: 1, a: 1, glorotScale: 1, sparsity: 0.8, magnitude: 2, seed: 1,
-  animate: 1, speed: 0.2, spread: 2, depth: 1, falloff: 0.7, bands: 4,
+  animate: 1, speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4,
   scale: 1,
 };
 
@@ -154,18 +154,14 @@ const en = (key: FlatKey, label: string, names: readonly string[], ui: EnumSpec[
   ({ kind: 'enum', key, label, names, ui, ...extra });
 
 const isDist = (i: number) => (p: CPPNFlatParams) => Math.round(p.distType) === i;
-const hasLayer = (i: number) => (p: CPPNFlatParams) => Math.round(p.layers) > i;
-
-const layerItems = (i: number) => [
-  num(`layer${i}Width` as FlatKey, `L${i + 1} width`, MIN_WIDTH, MAX_WIDTH, 1, { scale: 'log', int: true, showIf: hasLayer(i) }),
-  en(`layer${i}Act` as FlatKey, `L${i + 1} activation`, ACT_NAMES, 'cycle', { showIf: hasLayer(i) }),
-];
+/** Width spec for layer i: the layer stack's rows scrub these. */
+export const layerWidthSpec = (i: number): NumSpec<FlatKey> =>
+  num(`layer${i}Width` as FlatKey, `Layer ${i + 1} width`, MIN_WIDTH, MAX_WIDTH, 1, { scale: 'log', int: true });
 
 export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
-  { name: 'Network', items: [
-    num('layers', 'Layers', 1, MAX_LAYERS, 1, { int: true }),
-    ...Array.from({ length: MAX_LAYERS }, (_, i) => layerItems(i)).flat(),
-  ] },
+  // The Network group is a custom block (cppn-network-rows.ts): one row per
+  // layer. The sim setup attaches it so it can carry the budget note.
+  { name: 'Network', items: [] },
   { name: 'Weights', items: [
     en('distType', 'Distribution', DIST_NAMES, 'cycle', { rebuilds: true }),
     num('sigma', 'σ (std dev)', 0.1, 5, 0.05, { showIf: isDist(0) }),
@@ -177,10 +173,10 @@ export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
   ] },
   { name: 'Motion', items: [
     en('animate', 'Animate', ['Off', 'On'], 'segmented'),
-    num('speed', 'Speed', 0.01, 2, 0.01, { scale: 'log' }),
-    num('spread', 'Spread', 1, 4, 0.05),
-    num('depth', 'Depth', 0, 2, 0.05),
-    num('falloff', 'Falloff', 0.1, 1, 0.05),
+    num('speed', 'Speed', 0.005, 0.3, 0.005, { scale: 'log' }),
+    num('spread', 'Spread', 1, 2.5, 0.05),
+    num('depth', 'Depth', 0.02, 0.6, 0.01, { scale: 'log' }),
+    num('falloff', 'Falloff', 0.3, 1, 0.05),
     num('bands', 'Bands', 1, 4, 1, { int: true }),
   ] },
   { name: 'View', items: [

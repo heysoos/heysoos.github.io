@@ -16,6 +16,7 @@ import {
   type CPPNBody, type CPPNFlatParams, type FlatKey,
 } from '../../../components/simulations/cppn/cppn-spec';
 import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat } from '../../../components/simulations/cppn/cppn-randomize';
+import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
 import { CPPN_PRESETS } from '../../../data/cppn-presets';
 import { createPresetManager } from '../../presets/preset-manager';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
@@ -122,7 +123,9 @@ export async function setupCPPN(
   // scrub list a live proxy so they always see the staged state.
   const flatProxy = new Proxy({}, { get: (_t, k) => flat()[k as FlatKey] }) as CPPNFlatParams;
   const groups: ParamGroup<string>[] = CPPN_GROUPS.map(g => g.name === 'Network'
-    ? { ...g, note: () => `${flatParamCount(flat()).toLocaleString()} weights · budget ${budget().toLocaleString()}` }
+    ? { ...g,
+        note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat()).toLocaleString()} / ${budget().toLocaleString()} weights`,
+        render: renderNetworkRows }
     : g);
 
   function ensureScrub(): void {
