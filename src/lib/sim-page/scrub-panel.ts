@@ -13,7 +13,7 @@
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
-import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from '../../components/simulations/field-boids/field-boids-spec';
+import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
 export interface ScrubPanelOpts {
@@ -45,6 +45,9 @@ export interface ScrubPanelHandle {
 }
 
 const COARSE_PX = 220;      // horizontal travel for the full range
+/** Value `steps` whole steps away from `from`, clamped to the range. */
+const stepFrom = (spec: NumSpec, from: number, steps: number): number =>
+  Math.min(spec.max, Math.max(spec.min, from + Math.round(steps) * spec.step));
 const ROW_PX = 240;         // same, for a drag that starts on a list row
 const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
 const LONG_PRESS_MS = 450;
@@ -138,10 +141,33 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     if (cur && locks) locks.toggle(cur.key as string);
   });
 
+  const groupNotes: Array<{ g: ParamGroup; el: HTMLElement }> = [];
+  const customBlocks: Array<{ refresh(): void }> = [];
+  const customApi: CustomRowApi = {
+    get, set,
+    commit: (label) => { history?.push(label); refresh(); },
+    attachRowDrag: (row, spec) => attachRowDrag(row, spec),
+    attachLongPress: (el, key) => attachLongPress(el, key),
+    isLocked: (key) => locks?.isLocked(key) ?? false,
+    setLocked: (key, on) => locks?.set(key, on),
+    refresh: () => refresh(),
+  };
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
     body.appendChild(h);
+    if (g.note) {
+      const n = document.createElement('small');
+      n.className = 'scrub-group-note';
+      body.appendChild(n);
+      groupNotes.push({ g, el: n });
+    }
+    if (g.render) {
+      const c = document.createElement('div');
+      c.className = 'scrub-custom';
+      body.appendChild(c);
+      customBlocks.push(g.render(c, customApi));
+    }
     for (const spec of g.items) {
       if (spec.kind === 'num') {
         const row = document.createElement('button');
@@ -170,6 +196,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       refresh();
     };
     const row: Row = { spec, el: wrap };
+    if (spec.ui === 'cycle') {
+      // Same one-line shape as a numeric row: label left, current name right.
+      const btn = document.createElement('button');
+      btn.className = 'scrub-row scrub-cycle';
+      btn.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span><span class="v"></span>`;
+      btn.addEventListener('click', () => pick((Math.round(get(spec.key as string)) + 1) % spec.names.length));
+      body.appendChild(btn);
+      attachLongPress(btn, spec.key as string);
+      return { spec, el: btn, val: btn.querySelector<HTMLElement>('.v')! };
+    }
     if (spec.ui === 'select') {
       const sel = document.createElement('select');
       spec.names.forEach((name, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = name; sel.appendChild(o); });
@@ -200,11 +236,12 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // swallowed once a drag has started; the long-press cancels itself on slop.
   let swallowClick = false;
   function attachRowDrag(row: HTMLElement, spec: NumSpec): void {
-    let id = -1, x0 = 0, y0 = 0, s0 = 0, active = false;
+    let id = -1, x0 = 0, y0 = 0, s0 = 0, v0 = 0, active = false;
     row.addEventListener('pointerdown', (e) => {
       id = e.pointerId; x0 = e.clientX; y0 = e.clientY; active = false;
       swallowClick = false;   // a touch drag fires no click, so never carry the flag over
-      s0 = toSlider(spec, get(spec.key as string));
+      v0 = get(spec.key as string);
+      s0 = toSlider(spec, v0);
       // Capture at once: the finger leaves the 25px row long before the
       // drag is recognised. A vertical pan still cancels (touch-action: pan-y).
       try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
@@ -219,9 +256,13 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         history?.beginGesture(spec.label);
       }
       e.preventDefault();
-      const range = toSlider(spec, spec.max) - toSlider(spec, spec.min);
-      const s = Math.min(toSlider(spec, spec.max), Math.max(toSlider(spec, spec.min), s0 + (dx / ROW_PX) * range));
-      set(spec.key as string, fromSlider(spec, s));
+      if (spec.stepDrag) {
+        set(spec.key as string, stepFrom(spec, v0, dx / spec.stepDrag));
+      } else {
+        const range = toSlider(spec, spec.max) - toSlider(spec, spec.min);
+        const s = Math.min(toSlider(spec, spec.max), Math.max(toSlider(spec, spec.min), s0 + (dx / ROW_PX) * range));
+        set(spec.key as string, fromSlider(spec, s));
+      }
       history?.touch();
       refresh();
     });
@@ -272,12 +313,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         r.el.classList.toggle('on', r.spec === cur);
         r.val!.textContent = fmt(r.spec, v);
         r.el.style.setProperty('--f', frac(r.spec, v).toFixed(4));   // value meter behind the row
+      } else if (r.spec.ui === 'cycle') {
+        r.val!.textContent = r.spec.names[Math.round(v)] ?? '';
       } else if (r.select) {
         r.select.value = String(v);
       } else {
         r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
       }
-      if (r.spec.kind === 'enum') {
+      if (r.spec.kind === 'enum' && r.spec.ui !== 'cycle') {
         const n = r.el.querySelector<HTMLElement>('.note')!;
         n.textContent = opts.note?.(r.spec.key as string) ?? '';
         n.hidden = !n.textContent;
@@ -293,12 +336,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       chip.querySelector<HTMLElement>('.c-max')!.textContent = fmt(cur, cur.max);
       chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
     }
-    hint.innerHTML = '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
+    for (const { g, el } of groupNotes) el.textContent = g.note!();
+    for (const b of customBlocks) b.refresh();
+    hint.innerHTML = cur?.stepDrag
+      ? '<b>◀ ▶</b> one step at a time · tap to finish'
+      : '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
     refreshHistory();
   }
 
   // ── Scrub gesture on the overlay (only receives events while armed) ──
-  let dragId = -1, sx = 0, sy = 0, ss = 0, moved = false;
+  let dragId = -1, sx = 0, sy = 0, ss = 0, sv = 0, moved = false;
   const place = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
     guide.style.setProperty('--x', `${e.clientX - r.left}px`);
@@ -313,7 +360,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   overlay.addEventListener('pointerdown', (e) => {
     if (!cur || dragId !== -1) return;
     dragId = e.pointerId; sx = e.clientX; sy = e.clientY; moved = false;
-    ss = toSlider(cur, get(cur.key as string));
+    sv = get(cur.key as string);
+    ss = toSlider(cur, sv);
     try { overlay.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     history?.beginGesture(cur.label);
     place(e); showRead(get(cur.key as string));
@@ -326,8 +374,10 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     const dx = e.clientX - sx, dy = -(e.clientY - sy);
     if (!moved && Math.abs(dx) < PRESS_SLOP && Math.abs(dy) < PRESS_SLOP) return;
     if (!moved) { moved = true; guide.classList.add('show'); }
-    const s = ss + (dx / COARSE_PX) * range + (dy / COARSE_PX) * range * FINE_RATIO;
-    const v = fromSlider(cur, Math.min(toSlider(cur, cur.max), Math.max(toSlider(cur, cur.min), s)));
+    // Stepwise params: one step per stepDrag px, sideways or up; the range mapping would skip millions.
+    const v = cur.stepDrag
+      ? stepFrom(cur, sv, (Math.abs(dx) >= Math.abs(dy) ? dx : dy) / cur.stepDrag)
+      : fromSlider(cur, Math.min(toSlider(cur, cur.max), Math.max(toSlider(cur, cur.min), ss + (dx / COARSE_PX) * range + (dy / COARSE_PX) * range * FINE_RATIO)));
     set(cur.key as string, v);
     history?.touch();
     place(e); showRead(v); refresh();

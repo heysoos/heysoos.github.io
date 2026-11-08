@@ -1,15 +1,15 @@
 // src/components/simulations/cppn/cppn-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
-import { generateShader, computeWeightLayout, Z_DIM, type WeightLayout } from './cppn-codegen';
-import type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, ZBand } from './cppn-types';
+import { generateShader, computeWeightLayout, packWeights, Z_DIM, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
+import { normalizeConfig, DEFAULT_MOTION, type CPPNConfig, type CPPNPreset, type LayerConfig, type LegacyCPPNConfig, type MotionLadder, type WeightDistribution } from './cppn-types';
 
-export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, ZBand };
+export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, MotionLadder };
 export type { Activation, DistributionType } from './cppn-types';
 
-// Params uniform: [resX, resY, time, scale, z0..z15] = 20 f32 = 80 bytes
-const PARAMS_FLOATS = 4 + Z_DIM;
+// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw] = 28 × 4 = 112 bytes
+const PARAMS_FLOATS = 4 + Z_DIM + 8;
 const PARAMS_BYTES  = PARAMS_FLOATS * 4;
+const ACTS_OFFSET   = 4 + Z_DIM;
 
 // ── PRNG (mulberry32) ─────────────────────────────────────────────
 export function makePRNG(seed: number): () => number {
@@ -87,14 +87,8 @@ function defaultConfig(): CPPNConfig {
       { width: 32, activation: 'tanh' },
     ],
     distribution: { type: 'normal', sigma: 1.0 },
-    numBands: 4,
-    zBands: [
-      { freq: 0.2, amplitude: 1.0, phase: 0.0 },
-      { freq: 0.5, amplitude: 0.8, phase: 1.0 },
-      { freq: 0.9, amplitude: 0.6, phase: 2.1 },
-      { freq: 1.5, amplitude: 0.4, phase: 3.7 },
-    ],
     scale: 1.0,
+    motion: { ...DEFAULT_MOTION },
   };
 }
 
@@ -103,8 +97,14 @@ export class CPPNController {
   private gpu:           WebGPUContext | null = null;
   private pipeline:      GPURenderPipeline | null = null;
   private paramsBuffer!: GPUBuffer;
+  private weightBuffer:  GPUBuffer | null = null;
   private bindGroup!:    GPUBindGroup;
   private layout!:        WeightLayout;
+  private compiledArch   = ''; // architecture key the current pipeline was built for
+  private compileChain: Promise<void> = Promise.resolve();
+  private compilesInFlight = 0;
+  /** Fires with true when a shader compile starts and false when the queue drains (for a spinner). */
+  onBusy: ((busy: boolean) => void) | null = null;
   private running   = false;
   private animId    = 0;
   private usingRaf  = true;
@@ -112,12 +112,26 @@ export class CPPNController {
   tickCount = 0;
   private animate   = true;
   private startTime = performance.now();
+  // Latent motion is integrated, not evaluated at wall-clock time: each band
+  // advances its phase by 2π·freq·dt per frame, so changing speed/spread only
+  // changes the rate from now on instead of rotating the phase by 2π·Δf·t.
+  private bandPhase = new Float64Array(4);
+  private lastTick = 0;
   private dimOffsets    = new Float32Array(Z_DIM);
   private currentWeights = new Float32Array(0);
 
   config: CPPNConfig = defaultConfig();
   seed: number = Date.now() & 0xffffffff;
-  maxResolution = 960; // cap longest canvas dimension; 0 = unlimited
+  // Cap on the longest canvas dimension; 0 = unlimited. The fragment shader
+  // costs thousands of MACs per pixel, so phones get a much smaller default.
+  maxResolution = CPPNController.defaultMaxResolution();
+
+  static defaultMaxResolution(): number {
+    if (typeof window === 'undefined') return 960;
+    const phone = window.matchMedia('(pointer: coarse)').matches
+               || window.matchMedia('(max-width: 768px)').matches;
+    return phone ? 320 : 960;
+  }
 
   // ── Init ──────────────────────────────────────────────────────
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -131,7 +145,8 @@ export class CPPNController {
       this.randomizeDimOffsets();
       this.layout = computeWeightLayout(this.config);
       this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-      await this._compile();
+      await this._ensurePipeline();
+      this._uploadWeights();
       return true;
     } catch (e) {
       console.error('CPPNController init error:', e);
@@ -139,49 +154,105 @@ export class CPPNController {
     }
   }
 
-  // ── Compile — bakes currentWeights as literals into the shader ──
-  private async _compile(): Promise<void> {
-    if (!this.gpu) return;
+  // ── Compile — only when layer widths/activations change ──────
+  // Weights live in a storage buffer, so randomize / distribution changes
+  // are a buffer write, not a recompile.
+  // Activations live in the uniform, so only widths (and count) define a pipeline.
+  private archKey(): string {
+    return this.config.layers.map(l => l.width).join(',');
+  }
+
+  private _ensurePipeline(): Promise<void> {
+    if (!this.gpu) return Promise.resolve();
+    const key = this.archKey();
+    if (this.pipeline && key === this.compiledArch && this.compilesInFlight === 0) return Promise.resolve();
+    // Serialize compiles so a scrub that changes the architecture several
+    // times in a row builds pipelines in order and binds the last one.
+    this.compilesInFlight++;
+    if (this.compilesInFlight === 1) this.onBusy?.(true);
+    const run = this.compileChain.then(() => this._compileFor(key));
+    this.compileChain = run.catch(() => {});
+    return run.finally(() => {
+      this.compilesInFlight--;
+      if (this.compilesInFlight === 0) this.onBusy?.(false);
+    });
+  }
+
+  private async _compileFor(key: string): Promise<void> {
+    if (!this.gpu || key === this.compiledArch) return;
+    if (key !== this.archKey()) return;   // superseded while queued
     const { device, format } = this.gpu;
-
-    const code = generateShader(this.config, this.layout, this.currentWeights);
-
+    const code   = generateShader(this.config, this.layout);
     const module = device.createShaderModule({ code });
     const info   = await module.getCompilationInfo();
     const errs   = info.messages.filter(m => m.type === 'error');
     if (errs.length) {
-      throw new Error('CPPN shader error: ' + errs.map(e => e.message).join('\n'));
+      throw new Error('CPPN shader error: ' + errs.map(e => e.message).join(', '));
     }
-
-    this.pipeline = device.createRenderPipeline({
+    const pipeline = await device.createRenderPipelineAsync({
       layout: 'auto',
       vertex:   { module, entryPoint: 'vertexMain' },
       fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
     });
+    if (key !== this.archKey()) return;   // a newer architecture arrived meanwhile
+    this.pipeline = pipeline;
+    this.compiledArch = key;
+    this._rebuildBindGroup();
+  }
 
-    this.bindGroup = device.createBindGroup({
+  private _rebuildBindGroup(): void {
+    if (!this.gpu || !this.pipeline || !this.weightBuffer) return;
+    this.bindGroup = this.gpu.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.paramsBuffer } }],
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+        { binding: 1, resource: { buffer: this.weightBuffer } },
+      ],
     });
+  }
+
+  /** Pack currentWeights into slot order and write them to the GPU. Grows the buffer if needed. */
+  private _uploadWeights(): void {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    const packed = packWeights(this.config, this.layout, this.currentWeights);
+    if (!this.weightBuffer || this.weightBuffer.size < packed.byteLength) {
+      this.weightBuffer?.destroy();
+      this.weightBuffer = device.createBuffer({
+        size: Math.max(16, packed.byteLength),
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this._rebuildBindGroup();
+    }
+    device.queue.writeBuffer(this.weightBuffer, 0, packed);
   }
 
   // ── Architecture — recompute layout, rerandomize, recompile ──
   async setLayers(layers: LayerConfig[]): Promise<void> {
-    this.config = { ...this.config, layers };
+    this.config = { ...this.config, layers: layers.map(l => ({ ...l })) };
     this.layout = computeWeightLayout(this.config);
     this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-    await this._compile();
+    this._uploadWeights();
+    await this._ensurePipeline();
   }
 
-  // ── Weights — generate then recompile to bake in new values ──
+  /** Weight count of the current (or a given) architecture: the per-pixel cost. */
+  paramCount(layers: LayerConfig[] = this.config.layers): number {
+    return computeWeightLayout({ ...this.config, layers }).totalCount;
+  }
+
+  // ── Weights — regenerate from the current seed and upload (no recompile) ──
+  /** Changing the distribution re-derives weights from the same seed, so it applies live. */
   setDistribution(dist: WeightDistribution): void {
     this.config = { ...this.config, distribution: dist };
+    this.currentWeights = generateWeights(this.layout, this.config, this.seed);
+    this._uploadWeights();
   }
 
-  async randomizeWeights(seed?: number): Promise<void> {
+  randomizeWeights(seed?: number): void {
     if (seed !== undefined) this.seed = seed >>> 0;
     this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-    await this._compile();
+    this._uploadWeights();
   }
 
   setSeed(seed: number): void { this.randomizeWeights(seed); }
@@ -189,17 +260,9 @@ export class CPPNController {
   // ── Scale (uniform write only) ────────────────────────────────
   setScale(scale: number): void { this.config = { ...this.config, scale }; }
 
-  // ── Z bands ───────────────────────────────────────────────────
-  setZBand(index: number, patch: Partial<ZBand>): void {
-    const bands = this.config.zBands.map((b, i) => i === index ? { ...b, ...patch } : b);
-    this.config = { ...this.config, zBands: bands };
-  }
-
-  setNumBands(n: number): void {
-    const bands: ZBand[] = Array.from({ length: n }, (_, i) =>
-      this.config.zBands[i] ?? { freq: 0.2 * (i + 1), amplitude: 1.0, phase: 0 }
-    );
-    this.config = { ...this.config, numBands: n, zBands: bands };
+  // ── Motion ladder ─────────────────────────────────────────────
+  setMotion(patch: Partial<MotionLadder>): void {
+    this.config = { ...this.config, motion: { ...this.config.motion, ...patch } };
   }
 
   randomizeDimOffsets(): void {
@@ -208,20 +271,30 @@ export class CPPNController {
   }
 
   setAnimate(on: boolean): void { this.animate = on; }
-
-  /** Audio hookup: call each frame with FFT band energy */
-  setZBandAmplitude(bandIndex: number, amplitude: number): void {
-    this.setZBand(bandIndex, { amplitude });
-  }
+  get isAnimating(): boolean { return this.animate; }
 
   // ── Presets ───────────────────────────────────────────────────
   async loadPreset(preset: CPPNPreset): Promise<void> {
-    this.config = JSON.parse(JSON.stringify(preset.config));
-    this.seed   = preset.seed;
-    this.layout = computeWeightLayout(this.config);
-    this.currentWeights = new Float32Array(preset.weights);
-    await this._compile();
+    await this.setState(preset.config, preset.seed, preset.weights);
   }
+
+  /**
+   * Replace config + seed (+ optional exact weights) in one step. Recompiles
+   * only if the architecture changed; otherwise just uploads weights. When
+   * `weights` is absent or the wrong length they are regenerated from seed.
+   */
+  async setState(config: CPPNConfig | LegacyCPPNConfig, seed: number, weights?: ArrayLike<number>): Promise<void> {
+    this.config = normalizeConfig(config);
+    this.seed   = seed >>> 0;
+    this.layout = computeWeightLayout(this.config);
+    this.currentWeights = weights && weights.length === this.layout.totalCount
+      ? Float32Array.from(weights)
+      : generateWeights(this.layout, this.config, this.seed);
+    this._uploadWeights();
+    await this._ensurePipeline();
+  }
+
+  get weights(): Float32Array { return this.currentWeights; }
 
   capturePreset(name: string): CPPNPreset {
     const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -239,6 +312,7 @@ export class CPPNController {
     if (this.running) return;
     this.running  = true;
     this.startTime = performance.now();
+    this.lastTick = 0;
     this.tick();
   }
 
@@ -250,41 +324,71 @@ export class CPPNController {
 
   reset(): void {
     this.randomizeDimOffsets();
-    void this.randomizeWeights(Date.now() & 0xffffffff);
+    this.randomizeWeights(Date.now() & 0xffffffff);
   }
 
   // ── Render loop ───────────────────────────────────────────────
-  private computeZ(t: number): Float32Array {
+  private advanceMotion(dt: number): void {
+    const m = this.config.motion;
+    for (let b = 0; b < 4; b++) {
+      this.bandPhase[b] = (this.bandPhase[b] + 2 * Math.PI * m.speed * Math.pow(m.spread, b) * dt) % (2 * Math.PI);
+    }
+  }
+
+  private computeZ(): Float32Array {
     const z = new Float32Array(Z_DIM);
-    const { zBands, numBands } = this.config;
-    const dimsPerBand = Math.ceil(Z_DIM / numBands);
+    const m = this.config.motion;
+    const bands = Math.max(1, Math.min(4, Math.round(m.bands)));
+    const dimsPerBand = Math.ceil(Z_DIM / bands);
     for (let d = 0; d < Z_DIM; d++) {
-      const b    = Math.min(Math.floor(d / dimsPerBand), numBands - 1);
-      const band = zBands[b];
-      if (!band) continue;
-      z[d] = band.amplitude * Math.sin(
-        2 * Math.PI * band.freq * t + band.phase + this.dimOffsets[d]
-      );
+      const b   = Math.min(Math.floor(d / dimsPerBand), bands - 1);
+      const amp = m.depth * Math.pow(m.falloff, b);
+      z[d] = amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]);
     }
     return z;
   }
 
-  private tick = (): void => {
-    if (!this.running || !this.gpu || !this.pipeline) return;
-    const frameStart = performance.now();
-    const { device, context, canvas } = this.gpu;
-    resizeCanvasToDisplaySize(canvas);
+  // Compute the capped backing size first and assign only when it changes.
+  // Writing canvas.width/height reallocates the swapchain, so doing it
+  // every frame (display size, then capped size) was two reallocations per tick.
+  private _resizeCanvas(canvas: HTMLCanvasElement): void {
+    const dpr = window.devicePixelRatio || 1;
+    let w = Math.floor(canvas.clientWidth  * dpr);
+    let h = Math.floor(canvas.clientHeight * dpr);
     if (this.maxResolution > 0) {
-      const longest = Math.max(canvas.width, canvas.height);
+      const longest = Math.max(w, h);
       if (longest > this.maxResolution) {
         const scale = this.maxResolution / longest;
-        canvas.width  = Math.floor(canvas.width  * scale);
-        canvas.height = Math.floor(canvas.height * scale);
+        w = Math.floor(w * scale);
+        h = Math.floor(h * scale);
       }
     }
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+      canvas.width  = w;
+      canvas.height = h;
+    }
+  }
 
-    const t = this.animate ? (performance.now() - this.startTime) / 1000 : 0;
-    const z = this.computeZ(t);
+  private tick = (): void => {
+    if (!this.running || !this.gpu || !this.pipeline || !this.bindGroup) return;
+    // While a recompile is pending the weight buffer already holds the new
+    // layout, which the old pipeline would misread: present nothing new and
+    // the canvas keeps the last good frame until the pipeline is bound.
+    if (this.compiledArch !== this.archKey()) {
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+      return;
+    }
+    const frameStart = performance.now();
+    const { device, context, canvas } = this.gpu;
+    this._resizeCanvas(canvas);
+
+    const now = performance.now();
+    const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
+    this.lastTick = now;
+    if (this.animate) this.advanceMotion(dt);
+    const t = (now - this.startTime) / 1000;
+    const z = this.computeZ();
 
     const params = new Float32Array(PARAMS_FLOATS);
     params[0] = canvas.width;
@@ -292,6 +396,8 @@ export class CPPNController {
     params[2] = t;
     params[3] = this.config.scale;
     params.set(z, 4);
+    const acts = new Uint32Array(params.buffer, ACTS_OFFSET * 4, 8);
+    this.config.layers.slice(0, 8).forEach((l, i) => { acts[i] = Math.max(0, ACTIVATION_IDS.indexOf(l.activation)); });
     device.queue.writeBuffer(this.paramsBuffer, 0, params);
 
     const encoder = device.createCommandEncoder();
@@ -308,17 +414,20 @@ export class CPPNController {
     pass.draw(6);
     pass.end();
     device.queue.submit([encoder.finish()]);
-    void device.queue.onSubmittedWorkDone().then(() => {
-      if (!this.running) return;
-      this.tickCount++;
-      if (Number.isFinite(this.maxFps)) {
-        this.usingRaf = false;
+    this.tickCount++;
+    if (Number.isFinite(this.maxFps)) {
+      // Capped mode: wait for the GPU so the cap measures real frame time.
+      this.usingRaf = false;
+      void device.queue.onSubmittedWorkDone().then(() => {
+        if (!this.running) return;
         const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
         this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
-      } else {
-        this.usingRaf = true;
-        this.animId = requestAnimationFrame(this.tick);
-      }
-    });
+      });
+    } else {
+      // Unlimited: let the browser pipeline CPU and GPU work. Waiting on a
+      // GPU fence here quantised the frame rate to vsync divisors.
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+    }
   };
 }

@@ -1,4 +1,4 @@
-﻿// src/components/simulations/field-boids/field-boids-spec.ts
+// src/components/simulations/field-boids/field-boids-spec.ts
 // One description of the tunable params: labels, ranges, enum names, groups,
 // and how each enum is drawn. The desktop panel's Look section, the phone
 // scrub list and Randomize are all built from it, so a param is added once.
@@ -7,41 +7,15 @@ import type { FieldBoidsParams } from './field-boids-types';
 
 export type ParamKey = keyof FieldBoidsParams;
 
-export interface NumSpec {
-  kind: 'num';
-  key: ParamKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  scale?: 'linear' | 'log';
-  /** Integer-valued param: the setter rounds. */
-  int?: boolean;
-  /** Row is shown only when this holds (e.g. point rows in Points view). */
-  showIf?: (p: FieldBoidsParams) => boolean;
-}
+import type {
+  NumSpec as GenericNumSpec, EnumSpec as GenericEnumSpec,
+  ParamSpec as GenericParamSpec, ParamGroup as GenericParamGroup,
+} from '../../../lib/sim-page/param-spec';
 
-export interface EnumSpec {
-  kind: 'enum';
-  key: ParamKey;
-  label: string;
-  names: readonly string[];
-  /** segmented: one bar of exclusive segments. swatches: colour dots.
-   *  select: native dropdown (for lists that are read, not scanned). */
-  ui: 'segmented' | 'swatches' | 'select';
-  /** swatches: one CSS colour per name. */
-  colors?: readonly string[];
-  /** Changing this re-renders the panel (other rows depend on it). */
-  rebuilds?: boolean;
-  showIf?: (p: FieldBoidsParams) => boolean;
-}
-
-export type ParamSpec = NumSpec | EnumSpec;
-
-export interface ParamGroup {
-  name: string;
-  items: ParamSpec[];
-}
+export type NumSpec = GenericNumSpec<ParamKey>;
+export type EnumSpec = GenericEnumSpec<ParamKey>;
+export type ParamSpec = GenericParamSpec<ParamKey>;
+export type ParamGroup = GenericParamGroup<ParamKey>;
 
 export const VIEW_MODES = ['Density', 'Flow', 'Points'] as const;
 export const PALETTES = ['Accent', 'Ember', 'Ice', 'Spectral'] as const;
