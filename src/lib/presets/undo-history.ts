@@ -138,12 +138,17 @@ export function createUndoHistory<S>(opts: UndoHistoryOpts<S>): UndoHistory {
   };
 }
 
-/** Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo, ignored while typing. */
+const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'url', 'password', 'tel']);
+
+/** Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo, ignored while
+ *  typing. A focused slider, checkbox or button is not typing: a drag leaves
+ *  focus on the range input and undo must still work from there. */
 export function attachUndoKeys(history: UndoHistory): () => void {
   const onKey = (e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey)) return;
     const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && (t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && t.tagName === 'INPUT' && TEXT_INPUTS.has((t as HTMLInputElement).type)) return;
     const k = e.key.toLowerCase();
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); history.undo(); }
     else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); history.redo(); }
