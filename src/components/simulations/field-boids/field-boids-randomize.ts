@@ -3,10 +3,11 @@
 // drawn uniformly over its own slider range (log sliders uniform in log
 // space, so the slider thumb lands anywhere with equal probability).
 // Particle count, steps per frame, dt, mouse radius and the Look group stay
-// as they are; the caller restores locked params afterwards.
+// as they are except the palette, which is rolled too; the caller restores
+// locked params afterwards.
 
 import type { FieldBoidsParams } from './field-boids-types';
-import { FIELD_BOIDS_GROUPS, type NumSpec } from './field-boids-spec';
+import { FIELD_BOIDS_GROUPS, PALETTES, type NumSpec } from './field-boids-spec';
 
 const SKIP = new Set<string>(['numParticles', 'stepsPerFrame']);
 
@@ -30,4 +31,5 @@ export function randomizeFieldBoidsParams(p: FieldBoidsParams): void {
       pr[item.key as string] = roll(item);
     }
   }
+  p.palette = Math.floor(Math.random() * PALETTES.length);
 }
