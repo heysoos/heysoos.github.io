@@ -57,6 +57,6 @@ export const PARAM_ROWS_TOUCH: HelpRow[] = [
 ];
 export const PARAM_ROWS_MOUSE: HelpRow[] = [
   { glyph: 'hp-lr', label: 'drag row', effect: 'scrub · shift fine' },
-  { glyph: 'hp-cursor', label: 'click value · ctrl + click', effect: 'type a value' },
+  { glyph: 'hp-cursor', label: 'click value / ctrl + click', effect: 'type a value' },
   { glyph: 'hp-lock', label: 'alt + click', effect: 'lock' },
 ];

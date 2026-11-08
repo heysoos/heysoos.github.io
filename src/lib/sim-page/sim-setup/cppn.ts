@@ -245,7 +245,7 @@ function helpSections(touch: boolean): HelpSection[] {
     : { title: 'Canvas', rows: [
         { glyph: 'hp-point', label: 'drag', effect: 'latent scrub · motion holds' },
         { glyph: 'hp-wheel', label: 'wheel', effect: 'zoom at cursor' },
-        { glyph: 'hp-move', label: 'alt · mid · space', effect: '+ drag pans' },
+        { glyph: 'hp-move', label: 'alt / mid / space', effect: '+ drag pans' },
         { glyph: 'hp-map', label: 'minimap', effect: 'reset view · ×2 reset latent' },
       ] };
   const params: HelpSection = { title: 'Parameters', rows: [

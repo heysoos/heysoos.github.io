@@ -204,7 +204,7 @@ function fieldBoidsHelp(touch: boolean): HelpSection[] {
     : { title: 'Canvas', rows: [
         { glyph: 'hp-point', label: 'drag', effect: 'attract · carry' },
         { glyph: 'hp-wheel', label: 'wheel', effect: 'zoom at cursor' },
-        { glyph: 'hp-move', label: 'alt · mid · space', effect: '+ drag pans' },
+        { glyph: 'hp-move', label: 'alt / mid / space', effect: '+ drag pans' },
       ] };
   const params: HelpSection = { title: 'Parameters', rows: touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE };
   return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: KEY_ROWS }];
