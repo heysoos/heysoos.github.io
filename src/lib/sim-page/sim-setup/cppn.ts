@@ -186,7 +186,8 @@ export async function setupCPPN(
   }, { capture: true });
 
   function buildPanel(): void {
-    const scrollTop = panelContent.scrollTop;
+    const scroller = () => panelContent.querySelector<HTMLElement>('.fb-scroll') ?? panelContent;
+    const scrollTop = scroller().scrollTop;
     section?.dispose();
     desktop?.dispose(); desktop = null;
     panelContent.innerHTML = '';
@@ -207,7 +208,7 @@ export async function setupCPPN(
         onClose: () => { panel.style.display = 'none'; },
       });
     }
-    panelContent.scrollTop = scrollTop;
+    scroller().scrollTop = scrollTop;
   }
   mgr.onRebuild(buildPanel);
   buildPanel();

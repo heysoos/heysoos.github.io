@@ -149,6 +149,7 @@ export function buildFieldBoidsPanel(
   opts: FieldBoidsPanelOpts = {},
 ): void {
   container.innerHTML = '';
+  container.classList.add('fb-panel');   // column: fixed header, then the scrolling part
   const p = ctrl.params;
   const history = opts.history;
   const lockFor = (key: keyof typeof p): ParamLockBinding | undefined =>
@@ -191,11 +192,14 @@ export function buildFieldBoidsPanel(
   });
 
   // ── Presets at the top, then the params ──
+  const scroll = document.createElement('div');
+  scroll.className = 'fb-scroll';
+  container.appendChild(scroll);
   const presetsBody = document.createElement('div');
   presetsBody.className = 'fb-presets';
   const body = document.createElement('div');
   body.className = 'fb-body';
-  container.append(presetsBody, body);
+  scroll.append(presetsBody, body);
   if (opts.buildPresets) {
     opts.buildPresets(presetsBody);
   } else if (opts.presets && opts.presets.length > 0) {

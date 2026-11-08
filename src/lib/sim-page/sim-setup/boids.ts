@@ -166,7 +166,8 @@ export async function setupBoids(
   }, { capture: true });
 
   function buildPanel(): void {
-    const scrollTop = panelContent.scrollTop;
+    const scroller = () => panelContent.querySelector<HTMLElement>('.fb-scroll') ?? panelContent;
+    const scrollTop = scroller().scrollTop;
     section?.dispose();
     panelControls?.teardown();
     panelContent.innerHTML = '';
@@ -191,7 +192,7 @@ export async function setupBoids(
         shaderPanelEl.style.display = shaderEditorOpen ? 'flex' : 'none';
       },
     });
-    panelContent.scrollTop = scrollTop;
+    scroller().scrollTop = scrollTop;
   }
   mgr.onRebuild(buildPanel);
   buildPanel();

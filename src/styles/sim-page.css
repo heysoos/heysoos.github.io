@@ -270,14 +270,19 @@
 /* ── Desktop field-boids panel: pinned header, group bands, one-line meter rows ── */
 .panel-content:has(> .fb-head) { padding-top: 0; }
 .fb-head {
-  position: sticky; top: var(--fb-head-top, 0); z-index: 2;
+  /* Fixed row above the scrolling part (.fb-scroll), so it never sits over
+     rows and carries NO background of its own: the panel's one surface runs
+     top to bottom, a hairline separates the two. */
+  flex: none;
   display: flex; align-items: center; gap: 4px;
-  padding: 0.55rem 0 0.5rem; margin-bottom: 4px;
-  /* Sticky over the scrolling rows: frosted (blur), never a second opaque
-     --bg-nav layer — that stacks to a black block over the panel's own. */
-  background: color-mix(in srgb, var(--bg-nav) 30%, transparent);
-  backdrop-filter: blur(10px) saturate(1.1); -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  padding: 0.55rem 0 0.5rem;
   border-bottom: 1px solid var(--bg-surface-border);
+}
+.fb-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden !important; padding-right: 0.2rem; }
+.fb-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--bg-surface-border) transparent;
+  padding-top: 4px;
 }
 .fb-head button {
   min-height: 0 !important; padding: 4px 8px; border-radius: 6px;
@@ -1181,8 +1186,8 @@
 }
 
 /* ── Boids desktop panel: Params tab in the shared spec style, under the tab bar ── */
-.boids-spec-params { --fb-head-top: 27px; }
 .boids-spec-params .fb-head { padding-top: 0.45rem; }
+#panel-content:has(> .boids-spec-params) { overflow: hidden; }
 
 /* ── Custom colour swatch: rainbow ring → native picker; shows the colour when active ── */
 .sw.custom { position: relative; overflow: hidden; background: conic-gradient(#e84040, #e8c040, #40e060, #40c0e8, #6060e8, #e040c0, #e84040); }

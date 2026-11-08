@@ -90,6 +90,7 @@ export function buildCPPNPanel(
   const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g => g.name === 'Network' ? { ...g, render: renderNetworkRows } : g);
 
   container.innerHTML = '';
+  container.classList.add('fb-panel');   // column: fixed header, then the scrolling part
   const disposers: Array<() => void> = [];
   const refreshers: Array<() => void> = [];
 
@@ -129,7 +130,10 @@ export function buildCPPNPanel(
   presetsBody.className = 'fb-presets';
   const body = document.createElement('div');
   body.className = 'fb-body';
-  container.append(presetsBody, body);
+  const scroll = document.createElement('div');
+  scroll.className = 'fb-scroll';
+  scroll.append(presetsBody, body);
+  container.appendChild(scroll);
   if (opts.buildPresets) {
     opts.buildPresets(presetsBody);
   } else if (opts.presets && opts.presets.length > 0) {

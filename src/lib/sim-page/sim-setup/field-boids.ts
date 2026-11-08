@@ -160,7 +160,8 @@ export async function setupFieldBoids(
   }, { capture: true });
 
   function buildPanel(): void {
-    const scrollTop = panelContent.scrollTop;
+    const scroller = () => panelContent.querySelector<HTMLElement>('.fb-scroll') ?? panelContent;
+    const scrollTop = scroller().scrollTop;
     section?.dispose();
     panelContent.innerHTML = '';
     ensureScrub();
@@ -177,7 +178,7 @@ export async function setupFieldBoids(
         rebuild: () => mgr.rebuild(),
       });
     }
-    panelContent.scrollTop = scrollTop;
+    scroller().scrollTop = scrollTop;
   }
   mgr.onRebuild(buildPanel);
   buildPanel();

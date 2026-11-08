@@ -80,9 +80,9 @@ export function buildBoidsPanel(
   const tabBar = document.createElement('div');
   tabBar.style.cssText = [
     'display:flex',
+    'flex:none',
     'border-bottom:1px solid var(--bg-surface-border)',
-    'position:sticky', 'top:0', 'z-index:3',
-    'background:var(--bg-nav)',
+    'position:relative',
   ].join(';');
 
   // Close + shader buttons in top-right corner of the bar
@@ -138,7 +138,7 @@ export function buildBoidsPanel(
     for (const t of tabNames) {
       const isActive = t === name;
       tabBtns[t].style.cssText = buildTabStyle(isActive);
-      tabBodies[t].style.display = isActive ? 'block' : 'none';
+      tabBodies[t].style.display = isActive ? (t === 'Params' && opts.spec ? 'flex' : 'block') : 'none';
     }
     if (name === 'Audio') audioVizControls?.start();
     opts.onTabChange?.(name);
@@ -153,7 +153,7 @@ export function buildBoidsPanel(
     tabBtns[name] = btn;
 
     const body = document.createElement('div');
-    body.style.display = name === initialTab ? 'block' : 'none';
+    body.style.display = name === initialTab ? (name === 'Params' && opts.spec ? 'flex' : 'block') : 'none';
     body.style.overflowX = 'hidden';
     tabBodies[name] = body;
   }
@@ -187,7 +187,7 @@ export function buildBoidsPanel(
   let padTraceUpdaters: Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> = [];
   if (opts.spec) {
     paramsBody.className = 'boids-spec-params';
-    paramsBody.style.overflow = 'visible';   // the panel body scrolls (keeps its position across rebuilds), not the tab
+    paramsBody.style.cssText = 'display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;';
     specHandle = buildSpecPanel(paramsBody, {
       groups: opts.spec.groups, params: opts.spec.params, get: opts.spec.get, set: opts.spec.set,
       history, locks, buildPresets: opts.buildPresets, onRandomize: opts.spec.onRandomize,
