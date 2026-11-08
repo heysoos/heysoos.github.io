@@ -907,14 +907,16 @@
   .sim-viewport #sim-canvas { height: 100vh; height: 100lvh; }
   body.sim-immersive .nav { transform: translateY(-100%); }
   .nav { transition: transform 0.25s ease; }
+  /* Same material, size and glyph weight as the control capsule (Controls.astro). */
   .scroll-down {
     display: grid; place-items: center;
-    position: absolute; left: 0.6rem; bottom: 0.6rem;
-    width: 38px; height: 30px; min-height: 0 !important; padding: 0 0 2px;
-    border-radius: 999px; border: 1px solid var(--bg-surface-border);
-    background: rgba(8,6,4,0.6); color: var(--text-muted); font-size: 1rem; line-height: 1;
-    z-index: 10; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    position: absolute; left: 0.5rem; bottom: 0.5rem;
+    width: 40px; height: 40px; min-height: 0 !important; padding: 0;
+    border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(8, 6, 4, 0.5); color: var(--text-primary); opacity: 0.8; line-height: 0;
+    z-index: 10; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   }
+  .scroll-down .ctrl-icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; display: block; }
   .ctrl-btn[data-action="fullscreen"] { display: none; }
   .sim-viewport:not(.scrub-open) .fps-display { display: none; }
 
@@ -992,8 +994,9 @@
 
   .fps-display {
     top: auto;
-    bottom: 0.6rem;
-    left: 3.6rem; /* right of the ︾ arrow, under the list's bottom edge */
+    bottom: 0.5rem;
+    left: calc(0.5rem + 40px + 8px); /* right of the scroll button, under the list's bottom edge */
+    height: 40px; display: flex; align-items: center;
   }
 
   .fps-display:hover .fps-popup { display: none; }
