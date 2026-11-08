@@ -15,6 +15,7 @@ import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
+import { DICE_SVG, UNDO_SVG, REDO_SVG } from './icons';
 
 export type ScrubTabSize = 'strip' | 'full';
 /** An extra tab in the card header (Params is always first). `build` fills
@@ -112,7 +113,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   const tabStrip = tabs.length
     ? `<div class="scrub-tabs"><button data-tab="">Params</button>${tabs.map(t => `<button data-tab="${t.name}">${t.name}</button>`).join('')}</div><button class="h-size" aria-label="Expand" hidden>⤢</button>`
     : '';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button>${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">⚄ Randomize</button>`;
+  head.innerHTML = `<button class="h-undo" aria-label="Undo">${UNDO_SVG}</button><button class="h-redo" aria-label="Redo">${REDO_SVG}</button>${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">${DICE_SVG}<span>Randomize</span></button>`;
   head.classList.toggle('tabbed', tabs.length > 0);
   const tabBody = document.createElement('div');
   tabBody.className = 'scrub-tab-body';

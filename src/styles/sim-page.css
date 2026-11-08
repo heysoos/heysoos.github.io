@@ -1089,3 +1089,39 @@
 .pm-checks { gap: 12px; font-size: 0.62rem; color: var(--text-body); }
 .pm-checks label { display: flex; align-items: center; gap: 4px; }
 .pm-checks input { accent-color: var(--accent); margin: 0; }
+
+/* ── Panel headers: icon buttons, a real Randomize button, no shouting ── */
+.fb-head, .scrub-head { gap: 5px; }
+.fb-head .h-undo, .fb-head .h-redo, .scrub-head .h-undo, .scrub-head .h-redo {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0;
+}
+.fb-head .h-random, .scrub-head .h-random {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 26px; padding: 0 10px;
+  font-size: 0.7rem; letter-spacing: 0.02em; text-transform: none; font-variant-caps: normal; font-weight: 500;
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, rgba(0,0,0,0.35));
+}
+.fb-head .h-random:hover, .scrub-head .h-random:hover { background: color-mix(in srgb, var(--accent) 18%, rgba(0,0,0,0.35)); border-color: var(--accent); }
+.fb-head .h-random .ico, .scrub-head .h-random .ico { flex: none; }
+.fb-head .h-presets { text-transform: none; font-variant-caps: all-small-caps; font-size: 0.72rem; }
+.fb-head .h-close { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.sim-viewport.sim-busy .h-random .ico, .sim-viewport.sim-busy .h-random span { visibility: hidden; }
+
+/* ── CPPN minimap: current coordinate window vs the original frame ── */
+#sim-viewport canvas.cppn-minimap, .sim-viewport canvas.cppn-minimap, .cppn-minimap {
+  position: absolute !important; left: auto !important; top: auto !important; right: 12px; bottom: 56px;
+  width: 72px !important; height: 72px !important; z-index: 3;
+  border: 1px solid var(--bg-surface-border); border-radius: 6px; background: rgba(0, 0, 0, 0.55);
+  opacity: 0.25; transition: opacity 0.35s ease; cursor: pointer; touch-action: none;
+}
+.cppn-minimap.show, .cppn-minimap:hover { opacity: 1; }
+@media (max-width: 768px) { .cppn-minimap { right: 10px; bottom: 64px; width: 64px !important; height: 64px !important; } }
+
+/* ── Desktop CPPN rows: honour [hidden] (showIf) and lay enums out so they fit ── */
+.meter-row[hidden], .cppn-enum-row[hidden], .cppn-layer[hidden] { display: none !important; }
+.cppn-enum-row { display: flex; align-items: center; gap: 8px; margin: 2px 0 0.35rem; }
+.cppn-enum-row .n { font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); min-width: 5.2rem; }
+.cppn-enum-row.stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.cppn-enum-row.stack .look-segmented { display: flex; width: 100%; }
+.cppn-enum-row.stack .look-segmented button { flex: 1; padding: 5px 4px; text-align: center; }
+.cppn-enum-row.locked .n::before { content: ''; display: inline-block; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); margin-right: 5px; vertical-align: -1px; }

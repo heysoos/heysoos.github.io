@@ -9,6 +9,7 @@ import type { TiltSensor } from '../../../lib/sim-page/tilt-sensor';
 import { randomizeFieldBoidsParams } from './field-boids-randomize';
 import type { ParamLocks, ParamLockBinding } from '../../../lib/presets/param-locks';
 import { LOOK_GROUP, type EnumSpec } from './field-boids-spec';
+import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -149,13 +150,13 @@ export function buildFieldBoidsPanel(
   head.className = 'fb-head';
   const mkBtn = (text: string, cls: string, title?: string): HTMLButtonElement => {
     const b = document.createElement('button');
-    b.className = cls; b.textContent = text; if (title) b.title = title;
+    b.className = cls; b.innerHTML = text; if (title) b.title = title;
     head.appendChild(b);
     return b;
   };
-  const undoBtn = mkBtn('↶', 'h-undo', 'Undo');
-  const redoBtn = mkBtn('↷', 'h-redo', 'Redo');
-  const randomBtn = mkBtn('⚄ Randomize', 'h-random', 'Random dynamics (particle count and view unchanged)');
+  const undoBtn = mkBtn(UNDO_SVG, 'h-undo', 'Undo');
+  const redoBtn = mkBtn(REDO_SVG, 'h-redo', 'Redo');
+  const randomBtn = mkBtn(`${DICE_SVG}<span>Randomize</span>`, 'h-random', 'Random dynamics (particle count and view unchanged)');
   head.appendChild(el('span', 'flex:1;'));
   if (opts.onClose) {
     const closeBtn = mkBtn('×', 'h-close', 'Close');

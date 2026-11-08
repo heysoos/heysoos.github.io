@@ -17,6 +17,7 @@ import { createMeterRow, attachMeterDrag, type MeterRowHandle } from '../../../l
 import { pillStyle } from '../boids/panel/panel-styles';
 import { CPPN_GROUPS, configFromFlat, isArchKey, isWeightKey, toFlat, type CPPNFlatParams, type FlatKey } from './cppn-spec';
 import { renderNetworkRows } from './cppn-network-rows';
+import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
 
 export interface CPPNPanelOpts {
   /** Groups to render; defaults to CPPN_GROUPS with the layer stack attached. */
@@ -90,13 +91,13 @@ export function buildCPPNPanel(
   head.className = 'fb-head';
   const mkBtn = (text: string, cls: string, title?: string): HTMLButtonElement => {
     const b = document.createElement('button');
-    b.className = cls; b.textContent = text; if (title) b.title = title;
+    b.className = cls; b.innerHTML = text; if (title) b.title = title;
     head.appendChild(b);
     return b;
   };
-  const undoBtn = mkBtn('↶', 'h-undo', 'Undo');
-  const redoBtn = mkBtn('↷', 'h-redo', 'Redo');
-  const randomBtn = mkBtn('⚄ Randomize', 'h-random', 'Random architecture, weights and motion (locked rows kept)');
+  const undoBtn = mkBtn(UNDO_SVG, 'h-undo', 'Undo');
+  const redoBtn = mkBtn(REDO_SVG, 'h-redo', 'Redo');
+  const randomBtn = mkBtn(`${DICE_SVG}<span>Randomize</span>`, 'h-random', 'Random architecture, weights and motion (locked rows kept)');
   head.appendChild(el('span', 'flex:1;'));
   if (opts.onClose) mkBtn('×', 'h-close', 'Close').addEventListener('click', opts.onClose);
   container.appendChild(head);
@@ -209,9 +210,11 @@ function enumRow(
   get: (k: string) => number, set: (k: string, v: number) => void, commit: (label: string) => void,
   params: unknown, locks?: ParamLocks,
 ): () => void {
-  const row = el('div', 'display:flex;align-items:center;gap:6px;margin:2px 0 0.35rem;');
-  row.className = 'cppn-enum-row';
-  const lab = el('span', 'font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);min-width:5.2rem;', spec.label);
+  const row = el('div', '');
+  // Two names fit beside the label; longer lists stack label over a full-width bar.
+  row.className = 'cppn-enum-row' + (spec.ui !== 'select' && spec.names.length > 2 ? ' stack' : '');
+  const lab = el('span', '', spec.label);
+  lab.className = 'n';
   row.appendChild(lab);
   const pick = (i: number) => { set(spec.key, i); commit(spec.label); };
   let update: () => void;

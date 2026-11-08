@@ -176,6 +176,7 @@ struct Params {
   z          : array<f32, ${Z_DIM}>,
   acts0      : vec4<u32>,
   acts1      : vec4<u32>,
+  view       : vec4f,          // world centre x, y, zoom, unused
 }
 
 fn act(id: u32, x: f32) -> f32 {
@@ -204,8 +205,11 @@ fn vertexMain(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
 fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   let aspect = params.resolution.x / params.resolution.y;
   let uv     = fragPos.xy / params.resolution;
-  let cx     = (uv.x * 2.0 - 1.0) * aspect * params.scale;
-  let cy     = (uv.y * 2.0 - 1.0) * params.scale;
+  // View: the screen maps to a window of the coordinate plane centred on
+  // view.xy with half-extent (aspect·scale, scale) / zoom, so zooming
+  // samples the function at a new scale instead of magnifying pixels.
+  let cx     = params.view.x + (uv.x * 2.0 - 1.0) * aspect * params.scale / params.view.z;
+  let cy     = params.view.y + (uv.y * 2.0 - 1.0) * params.scale / params.view.z;
   let cr     = sqrt(cx * cx + cy * cy);
   let sp     = vec4f(cx, cy, cr, 0.0);
   let z0     = vec4f(params.z[0],  params.z[1],  params.z[2],  params.z[3]);

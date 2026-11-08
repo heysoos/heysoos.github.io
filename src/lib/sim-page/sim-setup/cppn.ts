@@ -25,6 +25,7 @@ import { isPhoneLayout } from '../bottom-sheet';
 import { wireHandleHistory } from '../handle-actions';
 import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
 import type { ParamGroup } from '../param-spec';
+import { attachCPPNGestures } from '../cppn-gestures';
 
 const RES_KEY = 'cppn:maxResolution';
 const ARCH_DEBOUNCE_MS = 180;
@@ -61,6 +62,11 @@ export async function setupCPPN(
   // Compile spinner.
   const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned
   ctrl.onBusy = (busy) => viewport.classList.toggle('sim-busy', busy);
+
+  // Canvas gestures: pinch/wheel zoom of the coordinate window, pan, one-
+  // finger latent scrub, minimap (see cppn-gestures.ts).
+  const canvas = viewport.querySelector<HTMLCanvasElement>('canvas')!;
+  const gestures = attachCPPNGestures(canvas, viewport, ctrl);
 
   // Device setting (not a preset param): the render cap, persisted.
   try {
@@ -205,5 +211,5 @@ export async function setupCPPN(
 
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
-  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); }, { once: true });
+  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); gestures.dispose(); }, { once: true });
 }

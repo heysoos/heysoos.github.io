@@ -6,10 +6,15 @@ import { normalizeConfig, DEFAULT_MOTION, type CPPNConfig, type CPPNPreset, type
 export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, MotionLadder };
 export type { Activation, DistributionType } from './cppn-types';
 
-// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw] = 28 × 4 = 112 bytes
-const PARAMS_FLOATS = 4 + Z_DIM + 8;
+// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw, view.xyzw] = 32 × 4 = 128 bytes
+const PARAMS_FLOATS = 4 + Z_DIM + 8 + 4;
 const PARAMS_BYTES  = PARAMS_FLOATS * 4;
 const ACTS_OFFSET   = 4 + Z_DIM;
+const VIEW_OFFSET   = ACTS_OFFSET + 8;
+
+/** f32 runs out of relative precision around here: deeper zooms go blocky. */
+export const MAX_ZOOM = 1e4;
+export const MIN_ZOOM = 0.02;
 
 // ── PRNG (mulberry32) ─────────────────────────────────────────────
 export function makePRNG(seed: number): () => number {
@@ -117,6 +122,22 @@ export class CPPNController {
   // changes the rate from now on instead of rotating the phase by 2π·Δf·t.
   private bandPhase = new Float64Array(4);
   private lastTick = 0;
+  /** While true (a finger is down) the oscillation is frozen. */
+  private motionHeld = false;
+
+  // ── View: window of the coordinate plane shown on screen ──
+  viewCx = 0;
+  viewCy = 0;
+  viewZoom = 1;
+  onViewChange: (() => void) | null = null;
+
+  // ── Latent offset: a point added to the oscillating z, steered by a
+  // one-finger drag along two random orthonormal 16-D directions. The
+  // basis is derived from the seed so a preset always feels the same. ──
+  readonly latentOffset = new Float32Array(Z_DIM);
+  private latentU = new Float32Array(Z_DIM);
+  private latentV = new Float32Array(Z_DIM);
+  private basisSeed = -1;
   private dimOffsets    = new Float32Array(Z_DIM);
   private currentWeights = new Float32Array(0);
 
@@ -271,6 +292,53 @@ export class CPPNController {
   }
 
   setAnimate(on: boolean): void { this.animate = on; }
+  /** Freeze/resume the oscillation (a finger is down on the canvas). */
+  holdMotion(on: boolean): void { this.motionHeld = on; }
+
+  /** Half-extent of the window in world units: (aspect·scale, scale) / zoom. */
+  private viewExtent(): [number, number] {
+    const c = this.gpu?.canvas;
+    const aspect = c && c.height > 0 ? c.width / c.height : 1;
+    return [aspect * this.config.scale / this.viewZoom, this.config.scale / this.viewZoom];
+  }
+  /** Zoom by `factor` keeping the world point under screen NDC (sx, sy) fixed. sy is down, like fragPos. */
+  zoomAt(factor: number, sx: number, sy: number): void {
+    const z1 = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.viewZoom * factor));
+    const [ex0, ey0] = this.viewExtent();
+    const wx = this.viewCx + sx * ex0, wy = this.viewCy + sy * ey0;
+    this.viewZoom = z1;
+    const [ex1, ey1] = this.viewExtent();
+    this.viewCx = wx - sx * ex1;
+    this.viewCy = wy - sy * ey1;
+    this.onViewChange?.();
+  }
+  /** Pan by a screen delta in NDC units (dsx, dsy down). */
+  panBy(dsx: number, dsy: number): void {
+    const [ex, ey] = this.viewExtent();
+    this.viewCx -= dsx * ex;
+    this.viewCy -= dsy * ey;
+    this.onViewChange?.();
+  }
+  resetView(): void { this.viewCx = 0; this.viewCy = 0; this.viewZoom = 1; this.onViewChange?.(); }
+
+  private ensureLatentBasis(): void {
+    if (this.basisSeed === this.seed) return;
+    this.basisSeed = this.seed;
+    const rand = makePRNG((this.seed ^ 0x9e3779b9) >>> 0);
+    const u = this.latentU, v = this.latentV;
+    for (let i = 0; i < Z_DIM; i++) { u[i] = boxMuller(rand); v[i] = boxMuller(rand); }
+    const norm = (a: Float32Array) => { let s = 0; for (const x of a) s += x * x; s = Math.sqrt(s) || 1; for (let i = 0; i < a.length; i++) a[i] /= s; };
+    norm(u);
+    let d = 0; for (let i = 0; i < Z_DIM; i++) d += u[i] * v[i];
+    for (let i = 0; i < Z_DIM; i++) v[i] -= d * u[i];       // Gram–Schmidt
+    norm(v);
+  }
+  /** Move the latent point by du along u and dv along v (screen-relative units). */
+  nudgeLatent(du: number, dv: number): void {
+    this.ensureLatentBasis();
+    for (let i = 0; i < Z_DIM; i++) this.latentOffset[i] += du * this.latentU[i] + dv * this.latentV[i];
+  }
+  resetLatent(): void { this.latentOffset.fill(0); }
   get isAnimating(): boolean { return this.animate; }
 
   // ── Presets ───────────────────────────────────────────────────
@@ -343,7 +411,7 @@ export class CPPNController {
     for (let d = 0; d < Z_DIM; d++) {
       const b   = Math.min(Math.floor(d / dimsPerBand), bands - 1);
       const amp = m.depth * Math.pow(m.falloff, b);
-      z[d] = amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]);
+      z[d] = amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]) + this.latentOffset[d];
     }
     return z;
   }
@@ -386,7 +454,7 @@ export class CPPNController {
     const now = performance.now();
     const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
-    if (this.animate) this.advanceMotion(dt);
+    if (this.animate && !this.motionHeld) this.advanceMotion(dt);
     const t = (now - this.startTime) / 1000;
     const z = this.computeZ();
 
@@ -398,6 +466,9 @@ export class CPPNController {
     params.set(z, 4);
     const acts = new Uint32Array(params.buffer, ACTS_OFFSET * 4, 8);
     this.config.layers.slice(0, 8).forEach((l, i) => { acts[i] = Math.max(0, ACTIVATION_IDS.indexOf(l.activation)); });
+    params[VIEW_OFFSET] = this.viewCx;
+    params[VIEW_OFFSET + 1] = this.viewCy;
+    params[VIEW_OFFSET + 2] = this.viewZoom;
     device.queue.writeBuffer(this.paramsBuffer, 0, params);
 
     const encoder = device.createCommandEncoder();
