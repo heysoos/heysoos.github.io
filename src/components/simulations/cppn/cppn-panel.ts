@@ -7,9 +7,16 @@ export interface CPPNPanelOpts {
   activePresetId?: string;
   onPresetLoad?: (preset: CPPNPreset) => void;
   onClose?: () => void;
+  /** Gallery page: render the shared preset section instead of plain pills. */
+  buildPresets?: (container: HTMLElement) => void;
+  /** Called after any control changes the controller (label for undo). */
+  onChange?: (label: string) => void;
 }
 
 const ACTIVATIONS: Activation[] = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'];
+
+// Set per build; tabs call it after each change so the host can record undo.
+let notify: (label: string) => void = () => {};
 
 // ── DOM helpers ───────────────────────────────────────────────────
 
@@ -120,18 +127,21 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
     numInput(rowEl, layer.width, 4, 512, async (v) => {
       const layers = ctrl.config.layers.map((l, i) => i === li ? { ...l, width: v } : l);
       await ctrl.setLayers(layers);
+      notify('Layer width');
       buildArchTab(container, ctrl);
     });
 
     selectEl(rowEl, ACTIVATIONS, layer.activation, async (v) => {
       const layers = ctrl.config.layers.map((l, i) => i === li ? { ...l, activation: v as Activation } : l);
       await ctrl.setLayers(layers);
+      notify('Activation');
     });
 
     const delBtn = el('button', 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;padding:0 2px;', '×');
     delBtn.addEventListener('click', async () => {
       if (ctrl.config.layers.length <= 1) return;
       await ctrl.setLayers(ctrl.config.layers.filter((_, i) => i !== li));
+      notify('Remove layer');
       buildArchTab(container, ctrl);
     });
     rowEl.appendChild(delBtn);
@@ -143,6 +153,7 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
   addBtn.addEventListener('click', async () => {
     const prev = ctrl.config.layers[ctrl.config.layers.length - 1];
     await ctrl.setLayers([...ctrl.config.layers, { width: prev.width, activation: 'tanh' }]);
+    notify('Add layer');
     buildArchTab(container, ctrl);
   });
   container.appendChild(addBtn);
@@ -153,7 +164,7 @@ function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
 
   divider(container);
   heading(container, 'Coordinate scale');
-  slider(container, 'Scale', 0.1, 5.0, 0.05, ctrl.config.scale, (v) => ctrl.setScale(v));
+  slider(container, 'Scale', 0.1, 5.0, 0.05, ctrl.config.scale, (v) => { ctrl.setScale(v); notify('Scale'); });
 
   divider(container);
   heading(container, 'Render quality');
@@ -175,27 +186,27 @@ function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
     switch (dist.type) {
       case 'normal':
         slider(paramBox, 'σ (std dev)', 0.1, 5.0, 0.05, dist.sigma ?? 1.0,
-          (v) => ctrl.setDistribution({ ...dist, sigma: v }));
+          (v) => { ctrl.setDistribution({ ...dist, sigma: v }); notify('σ'); });
         break;
       case 'uniform':
         slider(paramBox, 'a (range ±a)', 0.1, 5.0, 0.05, dist.a ?? 1.0,
-          (v) => ctrl.setDistribution({ ...dist, a: v }));
+          (v) => { ctrl.setDistribution({ ...dist, a: v }); notify('Range'); });
         break;
       case 'glorot':
         slider(paramBox, 'Scale', 0.1, 5.0, 0.05, dist.scale ?? 1.0,
-          (v) => ctrl.setDistribution({ ...dist, scale: v }));
+          (v) => { ctrl.setDistribution({ ...dist, scale: v }); notify('Scale'); });
         break;
       case 'sparse':
         slider(paramBox, 'Sparsity', 0.0, 0.99, 0.01, dist.sparsity ?? 0.8,
-          (v) => ctrl.setDistribution({ ...dist, sparsity: v }));
+          (v) => { ctrl.setDistribution({ ...dist, sparsity: v }); notify('Sparsity'); });
         slider(paramBox, 'Magnitude', 0.1, 10.0, 0.1, dist.magnitude ?? 2.0,
-          (v) => ctrl.setDistribution({ ...dist, magnitude: v }));
+          (v) => { ctrl.setDistribution({ ...dist, magnitude: v }); notify('Magnitude'); });
         break;
     }
   }
 
   selectEl(container, ['normal', 'uniform', 'glorot', 'sparse'], ctrl.config.distribution.type,
-    (v) => { ctrl.setDistribution({ type: v as any }); renderParams(); });
+    (v) => { ctrl.setDistribution({ type: v as any }); notify('Distribution'); renderParams(); });
 
   container.appendChild(paramBox);
   renderParams();
@@ -210,6 +221,7 @@ function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
   seedInp.value = String(ctrl.seed);
   seedInp.addEventListener('change', () => {
     ctrl.setSeed(parseInt(seedInp.value) || 0);
+    notify('Seed');
     seedInp.value = String(ctrl.seed);
   });
   seedRow.appendChild(seedInp);
@@ -219,6 +231,7 @@ function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
     '⟳ Randomize') as HTMLButtonElement;
   randBtn.addEventListener('click', () => {
     ctrl.randomizeWeights(Date.now() & 0xffffffff);
+    notify('Randomize');
     seedInp.value = String(ctrl.seed);
   });
   container.appendChild(randBtn);
@@ -233,8 +246,8 @@ function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
   animRow.appendChild(el('span', 'flex:1;font-size:0.72rem;color:var(--text-body);', 'Animate'));
   const animCheck = el('input', '') as HTMLInputElement;
   animCheck.type = 'checkbox';
-  animCheck.checked = true;
-  animCheck.addEventListener('change', () => ctrl.setAnimate(animCheck.checked));
+  animCheck.checked = ctrl.isAnimating;
+  animCheck.addEventListener('change', () => { ctrl.setAnimate(animCheck.checked); notify('Animate'); });
   animRow.appendChild(animCheck);
 
   divider(container);
@@ -243,6 +256,7 @@ function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
   bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Num bands'));
   selectEl(bandRow, ['2', '3', '4'], String(ctrl.config.numBands), (v) => {
     ctrl.setNumBands(parseInt(v));
+    notify('Bands');
     buildZTab(container, ctrl);
   });
 
@@ -251,9 +265,9 @@ function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
     if (!band) continue;
     divider(container);
     heading(container, `Band ${bi}`);
-    slider(container, 'Freq',  0.05, 4.0,  0.05, band.freq,      (v) => ctrl.setZBand(bi, { freq: v }));
-    slider(container, 'Amp',   0.0,  2.0,  0.05, band.amplitude, (v) => ctrl.setZBand(bi, { amplitude: v }));
-    slider(container, 'Phase', 0.0,  6.28, 0.05, band.phase,     (v) => ctrl.setZBand(bi, { phase: v }));
+    slider(container, 'Freq',  0.05, 4.0,  0.05, band.freq,      (v) => { ctrl.setZBand(bi, { freq: v }); notify('Freq'); });
+    slider(container, 'Amp',   0.0,  2.0,  0.05, band.amplitude, (v) => { ctrl.setZBand(bi, { amplitude: v }); notify('Amp'); });
+    slider(container, 'Phase', 0.0,  6.28, 0.05, band.phase,     (v) => { ctrl.setZBand(bi, { phase: v }); notify('Phase'); });
   }
 
   divider(container);
@@ -268,6 +282,7 @@ export function buildCPPNPanel(
   opts: CPPNPanelOpts = {},
 ): void {
   container.innerHTML = '';
+  notify = opts.onChange ?? (() => {});
 
   // Header
   const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
@@ -282,8 +297,12 @@ export function buildCPPNPanel(
   }
   container.appendChild(header);
 
-  // Preset pills
-  if (opts.presets && opts.presets.length > 0) {
+  // Presets: shared section on the gallery page, plain pills elsewhere (admin)
+  if (opts.buildPresets) {
+    const presetsBody = el('div', 'margin:0 0 0.4rem;');
+    container.appendChild(presetsBody);
+    opts.buildPresets(presetsBody);
+  } else if (opts.presets && opts.presets.length > 0) {
     const pillRow = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin:0 0 0.4rem;');
     for (const preset of opts.presets) {
       const isActive = preset.id === opts.activePresetId;

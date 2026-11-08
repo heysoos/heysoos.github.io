@@ -13,7 +13,7 @@
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
-import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from '../../components/simulations/field-boids/field-boids-spec';
+import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
 export interface ScrubPanelOpts {

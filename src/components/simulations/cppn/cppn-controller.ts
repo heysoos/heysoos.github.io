@@ -254,6 +254,7 @@ export class CPPNController {
   }
 
   setAnimate(on: boolean): void { this.animate = on; }
+  get isAnimating(): boolean { return this.animate; }
 
   /** Audio hookup: call each frame with FFT band energy */
   setZBandAmplitude(bandIndex: number, amplitude: number): void {
@@ -262,13 +263,26 @@ export class CPPNController {
 
   // ── Presets ───────────────────────────────────────────────────
   async loadPreset(preset: CPPNPreset): Promise<void> {
-    this.config = JSON.parse(JSON.stringify(preset.config));
-    this.seed   = preset.seed;
+    await this.setState(preset.config, preset.seed, preset.weights);
+  }
+
+  /**
+   * Replace config + seed (+ optional exact weights) in one step. Recompiles
+   * only if the architecture changed; otherwise just uploads weights. When
+   * `weights` is absent or the wrong length they are regenerated from seed.
+   */
+  async setState(config: CPPNConfig, seed: number, weights?: ArrayLike<number>): Promise<void> {
+    this.config = JSON.parse(JSON.stringify(config));
+    this.seed   = seed >>> 0;
     this.layout = computeWeightLayout(this.config);
-    this.currentWeights = new Float32Array(preset.weights);
+    this.currentWeights = weights && weights.length === this.layout.totalCount
+      ? Float32Array.from(weights)
+      : generateWeights(this.layout, this.config, this.seed);
     await this._ensurePipeline();
     this._uploadWeights();
   }
+
+  get weights(): Float32Array { return this.currentWeights; }
 
   capturePreset(name: string): CPPNPreset {
     const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
