@@ -505,15 +505,23 @@ export function buildImagePanelSection(
 
   // ── Resize: keep canvas pixel buffers in sync with CSS width ─────────────
   function resizeThumb(canvas: HTMLCanvasElement, ctx: GPUCanvasContext | null, isActive: boolean): void {
-    const w = canvas.clientWidth;
-    if (w <= 0) return;
+    // Measured from the parent: this function sets the canvas's own size, so
+    // reading the canvas back would feed a shrinking loop through the observer.
+    const avail = canvas.parentElement?.clientWidth ?? canvas.clientWidth;
+    if (avail <= 0) return;
     // The thumbnail is a blit of the canvas-sized processed texture, so it
-    // takes the canvas's aspect (portrait on a phone), capped in height.
+    // must keep the sim canvas's aspect (portrait on a phone) or the image
+    // squashes. When the height cap bites, the width shrinks with it.
     const ar = processor.canvasWidth > 0 ? processor.canvasHeight / processor.canvasWidth : THUMB_ASPECT;
-    const h = Math.round(Math.min(w * ar, window.innerHeight * 0.4));
+    let w = avail, h = w * ar;
+    const maxH = window.innerHeight * 0.4;
+    if (h > maxH) { h = maxH; w = h / ar; }
+    w = Math.round(w); h = Math.round(h);
     canvas.width  = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
+    canvas.style.width  = `${w}px`;
     canvas.style.height = `${h}px`;
+    canvas.style.marginLeft = canvas.style.marginRight = 'auto';
     if (isActive && ctx) {
       processor.setThumbnailContext(ctx);
     }

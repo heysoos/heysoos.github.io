@@ -270,9 +270,13 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     let dOld = wrapD2(m - carry - pos);
     let sNew = length(vec2f(dNew.x * params.aspect, dNew.y));
     let sOld = length(vec2f(dOld.x * params.aspect, dOld.y));
-    if (min(sNew, sOld) < params.mouseRadius) {
-      pos += carry;
-      vel += carry * 0.3 / max(params.deltaTime, 0.0001);
+    let sMin = min(sNew, sOld);
+    if (sMin < params.mouseRadius) {
+      // Soft brush: full carry under the finger, fading to nothing at the
+      // radius (same falloff as field-boids), so the edge is not a hard wall.
+      let w = sqrt(1.0 - sMin / params.mouseRadius);
+      pos += carry * w;
+      vel += carry * w * 0.3 / max(params.deltaTime, 0.0001);
     }
   }
 
