@@ -1124,7 +1124,7 @@
 
 /* ── CPPN minimap: current coordinate window vs the original frame ── */
 #sim-viewport canvas.cppn-minimap, .sim-viewport canvas.cppn-minimap, .cppn-minimap {
-  position: absolute !important; left: auto !important; top: auto !important; right: 12px; bottom: 56px;
+  position: absolute !important; left: auto !important; top: auto !important; right: 16px; bottom: 72px;
   width: 84px !important; height: 84px !important; z-index: 3;
   border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent); border-radius: 6px; background: rgba(0, 0, 0, 0.6);
   opacity: 0.7; transition: opacity 0.35s ease; cursor: pointer; touch-action: none;
@@ -1140,3 +1140,42 @@
 .cppn-enum-row.stack .look-segmented { display: flex; width: 100%; }
 .cppn-enum-row.stack .look-segmented button { flex: 1; padding: 5px 4px; text-align: center; }
 .cppn-enum-row.locked .n::before { content: ''; display: inline-block; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); margin-right: 5px; vertical-align: -1px; }
+
+/* ── Control bar: dice spinner while a compile is in flight ── */
+.sim-viewport.sim-busy .ctrl-btn[data-action="randomize"] .ctrl-icon { visibility: hidden; }
+.sim-viewport.sim-busy .ctrl-btn[data-action="randomize"]::after {
+  content: ''; opacity: 1; left: 50%; top: 50%; bottom: auto; width: 14px; height: 14px; margin: -8px 0 0 -8px; transform: none;
+  background: none; border: 1.5px solid var(--accent); border-right-color: transparent; border-radius: 50%;
+  animation: sim-spin 0.7s linear infinite;
+}
+
+/* ── H: hide every overlay, canvas only ── */
+.sim-viewport.ui-hidden :is(.controls, .params-panel, .fps-display, .cppn-minimap, .scrub-list, .scrub-overlay, .scroll-down, .sim-help, .touch-ring) { display: none !important; }
+
+/* ── ? reference card: glyph · input · effect rows, no prose ── */
+.sim-help {
+  position: absolute; right: 1rem; bottom: calc(0.9rem + 40px); z-index: 11; width: max-content; max-width: calc(100vw - 2rem);
+  display: grid; grid-auto-flow: column; grid-auto-columns: max-content; gap: 0 16px; padding: 10px 14px 12px;
+  background: rgba(8, 6, 4, 0.92); backdrop-filter: blur(10px); border: 1px solid var(--bg-surface-border); border-radius: 8px;
+  color: var(--text-body); font-size: 11px; line-height: 1.3;
+  opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.sim-help.show { opacity: 1; transform: none; pointer-events: auto; }
+.sim-help h4 { margin: 0 0 7px; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+.sim-help section + section { padding-left: 16px; border-left: 1px solid var(--bg-surface-border); }
+.sim-help dl { display: grid; grid-template-columns: 18px max-content 1fr; gap: 5px 8px; margin: 0; align-items: center; }
+.sim-help dt { display: contents; }
+.sim-help .lb { color: var(--text-body); font-variant: all-small-caps; letter-spacing: 0.03em; font-size: 12px; white-space: nowrap; }
+.sim-help dd { margin: 0; color: var(--text-primary); white-space: nowrap; }
+.sim-help .hg { width: 14px; height: 14px; justify-self: center; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.sim-help .hg-chip, .sim-help .hg-ix {
+  justify-self: center; font: 500 8px ui-monospace, Menlo, monospace; line-height: 1.3; white-space: nowrap;
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 3px; padding: 1px 3px;
+}
+.sim-help .hg-ix { background: var(--accent); color: var(--bg-primary); border-color: transparent; padding: 1px 4px; }
+@media (max-width: 768px) {
+  .sim-help { right: 0.6rem; bottom: auto; top: calc(0.6rem + 46px); left: 0.6rem; width: auto; grid-auto-flow: row; gap: 10px 0; transform: translateY(-4px); }
+  .sim-help section + section { padding-left: 0; border-left: 0; padding-top: 8px; border-top: 1px solid var(--bg-surface-border); }
+  .sim-help dl { grid-template-columns: 18px max-content minmax(0, 1fr); }
+  .sim-help dd { white-space: normal; }
+}

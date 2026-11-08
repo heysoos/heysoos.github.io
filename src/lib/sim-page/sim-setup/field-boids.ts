@@ -6,6 +6,8 @@ import { FIELD_BOIDS_PRESETS } from '../../../data/field-boids-presets';
 import { createPresetManager } from '../../presets/preset-manager';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
 import { attachUndoKeys } from '../../presets/undo-history';
+import { wireControlBar, setSettingsOpen, KEY_ROWS, PARAM_ROWS_MOUSE, PARAM_ROWS_TOUCH } from '../control-bar';
+import type { HelpSection } from '../help-popover';
 import { isPhoneLayout } from '../bottom-sheet';
 import { createTiltSensor, tiltMaybeAvailable, type TiltSensor } from '../tilt-sensor';
 import { wireHandleHistory } from '../handle-actions';
@@ -138,18 +140,17 @@ export async function setupFieldBoids(
       scrub.dispose();
       scrub = null;
       viewport.classList.remove('scrub-open');
-      if (settingsIcon) settingsIcon.textContent = '⚙';
+      setSettingsOpen(false);
     }
   }
   // ⚙ opens the list and turns into × while it is open; pause/reset and the
   // fps readout only show alongside the list (see sim-page.css phone rules).
   const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
-  const settingsIcon = settingsBtn?.querySelector<HTMLElement>('.ctrl-icon') ?? null;
   function setScrubOpen(open: boolean): void {
     scrub?.setVisible(open);
     sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
     viewport.classList.toggle('scrub-open', open);
-    if (settingsIcon) settingsIcon.textContent = open ? '×' : '⚙';
+    setSettingsOpen(open);
   }
   // On phones the ⚙ button toggles the scrub list, not the sheet.
   settingsBtn?.addEventListener('click', (e) => {
@@ -182,7 +183,28 @@ export async function setupFieldBoids(
   buildPanel();
   window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
 
+  const bar = wireControlBar(viewport, {
+    randomize: () => { randomizeKeepingLocks(ctrl, mgr.locks, mgr.history); mgr.rebuild(); },
+    help: fieldBoidsHelp,
+  });
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
-  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); tilt?.dispose(); }, { once: true });
+  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); tilt?.dispose(); bar.dispose(); }, { once: true });
+}
+
+function fieldBoidsHelp(touch: boolean): HelpSection[] {
+  const canvas: HelpSection = touch
+    ? { title: 'Canvas', rows: [
+        { glyph: 'hp-point', label: '1 finger', effect: 'attract · drag carries' },
+        { glyph: 'hp-pinch', label: '2 fingers', effect: 'pinch zoom · pan' },
+        { glyph: 'hp-tilt', label: 'tilt', effect: 'gravity (Device row)' },
+        { glyph: 'hp-touch', label: 'tap', effect: 'close list' },
+      ] }
+    : { title: 'Canvas', rows: [
+        { glyph: 'hp-point', label: 'drag', effect: 'attract · carry' },
+        { glyph: 'hp-wheel', label: 'wheel', effect: 'zoom at cursor' },
+        { glyph: 'hp-move', label: 'alt · mid · space', effect: '+ drag pans' },
+      ] };
+  const params: HelpSection = { title: 'Parameters', rows: touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE };
+  return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: KEY_ROWS }];
 }

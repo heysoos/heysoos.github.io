@@ -496,16 +496,34 @@ const underConstruction = project.data.underConstruction ?? false;
           }
 
           const controls = document.getElementById(`controls-${sim}`);
+          const togglePlay = () => {
+            // Controllers with pause() keep drawing while frozen (zoom, pan, Look stay live).
+            const freeze = (controller as { pause?: () => void }).pause?.bind(controller) ?? controller.stop.bind(controller);
+            const btn = controls?.querySelector('[data-action="play-pause"]');
+            if (playing) freeze(); else controller.start();
+            playing = !playing;
+            btn?.classList.toggle("paused", !playing);
+            btn?.setAttribute("data-label", playing ? "pause" : "play");
+          };
+          // Keys: P pause · R reset · H hide the UI · ? controls card (space/alt are gesture modifiers).
+          document.addEventListener("keydown", (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+            const k = e.key.toLowerCase();
+            if (k === "p") togglePlay();
+            else if (k === "r") controller.reset();
+            else if (k === "h") viewport.classList.toggle("ui-hidden");
+            else if (e.key === "?") (controls?.querySelector('[data-action="help"]:not([hidden])') as HTMLElement | null)?.click();
+            else return;
+            e.preventDefault();
+          });
           controls?.addEventListener("click", (e) => {
             const btn = (e.target as HTMLElement).closest("[data-action]");
             if (!btn) return;
             const action = btn.getAttribute("data-action");
             if (action === "play-pause") {
-              // Controllers with pause() keep drawing while frozen (zoom, pan, Look stay live).
-              const freeze = (controller as { pause?: () => void }).pause?.bind(controller) ?? controller.stop.bind(controller);
-              if (playing) { freeze(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
-              else { controller.start(); btn.querySelector(".ctrl-icon")!.textContent = "⏸"; }
-              playing = !playing;
+              togglePlay();
             } else if (action === "reset") {
               controller.reset();
             } else if (action === "fullscreen") {

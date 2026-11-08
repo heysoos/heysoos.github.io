@@ -256,8 +256,8 @@ import '../../styles/sim-page.css';
         if (!btn) return;
         const action = btn.getAttribute('data-action');
         if (action === 'play-pause') {
-          if (playing) { ctrl.stop(); btn.querySelector('.ctrl-icon')!.textContent = '▶'; }
-          else { ctrl.start(); btn.querySelector('.ctrl-icon')!.textContent = '⏸'; }
+          if (playing) ctrl.stop(); else ctrl.start();
+          btn.classList.toggle('paused', playing);
           playing = !playing;
         } else if (action === 'reset') {
           ctrl.reset();

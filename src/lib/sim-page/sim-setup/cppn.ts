@@ -26,6 +26,8 @@ import { wireHandleHistory } from '../handle-actions';
 import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
 import type { ParamGroup } from '../param-spec';
 import { attachCPPNGestures } from '../cppn-gestures';
+import { wireControlBar, setSettingsOpen, KEY_ROWS, PARAM_ROWS_MOUSE, PARAM_ROWS_TOUCH } from '../control-bar';
+import type { HelpSection } from '../help-popover';
 
 const RES_KEY = 'cppn:maxResolution';
 const ARCH_DEBOUNCE_MS = 180;
@@ -163,17 +165,16 @@ export async function setupCPPN(
       scrub.dispose();
       scrub = null;
       viewport.classList.remove('scrub-open');
-      if (settingsIcon) settingsIcon.textContent = '⚙';
+      setSettingsOpen(false);
     }
   }
   // ⚙ opens the list and turns into × while it is open (sim-page.css phone rules).
   const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
-  const settingsIcon = settingsBtn?.querySelector<HTMLElement>('.ctrl-icon') ?? null;
   function setScrubOpen(open: boolean): void {
     scrub?.setVisible(open);
     sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
     viewport.classList.toggle('scrub-open', open);
-    if (settingsIcon) settingsIcon.textContent = open ? '×' : '⚙';
+    setSettingsOpen(open);
   }
   settingsBtn?.addEventListener('click', (e) => {
     if (!scrub) return;
@@ -209,7 +210,34 @@ export async function setupCPPN(
   buildPanel();
   window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
 
+  const bar = wireControlBar(viewport, { randomize, help: helpSections });
+
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
-  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); gestures.dispose(); }, { once: true });
+  document.addEventListener('pagehide', () => { detachKeys(); unwireHandle(); mgr.dispose(); gestures.dispose(); bar.dispose(); }, { once: true });
+}
+
+const CHIP = '<span class="hg-chip">tanh ›</span>';
+const IX = '<span class="hg-ix">3</span>';
+function helpSections(touch: boolean): HelpSection[] {
+  const canvas: HelpSection = touch
+    ? { title: 'Canvas', rows: [
+        { glyph: 'hp-point', label: '1 finger', effect: 'latent scrub · motion holds' },
+        { glyph: 'hp-pinch', label: '2 fingers', effect: 'pinch zoom · pan' },
+        { glyph: 'hp-touch', label: 'tap', effect: 'close list' },
+        { glyph: 'hp-map', label: 'minimap', effect: 'reset view · ×2 reset latent' },
+      ] }
+    : { title: 'Canvas', rows: [
+        { glyph: 'hp-point', label: 'drag', effect: 'latent scrub · motion holds' },
+        { glyph: 'hp-wheel', label: 'wheel', effect: 'zoom at cursor' },
+        { glyph: 'hp-move', label: 'alt · mid · space', effect: '+ drag pans' },
+        { glyph: 'hp-map', label: 'minimap', effect: 'reset view · ×2 reset latent' },
+      ] };
+  const params: HelpSection = { title: 'Parameters', rows: [
+    ...(touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE),
+    { glyph: IX, label: 'drag', effect: 'reorder layer' },
+    { glyph: CHIP, label: touch ? 'tap' : 'click', effect: 'next activation' },
+    { glyph: CHIP, label: 'hold · slide', effect: 'scrub activations' },
+  ] };
+  return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: KEY_ROWS }];
 }
