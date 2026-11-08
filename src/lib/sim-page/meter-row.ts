@@ -16,6 +16,52 @@ export interface MeterRowOpts extends NumRange {
   lock?: ParamLockBinding;
   /** Called after any change; the default refreshes this row only. */
   onChange?: () => void;
+  /** Drag moves one `step` per this many px instead of mapping the range (seeds). */
+  stepDrag?: number;
+}
+
+/** Desktop drag-to-scrub on any element: sideways drag changes the value
+ *  (shift = fine), coalesced into one undo entry. Alt-click is left to the
+ *  caller. Returns true from `isDragging()` right after a drag so a click
+ *  handler can ignore the click that follows. */
+export function attachMeterDrag(row: HTMLElement, o: MeterRowOpts & { refresh(): void }): { suppressClick(): boolean } {
+  let id = -1, x0 = 0, s0 = 0, v0 = 0, active = false, suppress = false;
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.altKey || (e.target as HTMLElement).tagName === 'INPUT') return;
+    id = e.pointerId; x0 = e.clientX; active = false;
+    v0 = o.get(); s0 = toSlider(o, v0);
+    try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+  });
+  row.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== id) return;
+    const dx = e.clientX - x0;
+    if (!active) {
+      if (Math.abs(dx) < SLOP) return;
+      active = true; suppress = true;
+      row.classList.add('dragging');
+      o.history?.beginGesture(o.label);
+    }
+    e.preventDefault();
+    const k = e.shiftKey ? FINE : 1;
+    if (o.stepDrag) {
+      o.set(Math.min(o.max, Math.max(o.min, v0 + Math.round(dx * k / o.stepDrag) * o.step)));
+    } else {
+      const range = toSlider(o, o.max) - toSlider(o, o.min);
+      const s = Math.min(toSlider(o, o.max), Math.max(toSlider(o, o.min), s0 + (dx / ROW_PX) * range * k));
+      o.set(fromSlider(o, s));
+    }
+    o.history?.touch();
+    o.onChange?.();
+    o.refresh();
+  });
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
+    id = -1;
+    if (active) { active = false; row.classList.remove('dragging'); o.history?.endGesture(); }
+  };
+  row.addEventListener('pointerup', end);
+  row.addEventListener('pointercancel', end);
+  return { suppressClick: () => { const s = suppress; suppress = false; return s; } };
 }
 
 export interface MeterRowHandle {
@@ -49,44 +95,14 @@ export function createMeterRow(container: HTMLElement, o: MeterRowOpts): MeterRo
   };
 
   // ── Drag to scrub ──
-  let id = -1, x0 = 0, s0 = 0, active = false, suppressClick = false, downOnValue = false;
-  row.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.altKey || (e.target as HTMLElement).tagName === 'INPUT') return;
-    id = e.pointerId; x0 = e.clientX; active = false;
-    // Capture retargets the later click to the row, so remember the press target here.
-    downOnValue = !!(e.target as HTMLElement).closest('.v');
-    s0 = toSlider(o, o.get());
-    try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-  });
-  row.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== id) return;
-    const dx = e.clientX - x0;
-    if (!active) {
-      if (Math.abs(dx) < SLOP) return;
-      active = true; suppressClick = true;
-      row.classList.add('dragging');
-      o.history?.beginGesture(o.label);
-    }
-    e.preventDefault();
-    const range = toSlider(o, o.max) - toSlider(o, o.min);
-    const k = e.shiftKey ? FINE : 1;
-    const s = Math.min(toSlider(o, o.max), Math.max(toSlider(o, o.min), s0 + (dx / ROW_PX) * range * k));
-    o.set(fromSlider(o, s));
-    o.history?.touch();
-    o.onChange?.();
-    refresh();
-  });
-  const end = (e: PointerEvent) => {
-    if (e.pointerId !== id) return;
-    id = -1;
-    if (active) { active = false; row.classList.remove('dragging'); o.history?.endGesture(); }
-  };
-  row.addEventListener('pointerup', end);
-  row.addEventListener('pointercancel', end);
+  let downOnValue = false;
+  // Capture retargets the later click to the row, so remember the press target here.
+  row.addEventListener('pointerdown', (e) => { downOnValue = !!(e.target as HTMLElement).closest('.v'); });
+  const drag = attachMeterDrag(row, { ...o, refresh });
 
   // ── Click: alt locks, ctrl/cmd (or a plain click on the number) types ──
   row.addEventListener('click', (e) => {
-    if (suppressClick) { suppressClick = false; return; }
+    if (drag.suppressClick()) return;
     if (e.altKey && o.lock) { e.preventDefault(); o.lock.locks.toggle(o.lock.key); refresh(); return; }
     if (e.ctrlKey || e.metaKey || downOnValue) { e.preventDefault(); edit(); }
   });

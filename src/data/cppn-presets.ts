@@ -3,6 +3,12 @@ import type { CPPNPreset } from '../components/simulations/cppn/cppn-types';
 
 import softColorsWeights from './cppn-weights/soft-colors.json';
 import rosesWeights from './cppn-weights/roses.json';
+import halloweenWeights from './cppn-weights/halloween.json';
+import dawnDuskWeights from './cppn-weights/dawn-dusk.json';
+import acidWeights from './cppn-weights/acid.json';
+import acidSnailWeights from './cppn-weights/acid-snail.json';
+import hypnosisWeights from './cppn-weights/hypnosis.json';
+import ebbsFlowsWeights from './cppn-weights/ebbs-flows.json';
 
 export type { CPPNPreset };
 
@@ -113,5 +119,221 @@ export const CPPN_PRESETS: CPPNPreset[] = [
     },
     "seed": 1995755334,
     "weights": rosesWeights
+  },
+  {
+    "id": "halloween",
+    "name": "Halloween",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 26,
+          "activation": "cos"
+        },
+        {
+          "width": 65,
+          "activation": "sin"
+        },
+        {
+          "width": 3,
+          "activation": "tanh"
+        },
+        {
+          "width": 4,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "glorot",
+        "scale": 3.32
+      },
+      "scale": 2,
+      "motion": {
+        "speed": 0.05,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 1488675912,
+    "weights": halloweenWeights
+  },
+  {
+    "id": "dawn-dusk",
+    "name": "Dawn/Dusk",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 10,
+          "activation": "tanh"
+        },
+        {
+          "width": 161,
+          "activation": "tanh"
+        },
+        {
+          "width": 10,
+          "activation": "tanh"
+        },
+        {
+          "width": 4,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "glorot",
+        "scale": 3.2
+      },
+      "scale": 2,
+      "motion": {
+        "speed": 0.05,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 31118744,
+    "weights": dawnDuskWeights
+  },
+  {
+    "id": "acid",
+    "name": "Acid",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 118,
+          "activation": "sin"
+        },
+        {
+          "width": 11,
+          "activation": "sin"
+        },
+        {
+          "width": 19,
+          "activation": "sin"
+        },
+        {
+          "width": 4,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "normal",
+        "sigma": 0.9
+      },
+      "scale": 2,
+      "motion": {
+        "speed": 0.05,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 4216275578,
+    "weights": acidWeights
+  },
+  {
+    "id": "acid-snail",
+    "name": "Acid Snail",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 36,
+          "activation": "abs"
+        },
+        {
+          "width": 13,
+          "activation": "sin"
+        }
+      ],
+      "distribution": {
+        "type": "glorot",
+        "scale": 2.22
+      },
+      "scale": 5,
+      "motion": {
+        "speed": 0.13,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 3962981586,
+    "weights": acidSnailWeights
+  },
+  {
+    "id": "hypnosis",
+    "name": "Hypnosis",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 127,
+          "activation": "abs"
+        },
+        {
+          "width": 6,
+          "activation": "sin"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.74,
+        "magnitude": 5.1000000000000005
+      },
+      "scale": 0.45,
+      "motion": {
+        "speed": 0.03,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 3916083385,
+    "weights": hypnosisWeights
+  },
+  {
+    "id": "ebbs-flows",
+    "name": "Ebbs/Flows",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 43,
+          "activation": "cos"
+        },
+        {
+          "width": 66,
+          "activation": "sin"
+        },
+        {
+          "width": 2,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.79,
+        "magnitude": 2.4000000000000004
+      },
+      "scale": 2.4000000000000004,
+      "motion": {
+        "speed": 0.03,
+        "spread": 1.3,
+        "depth": 0.2,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 1847516787,
+    "weights": ebbsFlowsWeights
   }
 ];

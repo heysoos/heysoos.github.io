@@ -7,7 +7,7 @@
 // a pinned layer sensibly).
 
 import {
-  ACTIVATIONS, DIST_TYPES, MAX_LAYERS, MAX_WIDTH, MIN_WIDTH, isArchKey, layersFromFlat, paramCount,
+  ACTIVATIONS, DIST_TYPES, MAX_LAYERS, MAX_WIDTH, MIN_WIDTH, layersFromFlat, paramCount,
   type CPPNFlatParams, type FlatKey,
 } from './cppn-spec';
 import type { LayerConfig } from './cppn-types';

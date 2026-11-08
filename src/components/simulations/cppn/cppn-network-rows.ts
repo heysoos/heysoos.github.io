@@ -17,7 +17,7 @@ const SLOP = 8;
 const ACT_STEP_PX = 26;       // slide distance per activation step
 const stop = (e: Event) => e.stopPropagation();
 
-export function renderNetworkRows(container: HTMLElement, api: CustomRowApi): { refresh(): void } {
+export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row'): { refresh(): void } {
   container.className += ' cppn-layers';
   const stack = document.createElement('div');
   const foot = document.createElement('div');
@@ -163,7 +163,7 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi): { 
     for (let i = 0; i < n; i++) {
       const spec = layerWidthSpec(i);
       const r = document.createElement('div');
-      r.className = 'cppn-layer scrub-row';
+      r.className = `cppn-layer ${rowClass}`;
       r.innerHTML = `<span class="ix" title="Drag to reorder">${i + 1}</span><span class="w"><i class="lk"></i>width <b class="v"></b></span><button class="chip"></button>`;
       const ix = r.querySelector<HTMLElement>('.ix')!;
       const chip = r.querySelector<HTMLButtonElement>('.chip')!;

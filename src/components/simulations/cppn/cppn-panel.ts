@@ -1,363 +1,246 @@
 // src/components/simulations/cppn/cppn-panel.ts
-import type { CPPNController, LayerConfig } from './cppn-controller';
-import type { CPPNPreset, Activation } from './cppn-types';
-import { paramCount } from './cppn-spec';
+// Desktop CPPN panel, built from the same spec as the phone card so both
+// have the same layout: a pinned header (undo · redo · ⚄ Randomize · ×),
+// the preset section, then group bands — Network (layer stack), Weights,
+// Motion, View, Device — as one-line meter rows. Drag a row to scrub
+// (shift = fine), click the number to type, alt-click to lock.
+//
+// The gallery page passes a flat get/set (sim-setup/cppn.ts); the admin
+// page passes a controller and gets a direct binding derived from it.
+
+import type { CPPNController } from './cppn-controller';
+import type { CPPNPreset } from './cppn-types';
+import type { ParamGroup, NumSpec, EnumSpec, CustomRowApi } from '../../../lib/sim-page/param-spec';
+import type { UndoHistory } from '../../../lib/presets/undo-history';
+import type { ParamLocks } from '../../../lib/presets/param-locks';
+import { createMeterRow, attachMeterDrag, type MeterRowHandle } from '../../../lib/sim-page/meter-row';
+import { pillStyle } from '../boids/panel/panel-styles';
+import { CPPN_GROUPS, configFromFlat, isArchKey, isWeightKey, toFlat, type CPPNFlatParams, type FlatKey } from './cppn-spec';
+import { renderNetworkRows } from './cppn-network-rows';
 
 export interface CPPNPanelOpts {
+  /** Groups to render; defaults to CPPN_GROUPS with the layer stack attached. */
+  groups?: ParamGroup<string>[];
+  /** Flat params object for showIf predicates (a live proxy is fine). */
+  params?: unknown;
+  get?: (key: string) => number;
+  set?: (key: string, value: number) => void;
+  history?: UndoHistory;
+  locks?: ParamLocks;
+  /** Gallery page: renders the shared preset section. */
+  buildPresets?: (container: HTMLElement) => void;
+  onRandomize?: () => void;
+  onClose?: () => void;
+  // Admin page: plain preset pills.
   presets?: CPPNPreset[];
   activePresetId?: string;
   onPresetLoad?: (preset: CPPNPreset) => void;
-  onClose?: () => void;
-  /** Gallery page: render the shared preset section instead of plain pills. */
-  buildPresets?: (container: HTMLElement) => void;
-  /** Called after any control changes the controller (label for undo). */
-  onChange?: (label: string) => void;
-  /** Full randomize (architecture, weights, motion). Falls back to new weights only. */
-  onRandomize?: () => void;
-  /** Weight budget shown next to the parameter count. */
-  budget?: number;
 }
-let randomizeHook: (() => void) | null = null;
-let budgetHint = 0;
 
-const ACTIVATIONS: Activation[] = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'];
+export interface CPPNPanelHandle {
+  refresh(): void;
+  dispose(): void;
+}
 
-// Set per build; tabs call it after each change so the host can record undo.
-let notify: (label: string) => void = () => {};
-
-// ── DOM helpers ───────────────────────────────────────────────────
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K, css: string, text?: string,
-): HTMLElementTagNameMap[K] {
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, css: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
-  if (css)             e.style.cssText = css;
+  if (css) e.style.cssText = css;
   if (text !== undefined) e.textContent = text;
   return e;
 }
 
-function divider(parent: HTMLElement): void {
-  parent.appendChild(el('div', 'height:1px;background:var(--bg-surface-border);margin:0.4rem 0 0.3rem;'));
+/** Direct binding for pages without a preset manager (admin): edits apply
+ *  to the controller at once; architecture edits recompile immediately. */
+function directBinding(ctrl: CPPNController): { get(k: string): number; set(k: string, v: number): void; params: CPPNFlatParams } {
+  const flat = () => toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating);
+  return {
+    get: (k) => flat()[k as FlatKey] as number,
+    set: (k, v) => {
+      const f = { ...flat(), [k]: v } as CPPNFlatParams;
+      if (k === 'animate') { ctrl.setAnimate(v !== 0); return; }
+      const config = configFromFlat(ctrl.config, f);
+      if (isArchKey(k) && !k.endsWith('Act')) { void ctrl.setLayers(config.layers); ctrl.config = { ...ctrl.config, ...config }; return; }
+      ctrl.config = config;
+      if (isWeightKey(k)) ctrl.randomizeWeights(f.seed);
+    },
+    params: new Proxy({}, { get: (_t, k) => flat()[k as FlatKey] }) as CPPNFlatParams,
+  };
 }
-
-function heading(parent: HTMLElement, text: string): void {
-  parent.appendChild(el('p',
-    'font-size:0.6rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0 0 0.25rem;',
-    text));
-}
-
-function row(parent: HTMLElement, css = ''): HTMLElement {
-  const r = el('div', 'display:flex;align-items:center;gap:4px;margin-bottom:0.3rem;' + css);
-  parent.appendChild(r);
-  return r;
-}
-
-function slider(
-  parent: HTMLElement, label: string,
-  min: number, max: number, step: number, value: number,
-  onChange: (v: number) => void,
-): void {
-  const wrap   = el('div', 'display:flex;flex-direction:column;gap:0.1rem;margin-bottom:0.3rem;');
-  const top    = el('div', 'display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-body);');
-  const valEl  = el('span', 'color:var(--accent);font-variant-numeric:tabular-nums;', String(value));
-  top.appendChild(el('span', '', label));
-  top.appendChild(valEl);
-  const inp = el('input', 'width:100%;accent-color:var(--accent);cursor:pointer;');
-  inp.type = 'range';
-  inp.min = String(min); inp.max = String(max); inp.step = String(step); inp.value = String(value);
-  inp.addEventListener('input', () => {
-    const v = parseFloat(inp.value);
-    valEl.textContent = v.toFixed(String(step).includes('.') ? String(step).split('.')[1].length : 0);
-    onChange(v);
-  });
-  wrap.appendChild(top);
-  wrap.appendChild(inp);
-  parent.appendChild(wrap);
-}
-
-function selectEl(
-  parent: HTMLElement, options: string[], value: string,
-  onChange: (v: string) => void,
-): HTMLSelectElement {
-  const s = el('select',
-    'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 4px;color:var(--text-body);font-size:0.72rem;') as HTMLSelectElement;
-  for (const opt of options) {
-    const o = document.createElement('option');
-    o.value = opt; o.textContent = opt;
-    if (opt === value) o.selected = true;
-    s.appendChild(o);
-  }
-  s.addEventListener('change', () => onChange(s.value));
-  parent.appendChild(s);
-  return s;
-}
-
-function smallBtn(parent: HTMLElement, text: string, onClick: () => void, css = ''): HTMLButtonElement {
-  const b = el('button',
-    'padding:0.2rem 0.5rem;border:1px solid var(--bg-surface-border);border-radius:3px;background:transparent;color:var(--text-muted);font-size:0.68rem;cursor:pointer;white-space:nowrap;' + css,
-    text) as HTMLButtonElement;
-  b.addEventListener('click', onClick);
-  parent.appendChild(b);
-  return b;
-}
-
-function numInput(
-  parent: HTMLElement, value: number, min: number, max: number,
-  onChange: (v: number) => void,
-): HTMLInputElement {
-  const inp = el('input',
-    'width:48px;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 4px;color:var(--text-body);font-size:0.72rem;text-align:right;') as HTMLInputElement;
-  inp.type = 'number'; inp.min = String(min); inp.max = String(max); inp.value = String(value);
-  inp.addEventListener('change', () => {
-    const v = Math.max(min, Math.min(max, parseInt(inp.value) || min));
-    inp.value = String(v);
-    onChange(v);
-  });
-  parent.appendChild(inp);
-  return inp;
-}
-
-// ── Arch tab ─────────────────────────────────────────────────────
-
-function buildArchTab(container: HTMLElement, ctrl: CPPNController): void {
-  container.innerHTML = '';
-
-  container.appendChild(el('div',
-    'padding:4px 6px;border:1px solid var(--bg-surface-border);border-radius:4px;font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;text-align:center;',
-    'Input: x, y, r + z[16]'));
-
-  for (let li = 0; li < ctrl.config.layers.length; li++) {
-    const layer = ctrl.config.layers[li];
-    const rowEl = row(container, 'background:var(--bg-surface);border-radius:4px;padding:3px 5px;');
-    rowEl.appendChild(el('span', 'font-size:0.68rem;color:var(--text-muted);', `L${li}: `));
-
-    numInput(rowEl, layer.width, 4, 512, async (v) => {
-      const layers = ctrl.config.layers.map((l, i) => i === li ? { ...l, width: v } : l);
-      await ctrl.setLayers(layers);
-      notify('Layer width');
-      buildArchTab(container, ctrl);
-    });
-
-    selectEl(rowEl, ACTIVATIONS, layer.activation, async (v) => {
-      const layers = ctrl.config.layers.map((l, i) => i === li ? { ...l, activation: v as Activation } : l);
-      await ctrl.setLayers(layers);
-      notify('Activation');
-    });
-
-    const delBtn = el('button', 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;padding:0 2px;', '×');
-    delBtn.addEventListener('click', async () => {
-      if (ctrl.config.layers.length <= 1) return;
-      await ctrl.setLayers(ctrl.config.layers.filter((_, i) => i !== li));
-      notify('Remove layer');
-      buildArchTab(container, ctrl);
-    });
-    rowEl.appendChild(delBtn);
-  }
-
-  const addBtn = el('button',
-    'width:100%;margin-top:3px;padding:0.2rem;border:1px dashed var(--bg-surface-border);border-radius:4px;background:transparent;color:var(--text-muted);font-size:0.72rem;cursor:pointer;',
-    '+ Add layer');
-  addBtn.addEventListener('click', async () => {
-    const prev = ctrl.config.layers[ctrl.config.layers.length - 1];
-    await ctrl.setLayers([...ctrl.config.layers, { width: prev.width, activation: 'tanh' }]);
-    notify('Add layer');
-    buildArchTab(container, ctrl);
-  });
-  container.appendChild(addBtn);
-
-  container.appendChild(el('div',
-    'margin-top:4px;padding:4px 6px;border:1px solid var(--bg-surface-border);border-radius:4px;font-size:0.68rem;color:var(--text-muted);text-align:center;',
-    'Output: RGB (sigmoid)'));
-  const n = paramCount(ctrl.config.layers);
-  const over = budgetHint > 0 && n > budgetHint;
-  container.appendChild(el('p',
-    `margin:4px 0 0;font-size:0.62rem;text-align:right;color:${over ? '#e0a050' : 'var(--text-muted)'};`,
-    `${n.toLocaleString()} weights${budgetHint ? ` · budget ${budgetHint.toLocaleString()}` : ''}`));
-
-  divider(container);
-  heading(container, 'Coordinate scale');
-  slider(container, 'Scale', 0.1, 5.0, 0.05, ctrl.config.scale, (v) => { ctrl.setScale(v); notify('Scale'); });
-
-  divider(container);
-  heading(container, 'Render quality');
-  slider(container, 'Max resolution', 256, 1920, 64, ctrl.maxResolution,
-    (v) => { ctrl.maxResolution = v; });
-}
-
-// ── Weights tab ───────────────────────────────────────────────────
-
-function buildWeightsTab(container: HTMLElement, ctrl: CPPNController): void {
-  container.innerHTML = '';
-  heading(container, 'Distribution');
-
-  const paramBox = el('div', 'display:flex;flex-direction:column;gap:0;margin-top:0.2rem;');
-
-  function renderParams(): void {
-    paramBox.innerHTML = '';
-    const dist = ctrl.config.distribution;
-    switch (dist.type) {
-      case 'normal':
-        slider(paramBox, 'σ (std dev)', 0.1, 5.0, 0.05, dist.sigma ?? 1.0,
-          (v) => { ctrl.setDistribution({ ...dist, sigma: v }); notify('σ'); });
-        break;
-      case 'uniform':
-        slider(paramBox, 'a (range ±a)', 0.1, 5.0, 0.05, dist.a ?? 1.0,
-          (v) => { ctrl.setDistribution({ ...dist, a: v }); notify('Range'); });
-        break;
-      case 'glorot':
-        slider(paramBox, 'Scale', 0.1, 5.0, 0.05, dist.scale ?? 1.0,
-          (v) => { ctrl.setDistribution({ ...dist, scale: v }); notify('Scale'); });
-        break;
-      case 'sparse':
-        slider(paramBox, 'Sparsity', 0.0, 0.99, 0.01, dist.sparsity ?? 0.8,
-          (v) => { ctrl.setDistribution({ ...dist, sparsity: v }); notify('Sparsity'); });
-        slider(paramBox, 'Magnitude', 0.1, 10.0, 0.1, dist.magnitude ?? 2.0,
-          (v) => { ctrl.setDistribution({ ...dist, magnitude: v }); notify('Magnitude'); });
-        break;
-    }
-  }
-
-  selectEl(container, ['normal', 'uniform', 'glorot', 'sparse'], ctrl.config.distribution.type,
-    (v) => { ctrl.setDistribution({ type: v as any }); notify('Distribution'); renderParams(); });
-
-  container.appendChild(paramBox);
-  renderParams();
-
-  divider(container);
-  heading(container, 'Seed');
-
-  const seedRow = row(container);
-  const seedInp = el('input',
-    'flex:1;background:var(--bg-primary);border:1px solid var(--bg-surface-border);border-radius:3px;padding:2px 5px;color:var(--text-body);font-size:0.72rem;') as HTMLInputElement;
-  seedInp.type = 'number';
-  seedInp.value = String(ctrl.seed);
-  seedInp.addEventListener('change', () => {
-    ctrl.setSeed(parseInt(seedInp.value) || 0);
-    notify('Seed');
-    seedInp.value = String(ctrl.seed);
-  });
-  seedRow.appendChild(seedInp);
-
-  const randBtn = el('button',
-    'margin-top:0.3rem;width:100%;padding:0.35rem;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-size:0.72rem;cursor:pointer;',
-    randomizeHook ? '⚄ Randomize everything' : '⟳ Randomize weights') as HTMLButtonElement;
-  randBtn.className = 'cppn-random';
-  randBtn.addEventListener('click', () => {
-    if (randomizeHook) { randomizeHook(); return; }
-    ctrl.randomizeWeights(Date.now() & 0xffffffff);
-    notify('Randomize');
-    seedInp.value = String(ctrl.seed);
-  });
-  container.appendChild(randBtn);
-}
-
-// ── Z tab ─────────────────────────────────────────────────────────
-
-function buildZTab(container: HTMLElement, ctrl: CPPNController): void {
-  container.innerHTML = '';
-
-  const animRow = row(container);
-  animRow.appendChild(el('span', 'flex:1;font-size:0.72rem;color:var(--text-body);', 'Animate'));
-  const animCheck = el('input', '') as HTMLInputElement;
-  animCheck.type = 'checkbox';
-  animCheck.checked = ctrl.isAnimating;
-  animCheck.addEventListener('change', () => { ctrl.setAnimate(animCheck.checked); notify('Animate'); });
-  animRow.appendChild(animCheck);
-
-  divider(container);
-  heading(container, 'Latent ladder');
-  container.appendChild(el('p', 'margin:0 0 0.3rem;font-size:0.62rem;color:var(--text-muted);line-height:1.4;',
-    'Band b oscillates at speed·spread^b with amplitude depth·falloff^b; the 16 z dims are split across the bands.'));
-  const m = ctrl.config.motion;
-  slider(container, 'Speed (Hz)', 0.005, 0.3, 0.005, m.speed,   (v) => { ctrl.setMotion({ speed: v });   notify('Speed'); });
-  slider(container, 'Spread',     1.0,   2.5, 0.05,  m.spread,  (v) => { ctrl.setMotion({ spread: v });  notify('Spread'); });
-  slider(container, 'Depth',      0.02,  0.6, 0.01,  m.depth,   (v) => { ctrl.setMotion({ depth: v });   notify('Depth'); });
-  slider(container, 'Falloff',    0.3,   1.0, 0.05,  m.falloff, (v) => { ctrl.setMotion({ falloff: v }); notify('Falloff'); });
-  const bandRow = row(container);
-  bandRow.appendChild(el('span', 'font-size:0.72rem;color:var(--text-body);flex:1;', 'Bands'));
-  selectEl(bandRow, ['1', '2', '3', '4'], String(m.bands), (v) => {
-    ctrl.setMotion({ bands: parseInt(v) });
-    notify('Bands');
-  });
-
-  divider(container);
-  smallBtn(container, 'Randomize dim offsets', () => { ctrl.randomizeDimOffsets(); });
-}
-
-// ── Main export ───────────────────────────────────────────────────
 
 export function buildCPPNPanel(
   container: HTMLElement,
-  ctrl: CPPNController,
-  opts: CPPNPanelOpts = {},
-): void {
+  ctrlOrOpts: CPPNController | CPPNPanelOpts,
+  maybeOpts: CPPNPanelOpts = {},
+): CPPNPanelHandle {
+  const ctrl = 'config' in ctrlOrOpts ? (ctrlOrOpts as CPPNController) : null;
+  const opts: CPPNPanelOpts = ctrl ? maybeOpts : (ctrlOrOpts as CPPNPanelOpts);
+  const direct = ctrl && !(opts.get && opts.set) ? directBinding(ctrl) : null;
+  const get = opts.get ?? direct!.get;
+  const set = opts.set ?? direct!.set;
+  const params = opts.params ?? direct?.params;
+  const { history, locks } = opts;
+  const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g => g.name === 'Network' ? { ...g, render: renderNetworkRows } : g);
+
   container.innerHTML = '';
-  notify = opts.onChange ?? (() => {});
-  randomizeHook = opts.onRandomize ?? null;
-  budgetHint = opts.budget ?? 0;
+  const disposers: Array<() => void> = [];
+  const refreshers: Array<() => void> = [];
 
-  // Header
-  const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;');
-  header.appendChild(el('p',
-    'font-size:0.65rem;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin:0;',
-    'CPPN'));
-  if (opts.onClose) {
-    const closeBtn = el('button',
-      'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;line-height:1;padding:0;', '×');
-    closeBtn.addEventListener('click', opts.onClose);
-    header.appendChild(closeBtn);
-  }
-  container.appendChild(header);
+  // ── Pinned header: undo · redo · Randomize · × ──
+  const head = document.createElement('div');
+  head.className = 'fb-head';
+  const mkBtn = (text: string, cls: string, title?: string): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = cls; b.textContent = text; if (title) b.title = title;
+    head.appendChild(b);
+    return b;
+  };
+  const undoBtn = mkBtn('↶', 'h-undo', 'Undo');
+  const redoBtn = mkBtn('↷', 'h-redo', 'Redo');
+  const randomBtn = mkBtn('⚄ Randomize', 'h-random', 'Random architecture, weights and motion (locked rows kept)');
+  head.appendChild(el('span', 'flex:1;'));
+  if (opts.onClose) mkBtn('×', 'h-close', 'Close').addEventListener('click', opts.onClose);
+  container.appendChild(head);
+  undoBtn.addEventListener('click', () => history?.undo());
+  redoBtn.addEventListener('click', () => history?.redo());
+  const refreshHist = () => {
+    undoBtn.disabled = !history?.canUndo();
+    redoBtn.disabled = !history?.canRedo();
+    undoBtn.title = history?.undoLabel() ? `Undo ${history.undoLabel()}` : 'Nothing to undo';
+    redoBtn.title = history?.redoLabel() ? `Redo ${history.redoLabel()}` : 'Nothing to redo';
+  };
+  refreshHist();
+  const unsubHist = history?.subscribe(refreshHist);
+  if (unsubHist) disposers.push(unsubHist);
+  randomBtn.addEventListener('click', () => {
+    if (opts.onRandomize) { opts.onRandomize(); return; }
+    if (ctrl) { ctrl.randomizeWeights(Date.now() & 0xffffffff); refresh(); }
+  });
 
-  // Presets: shared section on the gallery page, plain pills elsewhere (admin)
+  // ── Presets, then the params ──
+  const presetsBody = document.createElement('div');
+  presetsBody.className = 'fb-presets';
+  const body = document.createElement('div');
+  body.className = 'fb-body';
+  container.append(presetsBody, body);
   if (opts.buildPresets) {
-    const presetsBody = el('div', 'margin:0 0 0.4rem;');
-    container.appendChild(presetsBody);
     opts.buildPresets(presetsBody);
   } else if (opts.presets && opts.presets.length > 0) {
     const pillRow = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin:0 0 0.4rem;');
     for (const preset of opts.presets) {
-      const isActive = preset.id === opts.activePresetId;
-      const pill = el('button',
-        `padding:2px 8px;border-radius:12px;font-size:0.68rem;cursor:pointer;${isActive
-          ? 'background:var(--accent);color:var(--bg-primary);border:1px solid transparent;'
-          : 'background:transparent;color:var(--text-muted);border:1px solid var(--bg-surface-border);'}`,
-        preset.name);
+      const pill = el('button', pillStyle(preset.id === opts.activePresetId), preset.name);
       pill.addEventListener('click', () => opts.onPresetLoad?.(preset));
       pillRow.appendChild(pill);
     }
-    container.appendChild(pillRow);
+    presetsBody.appendChild(pillRow);
   }
 
-  // Tab bar + content
-  const tabBar     = el('div', 'display:flex;border-bottom:1px solid var(--bg-surface-border);margin-bottom:0.4rem;');
-  const tabContent = el('div', 'display:flex;flex-direction:column;');
-  container.appendChild(tabBar);
-  container.appendChild(tabContent);
+  const commit = (label: string) => { history?.push(label); refresh(); };
 
-  type Tab = 'Arch' | 'Weights' | 'Z';
-  const TABS: Tab[] = ['Arch', 'Weights', 'Z'];
-  const tabBtns: Partial<Record<Tab, HTMLButtonElement>> = {};
+  // Shared gesture helpers for custom blocks (the layer stack).
+  const api: CustomRowApi = {
+    get, set, commit,
+    attachRowDrag: (row, spec: NumSpec) => {
+      const drag = attachMeterDrag(row, {
+        label: spec.label, min: spec.min, max: spec.max, step: spec.step, scale: spec.scale, int: spec.int, stepDrag: spec.stepDrag,
+        get: () => get(spec.key), set: (v) => set(spec.key, v), history, refresh,
+      });
+      row.addEventListener('click', (e) => { if (drag.suppressClick()) e.stopImmediatePropagation(); }, { capture: true });
+    },
+    attachLongPress: (elm, key) => {
+      // Desktop: alt-click locks (same as meter rows); a long-press works too.
+      elm.addEventListener('click', (e) => { if (e.altKey && locks) { e.preventDefault(); e.stopPropagation(); locks.toggle(key); refresh(); } });
+      let timer = 0;
+      elm.addEventListener('pointerdown', () => { clearTimeout(timer); timer = window.setTimeout(() => { locks?.toggle(key); refresh(); }, 600); });
+      const cancel = () => clearTimeout(timer);
+      elm.addEventListener('pointermove', cancel); elm.addEventListener('pointerup', cancel); elm.addEventListener('pointercancel', cancel);
+      elm.addEventListener('contextmenu', (e) => e.preventDefault());
+    },
+    isLocked: (key) => locks?.isLocked(key) ?? false,
+    setLocked: (key, on) => locks?.set(key, on),
+    refresh: () => refresh(),
+  };
 
-  function switchTab(tab: Tab): void {
-    for (const t of TABS) {
-      const active = t === tab;
-      tabBtns[t]!.style.cssText =
-        'flex:1;padding:0.3rem;background:transparent;border:none;border-bottom:2px solid ' +
-        (active ? 'var(--accent);color:var(--accent);' : 'transparent;color:var(--text-muted);') +
-        'cursor:pointer;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;';
+  // ── Groups ──
+  for (const g of groups) {
+    const h = document.createElement('h6');
+    h.className = 'fb-group';
+    h.textContent = g.name;
+    body.appendChild(h);
+    if (g.note) {
+      const n = el('small', 'display:block;font-size:0.6rem;color:var(--text-muted);margin:-2px 0 4px 2px;');
+      body.appendChild(n);
+      refreshers.push(() => { n.textContent = g.note!(); });
     }
-    if (tab === 'Arch')    buildArchTab(tabContent, ctrl);
-    if (tab === 'Weights') buildWeightsTab(tabContent, ctrl);
-    if (tab === 'Z')       buildZTab(tabContent, ctrl);
+    if (g.render) {
+      const c = document.createElement('div');
+      body.appendChild(c);
+      const block = g.render(c, api, 'meter-row');
+      refreshers.push(() => block.refresh());
+    }
+    for (const spec of g.items) {
+      if (spec.kind === 'num') {
+        const row: MeterRowHandle = createMeterRow(body, {
+          label: spec.label, min: spec.min, max: spec.max, step: spec.step, scale: spec.scale, int: spec.int, stepDrag: spec.stepDrag,
+          history, lock: locks ? { key: spec.key, locks } : undefined,
+          get: () => get(spec.key), set: (v) => set(spec.key, v),
+          onChange: () => { for (const r of refreshers) if (r !== rowRefresh) r(); },
+        });
+        const rowRefresh = () => { row.el.hidden = spec.showIf ? !spec.showIf(params) : false; row.refresh(); };
+        refreshers.push(rowRefresh);
+        disposers.push(() => row.dispose());
+      } else {
+        refreshers.push(enumRow(body, spec, get, set, commit, params, locks));
+      }
+    }
   }
 
-  for (const tab of TABS) {
-    const btn = el('button', '', tab) as HTMLButtonElement;
-    tabBtns[tab] = btn;
-    btn.addEventListener('click', () => switchTab(tab));
-    tabBar.appendChild(btn);
-  }
+  function refresh(): void { for (const r of refreshers) r(); }
+  refresh();
+  const unsubLocks = locks?.subscribe(refresh);
+  if (unsubLocks) disposers.push(unsubLocks);
 
-  switchTab('Arch');
+  return { refresh, dispose() { for (const d of disposers) d(); } };
+}
+
+/** One enum control: segmented bar (also for `cycle` specs, which have
+ *  room for all names on desktop) or a native select. Returns its refresher. */
+function enumRow(
+  parent: HTMLElement, spec: EnumSpec<string>,
+  get: (k: string) => number, set: (k: string, v: number) => void, commit: (label: string) => void,
+  params: unknown, locks?: ParamLocks,
+): () => void {
+  const row = el('div', 'display:flex;align-items:center;gap:6px;margin:2px 0 0.35rem;');
+  row.className = 'cppn-enum-row';
+  const lab = el('span', 'font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);min-width:5.2rem;', spec.label);
+  row.appendChild(lab);
+  const pick = (i: number) => { set(spec.key, i); commit(spec.label); };
+  let update: () => void;
+  if (spec.ui === 'select') {
+    const sel = document.createElement('select');
+    sel.className = 'look-select';
+    spec.names.forEach((n, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = n; sel.appendChild(o); });
+    sel.addEventListener('change', () => pick(+sel.value));
+    row.appendChild(sel);
+    update = () => { sel.value = String(Math.round(get(spec.key))); };
+  } else {
+    const bar = el('div', '');
+    bar.className = spec.ui === 'swatches' ? 'look-swatches' : 'look-segmented';
+    const btns = spec.names.map((n, i) => {
+      const b = document.createElement('button');
+      if (spec.ui === 'swatches') { b.className = 'sw'; b.title = n; b.style.background = spec.colors?.[i] ?? 'currentColor'; }
+      else b.textContent = n;
+      b.addEventListener('click', () => pick(i));
+      bar.appendChild(b);
+      return b;
+    });
+    row.appendChild(bar);
+    update = () => { const v = Math.round(get(spec.key)); btns.forEach((b, i) => b.classList.toggle('on', i === v)); };
+  }
+  if (locks) lab.addEventListener('click', (e) => { if (e.altKey) { locks.toggle(spec.key); } });
+  parent.appendChild(row);
+  return () => {
+    row.hidden = spec.showIf ? !spec.showIf(params) : false;
+    row.classList.toggle('locked', locks?.isLocked(spec.key) ?? false);
+    update();
+  };
 }

@@ -50,7 +50,7 @@ export interface ParamGroup<K extends string = string> {
   /** Optional custom block rendered before the items (e.g. the CPPN layer
    *  stack). It gets the panel's gesture helpers so its rows scrub and lock
    *  like built-in ones, and is refreshed with them. */
-  render?: (container: HTMLElement, api: CustomRowApi) => { refresh(): void };
+  render?: (container: HTMLElement, api: CustomRowApi, rowClass?: string) => { refresh(): void };
 }
 
 /** What a group's custom block may use from the hosting panel. */

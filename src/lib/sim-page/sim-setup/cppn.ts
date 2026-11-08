@@ -83,7 +83,7 @@ export async function setupCPPN(
     const f = pendingFlat;
     pendingFlat = null;
     ctrl.config = configFromFlat(ctrl.config, f);
-    void ctrl.setLayers(ctrl.config.layers).then(() => { scrub?.refresh(); section?.refresh(); });
+    void ctrl.setLayers(ctrl.config.layers).then(() => { scrub?.refresh(); desktop?.refresh(); section?.refresh(); });
   };
   const getParam = (k: string): number => {
     if (k === 'maxResolution') return ctrl.maxResolution;
@@ -123,6 +123,7 @@ export async function setupCPPN(
 
   let section: PresetSectionHandle | null = null;
   let scrub: ScrubPanelHandle | null = null;
+  let desktop: { refresh(): void; dispose(): void } | null = null;
   const scrubKey = 'cppn-scrub-open';
   // showIf predicates and the budget line read the flat params; hand the
   // scrub list a live proxy so they always see the staged state.
@@ -177,18 +178,23 @@ export async function setupCPPN(
   function buildPanel(): void {
     const scrollTop = panelContent.scrollTop;
     section?.dispose();
+    desktop?.dispose(); desktop = null;
     panelContent.innerHTML = '';
     ensureScrub();
     if (scrub) {
       scrub.refresh();
       scrub.rebuildPresets();
     } else {
-      buildCPPNPanel(panelContent, ctrl, {
-        onClose: () => { panel.style.display = 'none'; },
+      desktop = buildCPPNPanel(panelContent, {
+        groups: [...groups, deviceGroup],
+        params: flatProxy,
+        get: getParam,
+        set: setParam,
+        history: mgr.history,
+        locks: mgr.locks,
         buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
-        onChange: (label) => { mgr.history.push(label); section?.refresh(); },
         onRandomize: randomize,
-        budget: budget(),
+        onClose: () => { panel.style.display = 'none'; },
       });
     }
     panelContent.scrollTop = scrollTop;
