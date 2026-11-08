@@ -9,6 +9,19 @@ import acidWeights from './cppn-weights/acid.json';
 import acidSnailWeights from './cppn-weights/acid-snail.json';
 import hypnosisWeights from './cppn-weights/hypnosis.json';
 import ebbsFlowsWeights from './cppn-weights/ebbs-flows.json';
+import filmNoirWeights from './cppn-weights/film-noir.json';
+import wavePoolWeights from './cppn-weights/wave-pool.json';
+import hyperbolicFractalWeights from './cppn-weights/hyperbolic-fractal.json';
+import metalFlowerWeights from './cppn-weights/metal-flower.json';
+import eventHorizonWeights from './cppn-weights/event-horizon.json';
+import hal9000Weights from './cppn-weights/hal9000.json';
+import flandersFieldsWeights from './cppn-weights/flanders-fields.json';
+import acidMoireWeights from './cppn-weights/acid-moire.json';
+import verySleepyWeights from './cppn-weights/very-sleepy.json';
+import relaxWeights from './cppn-weights/relax.json';
+import corpusculeWeights from './cppn-weights/corpuscule.json';
+import qaponWeights from './cppn-weights/qapon.json';
+import boyOrGirlWeights from './cppn-weights/boy-or-girl.json';
 
 export type { CPPNPreset };
 
@@ -335,5 +348,536 @@ export const CPPN_PRESETS: CPPNPreset[] = [
     },
     "seed": 1847516787,
     "weights": ebbsFlowsWeights
+  },
+  {
+    "id": "film-noir",
+    "name": "Film Noir",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 36,
+          "activation": "sin"
+        },
+        {
+          "width": 5,
+          "activation": "tanh"
+        },
+        {
+          "width": 2,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.73,
+        "magnitude": 1.6
+      },
+      "scale": 5,
+      "motion": {
+        "speed": 0.026,
+        "spread": 1.97,
+        "depth": 0.1,
+        "falloff": 0.99,
+        "bands": 3
+      }
+    },
+    "seed": 2597083346,
+    "weights": filmNoirWeights
+  },
+  {
+    "id": "wave-pool",
+    "name": "Wave Pool",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 36,
+          "activation": "sin"
+        },
+        {
+          "width": 5,
+          "activation": "tanh"
+        },
+        {
+          "width": 2,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.73,
+        "magnitude": 1.6
+      },
+      "scale": 5,
+      "motion": {
+        "speed": 0.026,
+        "spread": 1.97,
+        "depth": 0.1,
+        "falloff": 0.99,
+        "bands": 3
+      }
+    },
+    "seed": 3749548003,
+    "weights": wavePoolWeights
+  },
+  {
+    "id": "hyperbolic-fractal",
+    "name": "Hyperbolic Fractal",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 124,
+          "activation": "sin"
+        },
+        {
+          "width": 2,
+          "activation": "sin"
+        },
+        {
+          "width": 33,
+          "activation": "tanh"
+        },
+        {
+          "width": 18,
+          "activation": "tanh"
+        },
+        {
+          "width": 8,
+          "activation": "abs"
+        },
+        {
+          "width": 25,
+          "activation": "cos"
+        },
+        {
+          "width": 5,
+          "activation": "sin"
+        },
+        {
+          "width": 11,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "uniform",
+        "a": 2.82
+      },
+      "scale": 2.35,
+      "motion": {
+        "speed": 0.022,
+        "spread": 1.76,
+        "depth": 0.32,
+        "falloff": 0.81,
+        "bands": 3
+      }
+    },
+    "seed": 2359444083,
+    "weights": hyperbolicFractalWeights
+  },
+  {
+    "id": "metal-flower",
+    "name": "Metal Flower",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 38,
+          "activation": "tanh"
+        },
+        {
+          "width": 59,
+          "activation": "tanh"
+        },
+        {
+          "width": 6,
+          "activation": "sin"
+        },
+        {
+          "width": 18,
+          "activation": "sin"
+        },
+        {
+          "width": 6,
+          "activation": "cos"
+        }
+      ],
+      "distribution": {
+        "type": "normal",
+        "sigma": 0.81
+      },
+      "scale": 2.35,
+      "motion": {
+        "speed": 0.058,
+        "spread": 1.22,
+        "depth": 0.13,
+        "falloff": 0.92,
+        "bands": 2
+      }
+    },
+    "seed": 1313534052,
+    "weights": metalFlowerWeights
+  },
+  {
+    "id": "event-horizon",
+    "name": "Event Horizon",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 38,
+          "activation": "tanh"
+        },
+        {
+          "width": 59,
+          "activation": "tanh"
+        },
+        {
+          "width": 6,
+          "activation": "sin"
+        },
+        {
+          "width": 18,
+          "activation": "sin"
+        },
+        {
+          "width": 6,
+          "activation": "cos"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.9,
+        "magnitude": 2
+      },
+      "scale": 2.25,
+      "motion": {
+        "speed": 0.058,
+        "spread": 1.22,
+        "depth": 0.13,
+        "falloff": 0.92,
+        "bands": 2
+      }
+    },
+    "seed": 3569530071,
+    "weights": eventHorizonWeights
+  },
+  {
+    "id": "hal9000",
+    "name": "HAL9000",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 38,
+          "activation": "tanh"
+        },
+        {
+          "width": 59,
+          "activation": "tanh"
+        },
+        {
+          "width": 6,
+          "activation": "sin"
+        },
+        {
+          "width": 18,
+          "activation": "sin"
+        },
+        {
+          "width": 6,
+          "activation": "cos"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.9,
+        "magnitude": 2
+      },
+      "scale": 2.25,
+      "motion": {
+        "speed": 0.058,
+        "spread": 1.22,
+        "depth": 0.13,
+        "falloff": 0.92,
+        "bands": 2
+      }
+    },
+    "seed": 1656409221,
+    "weights": hal9000Weights
+  },
+  {
+    "id": "flanders-fields",
+    "name": "Flanders Fields",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 36,
+          "activation": "cos"
+        },
+        {
+          "width": 28,
+          "activation": "sin"
+        },
+        {
+          "width": 41,
+          "activation": "tanh"
+        },
+        {
+          "width": 2,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "glorot",
+        "scale": 3
+      },
+      "scale": 5,
+      "motion": {
+        "speed": 0.104,
+        "spread": 1.31,
+        "depth": 0.34,
+        "falloff": 0.7,
+        "bands": 4
+      }
+    },
+    "seed": 1809152984,
+    "weights": flandersFieldsWeights
+  },
+  {
+    "id": "acid-moire",
+    "name": "Acid Moire",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 2,
+          "activation": "sin"
+        },
+        {
+          "width": 7,
+          "activation": "cos"
+        },
+        {
+          "width": 5,
+          "activation": "sin"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.61,
+        "magnitude": 8.3
+      },
+      "scale": 0.1,
+      "motion": {
+        "speed": 0.015,
+        "spread": 1.08,
+        "depth": 0.24,
+        "falloff": 0.83,
+        "bands": 1
+      }
+    },
+    "seed": 1176697194,
+    "weights": acidMoireWeights
+  },
+  {
+    "id": "very-sleepy",
+    "name": "Very Sleepy",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 2,
+          "activation": "sin"
+        },
+        {
+          "width": 7,
+          "activation": "cos"
+        },
+        {
+          "width": 5,
+          "activation": "sin"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.61,
+        "magnitude": 6.7
+      },
+      "scale": 0.1,
+      "motion": {
+        "speed": 0.01,
+        "spread": 2.0500000000000003,
+        "depth": 0.24,
+        "falloff": 0.8,
+        "bands": 4
+      }
+    },
+    "seed": 2792998312,
+    "weights": verySleepyWeights
+  },
+  {
+    "id": "relax",
+    "name": "Relax",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 94,
+          "activation": "sigmoid"
+        },
+        {
+          "width": 58,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "uniform",
+        "a": 1.1
+      },
+      "scale": 2.2,
+      "motion": {
+        "speed": 0.015,
+        "spread": 2,
+        "depth": 0.6,
+        "falloff": 1,
+        "bands": 4
+      }
+    },
+    "seed": 93829109,
+    "weights": relaxWeights
+  },
+  {
+    "id": "corpuscule",
+    "name": "Corpuscule",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 9,
+          "activation": "sin"
+        },
+        {
+          "width": 2,
+          "activation": "abs"
+        },
+        {
+          "width": 18,
+          "activation": "sigmoid"
+        }
+      ],
+      "distribution": {
+        "type": "glorot",
+        "scale": 2.51
+      },
+      "scale": 3,
+      "motion": {
+        "speed": 0.045,
+        "spread": 1.4500000000000002,
+        "depth": 0.6,
+        "falloff": 0.65,
+        "bands": 4
+      }
+    },
+    "seed": 295845391,
+    "weights": corpusculeWeights
+  },
+  {
+    "id": "qapon",
+    "name": "Qapon",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 4,
+          "activation": "tanh"
+        },
+        {
+          "width": 3,
+          "activation": "abs"
+        },
+        {
+          "width": 10,
+          "activation": "tanh"
+        },
+        {
+          "width": 2,
+          "activation": "tanh"
+        },
+        {
+          "width": 7,
+          "activation": "sin"
+        },
+        {
+          "width": 13,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.53,
+        "magnitude": 7.64
+      },
+      "scale": 3,
+      "motion": {
+        "speed": 0.043,
+        "spread": 1.9,
+        "depth": 0.19,
+        "falloff": 0.57,
+        "bands": 2
+      }
+    },
+    "seed": 3283690098,
+    "weights": qaponWeights
+  },
+  {
+    "id": "boy-or-girl",
+    "name": "Boy or Girl",
+    "config": {
+      "zDim": 16,
+      "layers": [
+        {
+          "width": 15,
+          "activation": "tanh"
+        },
+        {
+          "width": 4,
+          "activation": "sin"
+        },
+        {
+          "width": 5,
+          "activation": "tanh"
+        },
+        {
+          "width": 4,
+          "activation": "tanh"
+        },
+        {
+          "width": 13,
+          "activation": "tanh"
+        },
+        {
+          "width": 6,
+          "activation": "tanh"
+        }
+      ],
+      "distribution": {
+        "type": "sparse",
+        "sparsity": 0.8,
+        "magnitude": 3.91
+      },
+      "scale": 0.5,
+      "motion": {
+        "speed": 0.025,
+        "spread": 1.8,
+        "depth": 0.06,
+        "falloff": 0.7000000000000001,
+        "bands": 4
+      }
+    },
+    "seed": 1315508710,
+    "weights": boyOrGirlWeights
   }
 ];
