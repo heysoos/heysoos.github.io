@@ -217,7 +217,9 @@ export async function setupCPPN(
   const bar = wireControlBar(viewport, { randomize, help: helpSections });
   // ↺ (and R) = new seed, same architecture. Routed through setParam so the
   // Seed row shows it and it is one undo step.
-  document.querySelector('[data-action="reset"]')?.addEventListener('click', (e) => {
+  const resetBtn = document.querySelector<HTMLElement>('[data-action="reset"]');
+  if (resetBtn) { resetBtn.dataset.label = 'new seed'; resetBtn.setAttribute('aria-label', 'New seed'); }
+  resetBtn?.addEventListener('click', (e) => {
     e.stopImmediatePropagation();
     mgr.history.endGesture();
     setParam('seed', Math.floor(Math.random() * 4294967296));
@@ -252,5 +254,6 @@ function helpSections(touch: boolean): HelpSection[] {
     { glyph: CHIP, label: touch ? 'tap' : 'click', effect: 'next activation' },
     { glyph: CHIP, label: 'hold · slide', effect: 'scrub activations' },
   ] };
-  return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: KEY_ROWS }];
+  const keys = KEY_ROWS.map(r => (r.label === 'P · R · H' ? { ...r, effect: 'pause · new seed · hide UI' } : r));
+  return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: keys }];
 }
