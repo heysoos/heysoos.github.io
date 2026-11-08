@@ -1124,13 +1124,13 @@
 
 /* ── CPPN minimap: current coordinate window vs the original frame ── */
 #sim-viewport canvas.cppn-minimap, .sim-viewport canvas.cppn-minimap, .cppn-minimap {
-  position: absolute !important; left: auto !important; top: auto !important; right: 16px; bottom: 72px;
+  position: absolute !important; left: auto !important; top: auto !important; right: 1rem; bottom: calc(0.9rem + 36px + 10px); /* 10px above the control capsule, same right edge */
   width: 84px !important; height: 84px !important; z-index: 3;
   border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent); border-radius: 6px; background: rgba(0, 0, 0, 0.6);
   opacity: 0.7; transition: opacity 0.35s ease; cursor: pointer; touch-action: none;
 }
 .cppn-minimap.show, .cppn-minimap:hover { opacity: 1; }
-@media (max-width: 768px) { .cppn-minimap { right: 10px; bottom: 60px; width: 72px !important; height: 72px !important; } }
+@media (max-width: 768px) { .cppn-minimap { right: 0.5rem; bottom: calc(0.5rem + 40px + 10px); width: 72px !important; height: 72px !important; } }
 
 /* ── Desktop CPPN rows: honour [hidden] (showIf) and lay enums out so they fit ── */
 .meter-row[hidden], .cppn-enum-row[hidden], .cppn-layer[hidden] { display: none !important; }
