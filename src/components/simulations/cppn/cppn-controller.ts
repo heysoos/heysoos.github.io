@@ -1,7 +1,6 @@
 // src/components/simulations/cppn/cppn-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
-import { generateShader, computeWeightLayout, Z_DIM, type WeightLayout } from './cppn-codegen';
+import { generateShader, computeWeightLayout, packWeights, Z_DIM, type WeightLayout } from './cppn-codegen';
 import type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, ZBand } from './cppn-types';
 
 export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, ZBand };
@@ -103,8 +102,10 @@ export class CPPNController {
   private gpu:           WebGPUContext | null = null;
   private pipeline:      GPURenderPipeline | null = null;
   private paramsBuffer!: GPUBuffer;
+  private weightBuffer:  GPUBuffer | null = null;
   private bindGroup!:    GPUBindGroup;
   private layout!:        WeightLayout;
+  private compiledArch   = ''; // architecture key the current pipeline was built for
   private running   = false;
   private animId    = 0;
   private usingRaf  = true;
@@ -117,7 +118,16 @@ export class CPPNController {
 
   config: CPPNConfig = defaultConfig();
   seed: number = Date.now() & 0xffffffff;
-  maxResolution = 960; // cap longest canvas dimension; 0 = unlimited
+  // Cap on the longest canvas dimension; 0 = unlimited. The fragment shader
+  // costs thousands of MACs per pixel, so phones get a much smaller default.
+  maxResolution = CPPNController.defaultMaxResolution();
+
+  static defaultMaxResolution(): number {
+    if (typeof window === 'undefined') return 960;
+    const phone = window.matchMedia('(pointer: coarse)').matches
+               || window.matchMedia('(max-width: 768px)').matches;
+    return phone ? 320 : 960;
+  }
 
   // ── Init ──────────────────────────────────────────────────────
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -131,7 +141,8 @@ export class CPPNController {
       this.randomizeDimOffsets();
       this.layout = computeWeightLayout(this.config);
       this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-      await this._compile();
+      await this._ensurePipeline();
+      this._uploadWeights();
       return true;
     } catch (e) {
       console.error('CPPNController init error:', e);
@@ -139,13 +150,20 @@ export class CPPNController {
     }
   }
 
-  // ── Compile — bakes currentWeights as literals into the shader ──
-  private async _compile(): Promise<void> {
+  // ── Compile — only when layer widths/activations change ──────
+  // Weights live in a storage buffer, so randomize / distribution changes
+  // are a buffer write, not a recompile.
+  private archKey(): string {
+    return this.config.layers.map(l => `${l.width}:${l.activation}`).join(',');
+  }
+
+  private async _ensurePipeline(): Promise<void> {
     if (!this.gpu) return;
+    const key = this.archKey();
+    if (this.pipeline && key === this.compiledArch) return;
     const { device, format } = this.gpu;
 
-    const code = generateShader(this.config, this.layout, this.currentWeights);
-
+    const code   = generateShader(this.config, this.layout);
     const module = device.createShaderModule({ code });
     const info   = await module.getCompilationInfo();
     const errs   = info.messages.filter(m => m.type === 'error');
@@ -153,16 +171,40 @@ export class CPPNController {
       throw new Error('CPPN shader error: ' + errs.map(e => e.message).join('\n'));
     }
 
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = await device.createRenderPipelineAsync({
       layout: 'auto',
       vertex:   { module, entryPoint: 'vertexMain' },
       fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
     });
+    this.compiledArch = key;
+    this._rebuildBindGroup();
+  }
 
-    this.bindGroup = device.createBindGroup({
+  private _rebuildBindGroup(): void {
+    if (!this.gpu || !this.pipeline || !this.weightBuffer) return;
+    this.bindGroup = this.gpu.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.paramsBuffer } }],
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+        { binding: 1, resource: { buffer: this.weightBuffer } },
+      ],
     });
+  }
+
+  /** Pack currentWeights into slot order and write them to the GPU. Grows the buffer if needed. */
+  private _uploadWeights(): void {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    const packed = packWeights(this.config, this.layout, this.currentWeights);
+    if (!this.weightBuffer || this.weightBuffer.size < packed.byteLength) {
+      this.weightBuffer?.destroy();
+      this.weightBuffer = device.createBuffer({
+        size: Math.max(16, packed.byteLength),
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this._rebuildBindGroup();
+    }
+    device.queue.writeBuffer(this.weightBuffer, 0, packed);
   }
 
   // ── Architecture — recompute layout, rerandomize, recompile ──
@@ -170,18 +212,22 @@ export class CPPNController {
     this.config = { ...this.config, layers };
     this.layout = computeWeightLayout(this.config);
     this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-    await this._compile();
+    await this._ensurePipeline();
+    this._uploadWeights();
   }
 
-  // ── Weights — generate then recompile to bake in new values ──
+  // ── Weights — regenerate from the current seed and upload (no recompile) ──
+  /** Changing the distribution re-derives weights from the same seed, so it applies live. */
   setDistribution(dist: WeightDistribution): void {
     this.config = { ...this.config, distribution: dist };
+    this.currentWeights = generateWeights(this.layout, this.config, this.seed);
+    this._uploadWeights();
   }
 
-  async randomizeWeights(seed?: number): Promise<void> {
+  randomizeWeights(seed?: number): void {
     if (seed !== undefined) this.seed = seed >>> 0;
     this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-    await this._compile();
+    this._uploadWeights();
   }
 
   setSeed(seed: number): void { this.randomizeWeights(seed); }
@@ -220,7 +266,8 @@ export class CPPNController {
     this.seed   = preset.seed;
     this.layout = computeWeightLayout(this.config);
     this.currentWeights = new Float32Array(preset.weights);
-    await this._compile();
+    await this._ensurePipeline();
+    this._uploadWeights();
   }
 
   capturePreset(name: string): CPPNPreset {
@@ -250,7 +297,7 @@ export class CPPNController {
 
   reset(): void {
     this.randomizeDimOffsets();
-    void this.randomizeWeights(Date.now() & 0xffffffff);
+    this.randomizeWeights(Date.now() & 0xffffffff);
   }
 
   // ── Render loop ───────────────────────────────────────────────
@@ -269,19 +316,32 @@ export class CPPNController {
     return z;
   }
 
-  private tick = (): void => {
-    if (!this.running || !this.gpu || !this.pipeline) return;
-    const frameStart = performance.now();
-    const { device, context, canvas } = this.gpu;
-    resizeCanvasToDisplaySize(canvas);
+  // Compute the capped backing size first and assign only when it changes.
+  // Writing canvas.width/height reallocates the swapchain, so doing it
+  // every frame (display size, then capped size) was two reallocations per tick.
+  private _resizeCanvas(canvas: HTMLCanvasElement): void {
+    const dpr = window.devicePixelRatio || 1;
+    let w = Math.floor(canvas.clientWidth  * dpr);
+    let h = Math.floor(canvas.clientHeight * dpr);
     if (this.maxResolution > 0) {
-      const longest = Math.max(canvas.width, canvas.height);
+      const longest = Math.max(w, h);
       if (longest > this.maxResolution) {
         const scale = this.maxResolution / longest;
-        canvas.width  = Math.floor(canvas.width  * scale);
-        canvas.height = Math.floor(canvas.height * scale);
+        w = Math.floor(w * scale);
+        h = Math.floor(h * scale);
       }
     }
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+      canvas.width  = w;
+      canvas.height = h;
+    }
+  }
+
+  private tick = (): void => {
+    if (!this.running || !this.gpu || !this.pipeline || !this.bindGroup) return;
+    const frameStart = performance.now();
+    const { device, context, canvas } = this.gpu;
+    this._resizeCanvas(canvas);
 
     const t = this.animate ? (performance.now() - this.startTime) / 1000 : 0;
     const z = this.computeZ(t);
@@ -308,17 +368,20 @@ export class CPPNController {
     pass.draw(6);
     pass.end();
     device.queue.submit([encoder.finish()]);
-    void device.queue.onSubmittedWorkDone().then(() => {
-      if (!this.running) return;
-      this.tickCount++;
-      if (Number.isFinite(this.maxFps)) {
-        this.usingRaf = false;
+    this.tickCount++;
+    if (Number.isFinite(this.maxFps)) {
+      // Capped mode: wait for the GPU so the cap measures real frame time.
+      this.usingRaf = false;
+      void device.queue.onSubmittedWorkDone().then(() => {
+        if (!this.running) return;
         const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
         this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
-      } else {
-        this.usingRaf = true;
-        this.animId = requestAnimationFrame(this.tick);
-      }
-    });
+      });
+    } else {
+      // Unlimited: let the browser pipeline CPU and GPU work. Waiting on a
+      // GPU fence here quantised the frame rate to vsync divisors.
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+    }
   };
 }
