@@ -33,41 +33,73 @@ function rollLayerCount(): number {
   return pick(Array.from({ length: weights.length }, (_, i) => i + 1), weights);
 }
 
-export function randomArchitecture(budget: number): LayerConfig[] {
-  const n = rollLayerCount();
-  // tanh and sin dominate; abs and sigmoid everywhere look muddy.
-  const acts = ACTIVATIONS;
-  const actWeights = [4, 4, 1.5, 1, 1];
-  let layers: LayerConfig[] = Array.from({ length: n }, () => ({
-    width: Math.round(logUniform(MIN_WIDTH, MAX_WIDTH)),
-    activation: pick(acts, actWeights),
-  }));
-  // Fit the budget by scaling all widths together (the first layer is the
-  // cheapest per neuron to scale since its fan-in is fixed at 19).
-  let guard = 0;
-  while (paramCount(layers) > budget && guard++ < 40) {
-    const over = paramCount(layers) / budget;
-    const k = 1 / Math.sqrt(over) * 0.97;        // weights are ~quadratic in width
-    layers = layers.map(l => ({ ...l, width: Math.max(MIN_WIDTH, Math.floor(l.width * k)) }));
-    if (layers.every(l => l.width === MIN_WIDTH)) break;
-  }
-  return layers;
+// tanh and sin dominate; abs and sigmoid everywhere look muddy.
+const ACT_WEIGHTS = [4, 4, 1.5, 1, 1];
+const randomLayer = (): LayerConfig => ({
+  width: Math.round(logUniform(MIN_WIDTH, MAX_WIDTH)),
+  activation: pick(ACTIVATIONS, ACT_WEIGHTS),
+});
+
+export interface ArchResult {
+  layers: LayerConfig[];
+  /** For each fixed layer passed in, its index in the new stack. */
+  fixedAt: number[];
 }
 
-export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number): CPPNFlatParams {
+/**
+ * A random architecture that keeps `fixed` layers exactly (width and
+ * activation) at random positions, fills the rest with random layers and
+ * scales only the free layers' widths until the weight count fits.
+ * `count`, when given, pins the layer count (the Layers row is locked).
+ */
+export function randomArchitecture(budget: number, fixed: LayerConfig[] = [], count?: number): ArchResult {
+  const n = Math.min(MAX_LAYERS, Math.max(fixed.length, count ?? rollLayerCount()));
+  const slots: Array<LayerConfig | null> = Array.from({ length: n }, () => null);
+  const free: number[] = [];
+  // Place the fixed layers at distinct random positions.
+  const positions = Array.from({ length: n }, (_, i) => i);
+  for (let i = positions.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [positions[i], positions[j]] = [positions[j], positions[i]]; }
+  const fixedAt = fixed.map((l, k) => { slots[positions[k]] = { ...l }; return positions[k]; });
+  for (let i = 0; i < n; i++) if (!slots[i]) { slots[i] = randomLayer(); free.push(i); }
+  let layers = slots as LayerConfig[];
+  // Fit the budget by scaling the free widths together (weights are
+  // ~quadratic in width, so sqrt of the overshoot per step).
+  let guard = 0;
+  while (free.length > 0 && paramCount(layers) > budget && guard++ < 40) {
+    const k = 0.97 / Math.sqrt(paramCount(layers) / budget);
+    layers = layers.map((l, i) => free.includes(i) ? { ...l, width: Math.max(MIN_WIDTH, Math.floor(l.width * k)) } : l);
+    if (free.every(i => layers[i].width === MIN_WIDTH)) break;
+  }
+  return { layers, fixedAt };
+}
+
+export interface RandomizeResult {
+  flat: CPPNFlatParams;
+  /** Architecture lock keys after the shuffle (locked layers moved with their rows). */
+  archLocks: string[];
+}
+
+export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number): RandomizeResult {
   const locked = new Set(lockedKeys);
   const f: CPPNFlatParams = { ...current };
   const set = (k: FlatKey, v: number) => { if (!locked.has(k)) f[k] = v; };
 
-  // Network: all-or-nothing around locks.
-  if (!lockedKeys.some(isArchKey)) {
-    const layers = randomArchitecture(budget);
-    f.layers = layers.length;
-    layers.forEach((l, i) => {
-      f[`layer${i}Width`] = l.width;
-      f[`layer${i}Act`] = Math.max(0, ACTIVATIONS.indexOf(l.activation));
-    });
-  }
+  // Network: a locked layer (its width or activation row) is kept as a unit
+  // but may land anywhere in the new stack; everything else is rolled.
+  const cur = layersFromFlat(current);
+  const fixedIdx = cur.map((_, i) => i).filter(i => locked.has(`layer${i}Width`) || locked.has(`layer${i}Act`));
+  const { layers, fixedAt } = randomArchitecture(budget, fixedIdx.map(i => cur[i]), locked.has('layers') ? cur.length : undefined);
+  f.layers = layers.length;
+  layers.forEach((l, i) => {
+    f[`layer${i}Width`] = l.width;
+    f[`layer${i}Act`] = Math.max(0, ACTIVATIONS.indexOf(l.activation));
+  });
+  const archLocks: string[] = locked.has('layers') ? ['layers'] : [];
+  fixedIdx.forEach((oldI, k) => {
+    const newI = fixedAt[k];
+    if (locked.has(`layer${oldI}Width`)) archLocks.push(`layer${newI}Width`);
+    if (locked.has(`layer${oldI}Act`)) archLocks.push(`layer${newI}Act`);
+  });
 
   // Weights. What makes an image read is the *gain* into each activation,
   // std(w)·√fanIn, not the raw std: the presets use σ 0.9 into fan-in 128
@@ -75,8 +107,7 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   // narrow random net at σ 1 has gain ≈ 2 and comes out grey. So draw a
   // gain, log-normal around 4, and derive each distribution's parameter
   // from the network's typical fan-in.
-  const layers = layersFromFlat(f);
-  const fanIns = [19, ...layers.slice(0, -1).map(l => l.width)];
+  const fanIns = [19, ...layers.slice(0, -1).map(l => l.width)];   // `layers` = the architecture just rolled above
   const fanIn = Math.exp(fanIns.reduce((s, x) => s + Math.log(x), 0) / fanIns.length);   // geometric mean
   const gain = Math.exp(Math.log(4) + gauss() * 0.45);                                   // ~[2.2, 7.3] at ±1σ
   const std = gain / Math.sqrt(fanIn);
@@ -98,7 +129,7 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   set('falloff', +(0.5 + rnd() * 0.5).toFixed(2));
   set('bands', 1 + Math.floor(rnd() * 4));
 
-  return f;
+  return { flat: f, archLocks };
 }
 
 /** For a budget readout: the count the current flat architecture implies. */

@@ -111,6 +111,11 @@ export class CPPNController {
   tickCount = 0;
   private animate   = true;
   private startTime = performance.now();
+  // Latent motion is integrated, not evaluated at wall-clock time: each band
+  // advances its phase by 2π·freq·dt per frame, so changing speed/spread only
+  // changes the rate from now on instead of rotating the phase by 2π·Δf·t.
+  private bandPhase = new Float64Array(4);
+  private lastTick = 0;
   private dimOffsets    = new Float32Array(Z_DIM);
   private currentWeights = new Float32Array(0);
 
@@ -305,6 +310,7 @@ export class CPPNController {
     if (this.running) return;
     this.running  = true;
     this.startTime = performance.now();
+    this.lastTick = 0;
     this.tick();
   }
 
@@ -320,16 +326,22 @@ export class CPPNController {
   }
 
   // ── Render loop ───────────────────────────────────────────────
-  private computeZ(t: number): Float32Array {
+  private advanceMotion(dt: number): void {
+    const m = this.config.motion;
+    for (let b = 0; b < 4; b++) {
+      this.bandPhase[b] = (this.bandPhase[b] + 2 * Math.PI * m.speed * Math.pow(m.spread, b) * dt) % (2 * Math.PI);
+    }
+  }
+
+  private computeZ(): Float32Array {
     const z = new Float32Array(Z_DIM);
     const m = this.config.motion;
     const bands = Math.max(1, Math.min(4, Math.round(m.bands)));
     const dimsPerBand = Math.ceil(Z_DIM / bands);
     for (let d = 0; d < Z_DIM; d++) {
-      const b    = Math.min(Math.floor(d / dimsPerBand), bands - 1);
-      const freq = m.speed * Math.pow(m.spread, b);
-      const amp  = m.depth * Math.pow(m.falloff, b);
-      z[d] = amp * Math.sin(2 * Math.PI * freq * t + this.dimOffsets[d]);
+      const b   = Math.min(Math.floor(d / dimsPerBand), bands - 1);
+      const amp = m.depth * Math.pow(m.falloff, b);
+      z[d] = amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]);
     }
     return z;
   }
@@ -369,8 +381,12 @@ export class CPPNController {
     const { device, context, canvas } = this.gpu;
     this._resizeCanvas(canvas);
 
-    const t = this.animate ? (performance.now() - this.startTime) / 1000 : 0;
-    const z = this.computeZ(t);
+    const now = performance.now();
+    const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
+    this.lastTick = now;
+    if (this.animate) this.advanceMotion(dt);
+    const t = (now - this.startTime) / 1000;
+    const z = this.computeZ();
 
     const params = new Float32Array(PARAMS_FLOATS);
     params[0] = canvas.width;

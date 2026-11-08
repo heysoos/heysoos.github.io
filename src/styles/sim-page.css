@@ -1005,6 +1005,9 @@
 .cppn-layer .w { flex: 1; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .cppn-layer .w b { font-weight: 500; color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; }
 .cppn-layer.io { background: rgba(255, 255, 255, 0.03); border-radius: 6px; color: var(--text-muted); font-size: 0.62rem; cursor: default; }
+.cppn-layer .lk { display: none !important; }
+.cppn-layer.locked .ix { background: var(--accent); color: var(--bg-primary); font-weight: 600; }
+.cppn-layer.locked .w b { color: var(--text-primary); }
 .cppn-layer .chip {
   flex: none; font: inherit; font-size: 0.6rem; padding: 2px 7px; border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--text-muted) 40%, transparent); background: transparent; color: var(--text-body); cursor: pointer;
