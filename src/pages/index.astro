@@ -103,6 +103,8 @@ const projects = (await getCollection('projects'))
     width: 100%;
     height: 100%;
     display: block;
+    /* Vertical swipes scroll the page; only sideways drags reach the boids. */
+    touch-action: pan-y;
   }
 
   .hero-content {
