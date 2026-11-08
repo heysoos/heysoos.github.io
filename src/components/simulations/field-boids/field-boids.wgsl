@@ -126,13 +126,21 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     vel = vel * (params.maxSpeed / sp);
   }
 
-  // Mouse attraction (screen-space distance for an isotropic radius)
-  if (params.mouseActive > 0.5) {
-    let toMouse = vec2f(params.mouseX, params.mouseY) - pos;
-    let toMouseS = vec2f(toMouse.x * params.aspect, toMouse.y);
-    let mouseDist = length(toMouseS);
-    if (mouseDist < params.mouseRadius && mouseDist > 0.0001) {
-      vel += 0.005 * normalize(toMouse) / mouseDist;
+  // Fingers / mouse (screen-space distance for an isotropic radius): each
+  // active pointer attracts in proportion to its pressure. The carry
+  // (advection) is applied to position further down, after the speed caps,
+  // so a drag moves particles with the finger regardless of maxSpeed.
+  var carry = vec2f(0.0);
+  for (var i = 0u; i < 4u; i++) {
+    let pp = params.pointers[i * 2u];
+    if (pp.z <= 0.0) { continue; }
+    let toP = wrapDelta(pp.xy - pos);                 // shortest way round the torus
+    let dS = length(vec2f(toP.x * params.aspect, toP.y));
+    let radius = params.mouseRadius / params.viewZoom; // constant on screen
+    if (dS < radius && dS > 0.0001) {
+      vel += 0.005 * pp.z * normalize(toP) / dS;
+      let w = 1.0 - dS / radius;
+      carry += params.pointers[i * 2u + 1u].xy * sqrt(w);
     }
   }
 
@@ -149,6 +157,12 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
   if (!(dot(vel, vel) < 1e30)) { vel = vec2f(0.0); }
 
   pos = pos + vel * params.deltaTime;
+  // Carried particles move with the finger exactly (per-step displacement)
+  // and keep some of that motion as velocity, so they coast on release.
+  if (dot(carry, carry) > 0.0) {
+    pos = pos + carry;
+    vel = vel + carry * (0.3 / params.deltaTime);
+  }
   // Torus wrap into [-1, 1)
   pos = pos - floor((pos + 1.0) * 0.5) * 2.0;
 

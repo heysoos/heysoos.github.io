@@ -1,4 +1,4 @@
-// src/components/simulations/field-boids/field-boids-spec.ts
+﻿// src/components/simulations/field-boids/field-boids-spec.ts
 // One description of the tunable params: labels, ranges, enum names, groups,
 // and how each enum is drawn. The desktop panel's Look section, the phone
 // scrub list and Randomize are all built from it, so a param is added once.
@@ -86,7 +86,7 @@ export const FIELD_BOIDS_GROUPS: ParamGroup[] = [
     num('longExposure', 'Long exposure', 0, 0.98, 0.01),
     en('pointShape', 'Point shape', POINT_SHAPES, 'segmented', { showIf: inPoints }),
     num('pointSize', 'Point size', 1, 12, 0.5, { showIf: inPoints }),
-    num('pointAlpha', 'Point intensity', 0.01, 1, 0.01, { showIf: inPoints }),
+    num('pointAlpha', 'Point alpha', 0.01, 1, 0.01, { showIf: inPoints }),
   ] },
 ];
 

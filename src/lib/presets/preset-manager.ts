@@ -68,12 +68,16 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
   });
 
   // Fill missing params from defaults (built-ins written before a param
-  // existed), then let the sim adjust (phone cap). Used for both loading and
-  // the dirty check so neither step reads as an unsaved change.
+  // existed) and drop keys the sim no longer has (a custom preset saved
+  // before a param was removed), then let the sim adjust (phone cap). Used
+  // for both loading and the dirty check so neither step reads as an
+  // unsaved change.
   // Locked params are pinned to the controller's current value here, so a
   // load keeps them and the dirty check never counts them.
   const prepare = (body: PresetBody<P>): PresetBody<P> => {
-    const filled = { ...body, params: { ...binding.defaults, ...body.params } } as PresetBody<P>;
+    const merged = { ...binding.defaults, ...body.params } as ParamRecord;
+    const known = Object.fromEntries(Object.keys(binding.defaults).map(k => [k, merged[k]])) as P;
+    const filled = { ...body, params: known } as PresetBody<P>;
     const lockedKeys = locks.keys();
     if (lockedKeys.length > 0) {
       const current = binding.capture().params;

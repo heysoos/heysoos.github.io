@@ -2,14 +2,19 @@
 // Phone control surface: a translucent grouped list of params on the left
 // edge of the sim viewport, and the canvas itself as the scrub area. Tap a
 // name to select it, then drag anywhere on the canvas: horizontal is coarse,
-// vertical is fine. A readout floats above the finger. "Touch" (or tapping
-// the active name again) deselects, and the canvas goes back to being the
-// sim's own pointer force. Long-press a row to lock it. The header has
-// undo/redo, a Presets button (opens the sheet) and a close ×.
+// vertical is fine. While a param is selected the list collapses to a chip
+// (name, value, range) so the sim stays visible; a plain tap on the canvas
+// or ‹ returns to the list. With the list closed the canvas is the sim's own
+// pointer force, and a plain tap on it closes the list. Dragging sideways on
+// a row scrubs that param in place (vertical still scrolls). Long-press a row (or
+// tap the chip's name) to lock it. The card header (undo/redo, Presets,
+// Randomize) stays put while the body scrolls; Presets swaps the body for
+// the shared preset section inside the same card.
 
 import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec } from '../../components/simulations/field-boids/field-boids-spec';
+import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 
 export interface ScrubPanelOpts {
   /** Positioned ancestor of the canvas; the list and overlay are appended here. */
@@ -21,38 +26,29 @@ export interface ScrubPanelOpts {
   params: unknown;
   history?: UndoHistory;
   locks?: ParamLocks;
-  /** Header buttons. */
-  onPresets?: () => void;
+  /** Fills the in-card Presets view; returns a dispose function. */
+  buildPresets?: (container: HTMLElement) => () => void;
+  onRandomize?: () => void;
+  /** Optional status text shown under an enum row (e.g. "permission denied"). */
+  note?: (key: string) => string;
+  /** Called by × and by a plain tap on the canvas while the list is open. */
   onClose?: () => void;
 }
 
 export interface ScrubPanelHandle {
   refresh(): void;
+  /** Re-render the Presets view (after a preset load / save / rename). */
+  rebuildPresets(): void;
   setVisible(on: boolean): void;
   isVisible(): boolean;
   dispose(): void;
 }
 
 const COARSE_PX = 220;      // horizontal travel for the full range
+const ROW_PX = 240;         // same, for a drag that starts on a list row
 const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
 const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
-
-function fmt(spec: NumSpec, v: number): string {
-  if (spec.int || spec.step >= 1) return String(Math.round(v));
-  const dec = String(spec.step).split('.')[1]?.length ?? 2;
-  return v.toFixed(dec);
-}
-
-function toSlider(spec: NumSpec, v: number): number {
-  return spec.scale === 'log' ? Math.log(Math.max(v, spec.min)) : v;
-}
-function fromSlider(spec: NumSpec, s: number): number {
-  let v = spec.scale === 'log' ? Math.exp(s) : s;
-  v = Math.round(v / spec.step) * spec.step;
-  if (spec.int) v = Math.round(v);
-  return Math.min(spec.max, Math.max(spec.min, v));
-}
 
 type Row = { spec: ParamSpec; el: HTMLElement; val?: HTMLElement; choices?: HTMLElement[]; select?: HTMLSelectElement };
 
@@ -62,6 +58,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
 
   const list = document.createElement('div');
   list.className = 'scrub-list';
+  const scroll = document.createElement('div');
+  scroll.className = 'scrub-scroll';
+  const body = document.createElement('div');
+  body.className = 'scrub-body';
+  const presetsEl = document.createElement('div');
+  presetsEl.className = 'scrub-presets';
+  presetsEl.hidden = true;
+  scroll.append(body, presetsEl);
   const overlay = document.createElement('div');
   overlay.className = 'scrub-overlay';
   overlay.innerHTML = `
@@ -87,38 +91,67 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // ── Header: undo / redo · presets · close ──
   const head = document.createElement('div');
   head.className = 'scrub-head';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets</button><button class="h-close" aria-label="Close">×</button>`;
-  list.appendChild(head);
+  head.innerHTML = `<button class="h-undo" aria-label="Undo">↶</button><button class="h-redo" aria-label="Redo">↷</button><button class="h-presets">Presets ›</button><button class="h-random">⚄ Randomize</button>`;
+  list.append(head, scroll);
+  let presetsMode = false;
+  let disposePresets: (() => void) | null = null;
+  const presetsBtn = head.querySelector<HTMLButtonElement>('.h-presets')!;
+  function rebuildPresets(): void {
+    disposePresets?.(); disposePresets = null;
+    presetsEl.innerHTML = '';
+    if (opts.buildPresets && presetsMode) disposePresets = opts.buildPresets(presetsEl);
+  }
+  function setPresetsMode(on: boolean): void {
+    presetsMode = on;
+    list.classList.toggle('presets-mode', on);
+    body.hidden = on;
+    presetsEl.hidden = !on;
+    presetsBtn.textContent = on ? '‹ Params' : 'Presets ›';
+    rebuildPresets();
+    scroll.scrollTop = 0;
+  }
   const undoBtn = head.querySelector<HTMLButtonElement>('.h-undo')!;
   const redoBtn = head.querySelector<HTMLButtonElement>('.h-redo')!;
   undoBtn.addEventListener('click', () => history?.undo());
   redoBtn.addEventListener('click', () => history?.redo());
-  head.querySelector('.h-presets')!.addEventListener('click', () => opts.onPresets?.());
-  head.querySelector('.h-close')!.addEventListener('click', () => opts.onClose?.());
+  presetsBtn.addEventListener('click', () => setPresetsMode(!presetsMode));
+  head.querySelector('.h-random')!.addEventListener('click', () => { opts.onRandomize?.(); refresh(); });
   const refreshHistory = () => {
     undoBtn.disabled = !history?.canUndo();
     redoBtn.disabled = !history?.canRedo();
   };
 
-  const touchRow = document.createElement('button');
-  touchRow.className = 'scrub-row touch';
-  touchRow.textContent = '☝ Touch';
-  touchRow.addEventListener('click', () => { select(null); });
-  list.appendChild(touchRow);
+  // Selecting a param collapses the list to this chip so the canvas is
+  // visible while scrubbing. ‹ or a plain tap on the canvas returns to the list.
+  const chip = document.createElement('div');
+  chip.className = 'scrub-chip';
+  chip.innerHTML = `<div class="c-top"><button class="c-back" aria-label="All params">‹</button><span class="c-name"></span><i class="lk"></i></div>
+    <div class="c-val"></div><div class="c-bar"><i></i></div><div class="c-range"><span class="c-min"></span><span class="c-max"></span></div>`;
+  chip.hidden = true;
+  host.appendChild(chip);
+  const chipName = chip.querySelector<HTMLElement>('.c-name')!;
+  const chipVal = chip.querySelector<HTMLElement>('.c-val')!;
+  const chipBar = chip.querySelector<HTMLElement>('.c-bar i')!;
+  chip.querySelector('.c-back')!.addEventListener('click', () => select(null));
+  chip.querySelector<HTMLElement>('.c-top')!.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.c-back')) return;
+    if (cur && locks) locks.toggle(cur.key as string);
+  });
 
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
-    list.appendChild(h);
+    body.appendChild(h);
     for (const spec of g.items) {
       if (spec.kind === 'num') {
         const row = document.createElement('button');
         row.className = 'scrub-row';
         row.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span><span class="v"></span>`;
-        row.addEventListener('click', () => select(cur === spec ? null : spec));
-        list.appendChild(row);
+        row.addEventListener('click', () => { if (!swallowClick) select(cur === spec ? null : spec); swallowClick = false; });
+        body.appendChild(row);
         rows.push({ spec, el: row, val: row.querySelector<HTMLElement>('.v')! });
         attachLongPress(row, spec.key as string);
+        attachRowDrag(row, spec);
       } else {
         rows.push(buildEnum(spec));
       }
@@ -129,6 +162,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     const wrap = document.createElement('div');
     wrap.className = `scrub-enum ui-${spec.ui}`;
     wrap.innerHTML = `<span class="n"><i class="lk"></i>${spec.label}</span>`;
+    const note = document.createElement('small');
+    note.className = 'note';
     const pick = (i: number) => {
       set(spec.key as string, i);
       history?.push(spec.label);
@@ -141,6 +176,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       sel.addEventListener('change', () => pick(+sel.value));
       wrap.appendChild(sel);
       row.select = sel;
+      wrap.appendChild(note);
     } else {
       const bar = document.createElement('div');
       bar.className = spec.ui === 'swatches' ? 'swatches' : 'segmented';
@@ -153,10 +189,49 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         return c;
       });
       wrap.appendChild(bar);
+      wrap.appendChild(note);
     }
-    list.appendChild(wrap);
+    body.appendChild(wrap);
     attachLongPress(wrap, spec.key as string);
     return row;
+  }
+
+  // Sideways drag on a row: a mini slider. The tap-to-select click is
+  // swallowed once a drag has started; the long-press cancels itself on slop.
+  let swallowClick = false;
+  function attachRowDrag(row: HTMLElement, spec: NumSpec): void {
+    let id = -1, x0 = 0, y0 = 0, s0 = 0, active = false;
+    row.addEventListener('pointerdown', (e) => {
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; active = false;
+      swallowClick = false;   // a touch drag fires no click, so never carry the flag over
+      s0 = toSlider(spec, get(spec.key as string));
+      // Capture at once: the finger leaves the 25px row long before the
+      // drag is recognised. A vertical pan still cancels (touch-action: pan-y).
+      try { row.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+    });
+    row.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (!active) {
+        if (Math.abs(dx) < PRESS_SLOP || Math.abs(dx) < Math.abs(dy)) return;
+        active = true; swallowClick = true;
+        row.classList.add('dragging');
+        history?.beginGesture(spec.label);
+      }
+      e.preventDefault();
+      const range = toSlider(spec, spec.max) - toSlider(spec, spec.min);
+      const s = Math.min(toSlider(spec, spec.max), Math.max(toSlider(spec, spec.min), s0 + (dx / ROW_PX) * range));
+      set(spec.key as string, fromSlider(spec, s));
+      history?.touch();
+      refresh();
+    });
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      id = -1;
+      if (active) { active = false; row.classList.remove('dragging'); history?.endGesture(); }
+    };
+    row.addEventListener('pointerup', end);
+    row.addEventListener('pointercancel', (e) => { end(e); swallowClick = false; });
   }
 
   function attachLongPress(el: HTMLElement, key: string): void {
@@ -180,11 +255,14 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   function select(spec: NumSpec | null): void {
     cur = spec;
     overlay.classList.toggle('armed', !!cur);
+    list.hidden = !visible || !!cur;
+    chip.hidden = !visible || !cur;
     refresh();
   }
 
+  const frac = sliderFrac;
+
   function refresh(): void {
-    touchRow.classList.toggle('on', !cur);
     for (const r of rows) {
       const locked = locks?.isLocked(r.spec.key as string) ?? false;
       r.el.classList.toggle('locked', locked);
@@ -193,21 +271,34 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       if (r.spec.kind === 'num') {
         r.el.classList.toggle('on', r.spec === cur);
         r.val!.textContent = fmt(r.spec, v);
+        r.el.style.setProperty('--f', frac(r.spec, v).toFixed(4));   // value meter behind the row
       } else if (r.select) {
         r.select.value = String(v);
       } else {
         r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
       }
+      if (r.spec.kind === 'enum') {
+        const n = r.el.querySelector<HTMLElement>('.note')!;
+        n.textContent = opts.note?.(r.spec.key as string) ?? '';
+        n.hidden = !n.textContent;
+      }
     }
-    if (cur?.showIf && !cur.showIf(params)) select(null);
-    hint.innerHTML = cur
-      ? `<b>${cur.label}</b> · ◀ ▶ coarse · ▲ ▼ fine`
-      : 'touch mode · drag to attract';
+    if (cur?.showIf && !cur.showIf(params)) { select(null); return; }
+    if (cur) {
+      const v = get(cur.key as string);
+      chipName.textContent = cur.label;
+      chipVal.textContent = fmt(cur, v);
+      chipBar.style.transform = `scaleX(${frac(cur, v)})`;
+      chip.querySelector<HTMLElement>('.c-min')!.textContent = fmt(cur, cur.min);
+      chip.querySelector<HTMLElement>('.c-max')!.textContent = fmt(cur, cur.max);
+      chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
+    }
+    hint.innerHTML = '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
     refreshHistory();
   }
 
   // ── Scrub gesture on the overlay (only receives events while armed) ──
-  let dragId = -1, sx = 0, sy = 0, ss = 0;
+  let dragId = -1, sx = 0, sy = 0, ss = 0, moved = false;
   const place = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
     guide.style.setProperty('--x', `${e.clientX - r.left}px`);
@@ -217,17 +308,15 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     if (!cur) return;
     readName.textContent = cur.label.toUpperCase();
     readVal.textContent = fmt(cur, v);
-    const t = (toSlider(cur, v) - toSlider(cur, cur.min)) / (toSlider(cur, cur.max) - toSlider(cur, cur.min));
-    readBar.style.transform = `scaleX(${Math.max(0, Math.min(1, t))})`;
+    readBar.style.transform = `scaleX(${frac(cur, v)})`;
   };
   overlay.addEventListener('pointerdown', (e) => {
     if (!cur || dragId !== -1) return;
-    dragId = e.pointerId; sx = e.clientX; sy = e.clientY;
+    dragId = e.pointerId; sx = e.clientX; sy = e.clientY; moved = false;
     ss = toSlider(cur, get(cur.key as string));
     try { overlay.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     history?.beginGesture(cur.label);
     place(e); showRead(get(cur.key as string));
-    guide.classList.add('show');
     e.preventDefault();
   });
   overlay.addEventListener('pointermove', (e) => {
@@ -235,6 +324,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     e.preventDefault();
     const range = toSlider(cur, cur.max) - toSlider(cur, cur.min);
     const dx = e.clientX - sx, dy = -(e.clientY - sy);
+    if (!moved && Math.abs(dx) < PRESS_SLOP && Math.abs(dy) < PRESS_SLOP) return;
+    if (!moved) { moved = true; guide.classList.add('show'); }
     const s = ss + (dx / COARSE_PX) * range + (dy / COARSE_PX) * range * FINE_RATIO;
     const v = fromSlider(cur, Math.min(toSlider(cur, cur.max), Math.max(toSlider(cur, cur.min), s)));
     set(cur.key as string, v);
@@ -246,6 +337,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     dragId = -1;
     guide.classList.remove('show');
     history?.endGesture();
+    if (!moved) select(null);          // plain tap: done with this param
   };
   overlay.addEventListener('pointerup', end);
   overlay.addEventListener('pointercancel', end);
@@ -254,14 +346,28 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   overlay.addEventListener('touchmove', (e) => { if (cur) e.preventDefault(); }, { passive: false });
   overlay.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  // A plain tap on the canvas (no drag) while the list is open closes it.
+  let tapId = -1, tx = 0, ty = 0, tt = 0;
+  host.addEventListener('pointerdown', (e) => {
+    if (!visible || cur || (e.target as HTMLElement).tagName !== 'CANVAS') return;
+    tapId = e.pointerId; tx = e.clientX; ty = e.clientY; tt = performance.now();
+  });
+  host.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== tapId) return;
+    tapId = -1;
+    if (Math.abs(e.clientX - tx) < PRESS_SLOP && Math.abs(e.clientY - ty) < PRESS_SLOP && performance.now() - tt < 350) opts.onClose?.();
+  });
+  host.addEventListener('pointercancel', () => { tapId = -1; });
+
   const unsubLocks = locks?.subscribe(refresh);
   const unsubHistory = history?.subscribe(refreshHistory);
   refresh();
 
   return {
     refresh,
+    rebuildPresets,
     isVisible: () => visible,
-    setVisible(on) { visible = on; list.hidden = !on; overlay.hidden = !on; if (!on) select(null); },
-    dispose() { unsubLocks?.(); unsubHistory?.(); list.remove(); overlay.remove(); },
+    setVisible(on) { visible = on; overlay.hidden = !on; select(null); },
+    dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); list.remove(); chip.remove(); overlay.remove(); },
   };
 }

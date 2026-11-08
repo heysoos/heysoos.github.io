@@ -4,3 +4,4 @@ dist/
 .superpowers/
 .worktrees/
 *.env
+dist-preview/

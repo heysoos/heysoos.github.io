@@ -141,6 +141,7 @@ const underConstruction = project.data.underConstruction ?? false;
           </div>
         </div>
       )}
+      <button class="scroll-down" id="scroll-down" aria-label="About this simulation">︾</button>
       <div id="sim-fallback" class="fallback" style="display:none;">
         <p>WebGPU is not supported in your browser.</p>
         <p>Try Chrome, Edge, or Firefox Nightly.</p>
@@ -369,17 +370,32 @@ const underConstruction = project.data.underConstruction ?? false;
     }
   }
   const panelWasOpen = () => panel.style.display !== 'none';
+
+  // Phone: the sim owns the screen. The site nav hides while the canvas is
+  // in view and returns once the page is scrolled to the write-up; the ︾
+  // button is the way down, since the canvas eats vertical drags.
+  const scrollDown = document.getElementById('scroll-down');
+  scrollDown?.addEventListener('click', () => {
+    window.scrollTo({ top: viewport.offsetTop + viewport.offsetHeight - 60, behavior: 'smooth' });
+  });
+  const updateImmersive = () => {
+    document.body.classList.toggle('sim-immersive', isPhoneLayout() && window.scrollY < viewport.offsetHeight * 0.5);
+  };
+  updateImmersive();
+  window.addEventListener('scroll', updateImmersive, { passive: true });
   // Always-visible close on the handle (phone); the in-content × scrolls away.
   document.getElementById('panel-handle-close')?.addEventListener('pointerdown', (e) => e.stopPropagation());
   document.getElementById('panel-handle-close')?.addEventListener('click', () => {
     panel.style.display = 'none';
     sessionStorage.setItem(`${sim}-panel-open`, 'false');
+    panel.dispatchEvent(new CustomEvent('sheetclose'));
   });
   initLayout();
   window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
     const open = panelWasOpen();
     initLayout();
     panel.style.display = open ? 'flex' : 'none';
+    updateImmersive();
   });
   document.addEventListener('pagehide', () => layoutCtrl?.dispose(), { once: true });
 
@@ -485,7 +501,9 @@ const underConstruction = project.data.underConstruction ?? false;
             if (!btn) return;
             const action = btn.getAttribute("data-action");
             if (action === "play-pause") {
-              if (playing) { controller.stop(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
+              // Controllers with pause() keep drawing while frozen (zoom, pan, Look stay live).
+              const freeze = (controller as { pause?: () => void }).pause?.bind(controller) ?? controller.stop.bind(controller);
+              if (playing) { freeze(); btn.querySelector(".ctrl-icon")!.textContent = "▶"; }
               else { controller.start(); btn.querySelector(".ctrl-icon")!.textContent = "⏸"; }
               playing = !playing;
             } else if (action === "reset") {
