@@ -38,6 +38,12 @@ export interface CPPNPanelOpts {
   onPresetLoad?: (preset: CPPNPreset) => void;
 }
 
+/** The same builder, for any sim whose desktop panel is its spec groups
+ *  (header: undo · redo · Randomize · ×; presets; group bands; meter rows). */
+export { buildCPPNPanel as buildSpecPanel };
+export type SpecPanelOpts = CPPNPanelOpts;
+export type SpecPanelHandle = CPPNPanelHandle;
+
 export interface CPPNPanelHandle {
   refresh(): void;
   dispose(): void;

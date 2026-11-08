@@ -270,12 +270,12 @@
 /* ── Desktop field-boids panel: pinned header, group bands, one-line meter rows ── */
 .panel-content:has(> .fb-head) { padding-top: 0; }
 .fb-head {
-  position: sticky; top: 0; z-index: 2;
+  position: sticky; top: var(--fb-head-top, 0); z-index: 2;
   display: flex; align-items: center; gap: 4px;
   padding: 0.55rem 0 0.5rem; margin-bottom: 4px;
   /* Sticky over the scrolling rows: a light frosted cover, not a second
      --bg-nav layer (that stacked to near-black over the panel's own). */
-  background: color-mix(in srgb, var(--bg-nav) 35%, transparent);
+  background: color-mix(in srgb, var(--bg-nav) 75%, transparent);
   border-bottom: 1px solid var(--bg-surface-border);
 }
 .fb-head button {
@@ -1178,3 +1178,7 @@
   .sim-help dl { grid-template-columns: 18px max-content minmax(0, 1fr); }
   .sim-help dd { white-space: normal; }
 }
+
+/* ── Boids desktop panel: Params tab in the shared spec style, under the tab bar ── */
+.boids-spec-params { --fb-head-top: 27px; }
+.boids-spec-params .fb-head { padding-top: 0.45rem; }

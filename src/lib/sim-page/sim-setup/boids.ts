@@ -176,6 +176,7 @@ export async function setupBoids(
       reactor,
       history: mgr.history,
       locks: mgr.locks,
+      spec: { groups: BOIDS_GROUPS, params: paramView, get: getKey, set: setKey, onRandomize: randomize },
       buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
       onClose: () => {
         panelControls?.teardown();

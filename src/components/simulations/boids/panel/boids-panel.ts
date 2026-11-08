@@ -16,6 +16,8 @@ import { createRangeSlider } from './range-slider';
 import { pillStyle } from './panel-styles';
 import type { UndoHistory } from '../../../../lib/presets/undo-history';
 import type { ParamLocks } from '../../../../lib/presets/param-locks';
+import type { ParamGroup } from '../../../../lib/sim-page/param-spec';
+import { buildSpecPanel, type SpecPanelHandle } from '../../cppn/cppn-panel';
 
 // ── Main panel builder ────────────────────────────────────────────────────────
 
@@ -42,6 +44,17 @@ export interface BoidsPanelOpts {
   /** Called whenever the user clicks a tab. The admin uses this to track the
    *  active tab so it can pass it back via initialTab on the next rebuild. */
   onTabChange?: (name: string) => void;
+  /** Gallery page: build the Params tab from the spec groups in the shared
+   *  field-boids style (meter rows, group bands, pinned undo/redo/Randomize)
+   *  instead of the legacy slider sections. `get`/`set` route the virtual
+   *  keys (`color`, `trails`, `trailDecay`). */
+  spec?: {
+    groups: ParamGroup<string>[];
+    params: unknown;
+    get: (key: string) => number;
+    set: (key: string, value: number) => void;
+    onRandomize?: () => void;
+  };
 }
 
 export function buildBoidsPanel(
@@ -68,7 +81,8 @@ export function buildBoidsPanel(
   tabBar.style.cssText = [
     'display:flex',
     'border-bottom:1px solid var(--bg-surface-border)',
-    'position:relative',
+    'position:sticky', 'top:0', 'z-index:3',
+    'background:var(--bg-nav)',
   ].join(';');
 
   // Close + shader buttons in top-right corner of the bar
@@ -169,6 +183,16 @@ export function buildBoidsPanel(
   const history = opts.history;
   const locks = opts.locks;
 
+  let specHandle: SpecPanelHandle | null = null;
+  let padTraceUpdaters: Array<(snapshot: BandSnapshot | null, mappings: AudioMapping[], baseParams?: Record<string, number>) => void> = [];
+  if (opts.spec) {
+    paramsBody.className = 'boids-spec-params';
+    paramsBody.style.overflow = 'visible';   // the panel body scrolls (keeps its position across rebuilds), not the tab
+    specHandle = buildSpecPanel(paramsBody, {
+      groups: opts.spec.groups, params: opts.spec.params, get: opts.spec.get, set: opts.spec.set,
+      history, locks, buildPresets: opts.buildPresets, onRandomize: opts.spec.onRandomize,
+    });
+  } else {
   // ── Preset switcher ───────────────────────────────────────────────────────
   if (opts.buildPresets) {
     opts.buildPresets(addSection(paramsBody, 'Presets'));
@@ -270,7 +294,7 @@ export function buildBoidsPanel(
 
   // ── Forces (sub-section of Simulation) ───────────────────────────────────
   addSubheading(simulationBody, 'Forces');
-  const padTraceUpdaters = buildForcesPads(simulationBody, controller, history);
+  padTraceUpdaters = buildForcesPads(simulationBody, controller, history);
 
   // ── Perception (sub-section of Simulation) ────────────────────────────────
   addSubheading(simulationBody, 'Perception');
@@ -287,6 +311,8 @@ export function buildBoidsPanel(
     get: () => controller.params.mouseRadius,
     set: v => { controller.params.mouseRadius = v; },
   });
+
+  } // legacy Params tab
 
   // ── Image Force Field ─────────────────────────────────────────────────────
   buildImagePanelSection(imageBody, controller.imageProcessor, {
@@ -326,6 +352,7 @@ export function buildBoidsPanel(
       return;
     }
     audioWasActive = true;
+    specHandle?.refresh();
 
     const snapshot = reactor.analyze();
 
@@ -385,7 +412,7 @@ export function buildBoidsPanel(
   }
 
   return {
-    teardown: () => { audioVizControls?.stop(); for (const fn of disconnects) fn(); },
+    teardown: () => { audioVizControls?.stop(); specHandle?.dispose(); for (const fn of disconnects) fn(); },
     updateAudioViz,
   };
 }
