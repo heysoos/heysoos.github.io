@@ -497,32 +497,30 @@ export class BoidsController {
 
   /**
    * Listen for pointer input on `target` and feed the mouse force + drag-to-carry.
-   * Defaults to the canvas (init binds it); the background sim's canvas is
-   * pointer-events:none behind the page, so it binds `window` instead.
-   * Nothing is preventDefault-ed: clicks, text selection and page scrolling
-   * keep working. Touch only engages after a short hold or a move that
-   * survived the browser's scroll decision, so a vertical swipe never tugs
-   * the swarm first; a cancelled touch (the page scrolled) releases it.
+   * Defaults to the canvas (init binds it, with hover attraction); the
+   * background sim's canvas is pointer-events:none behind the page, so it
+   * binds `window` with `hover: false`: a mouse acts only while a button is
+   * held, and touch only once a drag survives the browser's scroll decision
+   * (body is touch-action: pan-y pinch-zoom, so vertical swipes and pinch
+   * never reach it). Nothing is preventDefault-ed: clicks, text selection
+   * and scrolling keep working; a cancelled touch releases the force.
    */
-  bindPointer(target: HTMLElement | Window): void {
+  bindPointer(target: HTMLElement | Window, opts: { hover?: boolean } = {}): void {
     const canvas = this.gpu?.canvas;
     if (!canvas) return;
-    const HOLD_MS = 180;
-    let holdTimer = 0;
-    let pendingTouch = false;
+    const hover = opts.hover ?? true;
+    let pressed = false;
     const ndc = (e: PointerEvent): [number, number] => {
       const rect = canvas.getBoundingClientRect();
       return [((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)];
     };
     const release = () => {
-      clearTimeout(holdTimer);
-      pendingTouch = false;
+      pressed = false;
       this.mouseActive = false;
       this.mouseDX = 0;
       this.mouseDY = 0;
     };
     const engage = (x: number, y: number) => {
-      pendingTouch = false;
       this.mouseX = x;
       this.mouseY = y;
       this.mouseDX = 0;
@@ -531,30 +529,24 @@ export class BoidsController {
     };
     const onDown = (e: PointerEvent) => {
       if (!e.isPrimary) return;
+      pressed = true;
       const [x, y] = ndc(e);
-      if (e.pointerType === 'touch') {
-        this.mouseX = x;
-        this.mouseY = y;
-        pendingTouch = true;
-        clearTimeout(holdTimer);
-        holdTimer = window.setTimeout(() => { if (pendingTouch) engage(x, y); }, HOLD_MS);
-      } else {
-        engage(x, y);
-      }
+      // Touch waits for a move: a vertical swipe gets pointercancel instead.
+      if (e.pointerType === 'touch') { this.mouseX = x; this.mouseY = y; return; }
+      engage(x, y);
     };
     const onMove = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       const [x, y] = ndc(e);
-      if (pendingTouch) { engage(x, y); return; }
-      if (e.pointerType === 'touch' && !this.mouseActive) return;
-      if (this.mouseActive) {
-        // Movement between frames accumulates; _packUniforms consumes it.
-        this.mouseDX += x - this.mouseX;
-        this.mouseDY += y - this.mouseY;
+      if (!this.mouseActive) {
+        if (pressed || (hover && e.pointerType !== 'touch')) engage(x, y);
+        return;
       }
+      // Movement between frames accumulates; _packUniforms consumes it.
+      this.mouseDX += x - this.mouseX;
+      this.mouseDY += y - this.mouseY;
       this.mouseX = x;
       this.mouseY = y;
-      this.mouseActive = true;
     };
     target.addEventListener('pointerdown', onDown as EventListener);
     target.addEventListener('pointermove', onMove as EventListener);
