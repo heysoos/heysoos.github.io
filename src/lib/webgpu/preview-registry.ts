@@ -8,19 +8,21 @@ export async function createPreviewController(
   canvas: HTMLCanvasElement,
 ): Promise<PreviewController | null> {
   if (sim === 'boids') {
-    const [{ BoidsController }, { BOIDS_PRESETS }, { applyBoidsPreset }] = await Promise.all([
+    const [{ BoidsController }, { BOIDS_PRESETS }, { applyBoidsPreset }, { scaledHeroCount }] = await Promise.all([
       import('../../components/simulations/boids/boids-controller'),
       import('../../data/boids-presets'),
       import('../../lib/sim-page/boids-preset-apply'),
+      import('../../lib/sim-page/hero-scale'),
     ])
     const ctrl = new BoidsController()
     const ok = await ctrl.init(canvas)
     if (!ok) return null
-    // Same preset as the home page, thinned for a card-sized canvas.
+    // Same preset as the home page, including its trails: the default is a
+    // low-opacity bokeh that only reads once trails accumulate, so a single
+    // trail-less frame of it was all but black. Count scales with card area.
     const preset = BOIDS_PRESETS.find(p => p.isDefault) ?? BOIDS_PRESETS[0]
     if (preset) await applyBoidsPreset(ctrl, preset)
-    ctrl.params.numParticles = Math.min(ctrl.params.numParticles, 400)
-    ctrl.trailsEnabled = false
+    ctrl.params.numParticles = scaledHeroCount(ctrl.params.numParticles, canvas.clientWidth, canvas.clientHeight)
     return {
       pause: () => ctrl.stop(),
       resume: () => ctrl.start(),
