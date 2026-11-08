@@ -317,7 +317,7 @@ export function buildImagePanelSection(
     return { row, input: inp };
   }
 
-  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 2, liveParams.strength,   0.01, v => opts.imageForce.setStrength(v));
+  const { row: strengthRow, input: strengthInput } = makeSlider('Strength', 0, 10, liveParams.strength,  0.05, v => opts.imageForce.setStrength(v));
   const { row: blurRow,     input: blurInput }     = makeSlider('Blur',     0, 10, liveParams.blurRadius, 0.5,  v => processor.setBlurRadius(v));
   const { row: threshRow,   input: threshInput }   = makeSlider('Threshold',0, 1,  liveParams.threshold,  0.01, v => processor.setThreshold(v));
   sharedDiv.appendChild(strengthRow);
@@ -507,7 +507,10 @@ export function buildImagePanelSection(
   function resizeThumb(canvas: HTMLCanvasElement, ctx: GPUCanvasContext | null, isActive: boolean): void {
     const w = canvas.clientWidth;
     if (w <= 0) return;
-    const h = Math.round(w * THUMB_ASPECT);
+    // The thumbnail is a blit of the canvas-sized processed texture, so it
+    // takes the canvas's aspect (portrait on a phone), capped in height.
+    const ar = processor.canvasWidth > 0 ? processor.canvasHeight / processor.canvasWidth : THUMB_ASPECT;
+    const h = Math.round(Math.min(w * ar, window.innerHeight * 0.4));
     canvas.width  = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     canvas.style.height = `${h}px`;

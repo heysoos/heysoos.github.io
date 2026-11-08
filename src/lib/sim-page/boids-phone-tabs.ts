@@ -8,7 +8,7 @@
 //           Mapped-parameter rows are read-only there.
 
 import type { BoidsController } from '../../components/simulations/boids/boids-controller';
-import { BAND_COLORS, PARAM_META, drawAudioViz, type AudioReactor } from '../../components/simulations/boids/boids-audio';
+import { BAND_COLORS, PARAM_META, drawAudioViz, type AudioReactor, type BandKey } from '../../components/simulations/boids/boids-audio';
 import { buildAudioTab, type AudioUpdaterMaps } from '../../components/simulations/boids/panel/audio-tab';
 import { pillStyle } from '../../components/simulations/boids/panel/panel-styles';
 import { buildImagePanelSection } from '../webgpu/image-editor/image-panel-section';
@@ -117,9 +117,13 @@ function audioStrip(container: HTMLElement, ctrl: BoidsController, reactor: Audi
   strength.row.prepend(el('span', 'pm-lbl', 'Strength'));
 
   const spec = el('canvas', 'pm-spec');
-  const bands = el('div', 'pm-bands');
+  // Band levels (the spectrum above is by frequency, so volume needs its own meter).
+  const meters = el('div', 'pm-meters');
+  const meterFill = new Map<BandKey, HTMLElement>();
   for (const [k, label] of [['bass', 'bass'], ['mid', 'mid'], ['presence', 'pres'], ['hi', 'hi'], ['volume', 'vol']] as const) {
-    const b = el('span', '', label); b.style.color = BAND_COLORS[k]; bands.appendChild(b);
+    const m = el('div'); const lbl = el('span', '', label); lbl.style.color = BAND_COLORS[k];
+    const bar = el('div', 'pm-bar'); const fill = el('i'); fill.style.background = BAND_COLORS[k]; bar.appendChild(fill);
+    m.append(lbl, bar); meters.appendChild(m); meterFill.set(k, fill);
   }
 
   // One live row per mapped parameter: base tick, modulation fill, delta. Read-only.
@@ -143,7 +147,7 @@ function audioStrip(container: HTMLElement, ctrl: BoidsController, reactor: Audi
     }
   };
 
-  container.append(src, err, strength.row, spec, bands, live);
+  container.append(src, err, strength.row, spec, meters, live);
   paint();
 
   const dpr = window.devicePixelRatio || 1;
@@ -155,8 +159,14 @@ function audioStrip(container: HTMLElement, ctrl: BoidsController, reactor: Audi
     const w = spec.clientWidth, h = spec.clientHeight;
     if (w && (spec.width !== Math.round(w * dpr) || spec.height !== Math.round(h * dpr))) { spec.width = Math.round(w * dpr); spec.height = Math.round(h * dpr); }
     rebuildRows();
-    if (reactor.isActive()) drawAudioViz(spec, reactor);
-    else spec.getContext('2d')?.clearRect(0, 0, spec.width, spec.height);
+    if (reactor.isActive()) {
+      drawAudioViz(spec, reactor);
+      const snap = reactor.analyze();
+      for (const [k, f] of meterFill) f.style.setProperty('--v', `${(Math.min(1, snap[k]) * 100).toFixed(1)}%`);
+    } else {
+      spec.getContext('2d')?.clearRect(0, 0, spec.width, spec.height);
+      for (const f of meterFill.values()) f.style.setProperty('--v', '0%');
+    }
     const base = getBaseParams();
     const cur = ctrl.params as unknown as Record<string, number>;
     for (const [p, r] of rows) {
@@ -219,7 +229,7 @@ function imageStrip(container: HTMLElement, ctrl: BoidsController): () => void {
     mk('Force', force.getEnabled(), (v) => force.setEnabled(v)),
     mk('Show image', force.showOverlay, (v) => force.setShowOverlay(v)),
   );
-  const strength = range(0, 2, 0.01, force.getStrength(), (v) => force.setStrength(v), (v) => v.toFixed(2));
+  const strength = range(0, 10, 0.05, force.getStrength(), (v) => force.setStrength(v), (v) => v.toFixed(2));
   strength.row.prepend(el('span', 'pm-lbl', 'Strength'));
   const blur = range(0, 10, 0.5, proc.params.blurRadius, (v) => proc.setBlurRadius(v), (v) => v.toFixed(1));
   blur.row.prepend(el('span', 'pm-lbl', 'Blur'));
@@ -237,6 +247,7 @@ function imageStrip(container: HTMLElement, ctrl: BoidsController): () => void {
     raf = requestAnimationFrame(loop);
     if (t - last < 250) return;
     last = t;
+    thumbWrap.style.setProperty('--ar', `${proc.canvasWidth} / ${proc.canvasHeight}`);
     if (!sized && tctx && thumbWrap.clientWidth > 0) {
       thumb.width = Math.round(thumbWrap.clientWidth * dpr);
       thumb.height = Math.round(thumbWrap.clientHeight * dpr);
