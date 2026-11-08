@@ -436,8 +436,8 @@ fn tap(pos: vec2f, offS: vec2f, areaS: f32) -> vec3f {\r
 }\r
 \r
 const RINGS: i32 = 3;\r
-const TAPS_PER_RING: i32 = 2;\r
-const REPULSE_TAPS: i32 = 2;\r
+const TAPS_PER_RING: i32 = 5;\r
+const REPULSE_TAPS: i32 = 6;\r
 const PI: f32 = 3.14159265;\r
 const TAU: f32 = 6.2831853;\r
 \r
