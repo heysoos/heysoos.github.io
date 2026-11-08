@@ -55,27 +55,37 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     const W = mini.width, H = mini.height;
     mctx.clearRect(0, 0, W, H);
     const aspect = canvas.height > 0 ? canvas.width / canvas.height : 1;
-    // The original frame (view 0,0 at zoom 1) is drawn at 60% of the box,
-    // fitted by its larger side; everything else maps through the same scale.
+    // Two rectangles in world units: the original frame (centre 0, zoom 1)
+    // and the current view. The map is scaled and centred so that the union
+    // of the two fills 60% of the box: zoomed in, the frame is the reference
+    // and the view a box inside it; zoomed out, the view is the reference and
+    // the frame shrinks inside it; panned away, both shrink to stay in shot.
     const s = ctrl.config.scale;
-    const fx = aspect * s, fy = s;                       // frame half-extent, world units
-    const k = (0.6 * Math.min(W, H) / 2) / Math.max(fx, fy);
-    const cx = W / 2, cy = H / 2;
+    const fx = aspect * s, fy = s;
+    const vx = fx / ctrl.viewZoom, vy = fy / ctrl.viewZoom;
+    const ux0 = Math.min(-fx, ctrl.viewCx - vx), ux1 = Math.max(fx, ctrl.viewCx + vx);
+    const uy0 = Math.min(-fy, ctrl.viewCy - vy), uy1 = Math.max(fy, ctrl.viewCy + vy);
+    const k = (0.6 * Math.min(W, H)) / Math.max(ux1 - ux0, uy1 - uy0);
+    const cx = W / 2 - ((ux0 + ux1) / 2) * k, cy = H / 2 - ((uy0 + uy1) / 2) * k;
+    // Never let a rectangle collapse below a few pixels.
+    const rect = (x: number, y: number, hx: number, hy: number): [number, number, number, number] => {
+      const w = Math.max(4, 2 * hx * k), h = Math.max(4, 2 * hy * k);
+      return [cx + x * k - w / 2, cy + y * k - h / 2, w, h];
+    };
     mctx.save();
+    const [fX, fY, fW, fH] = rect(0, 0, fx, fy);
     mctx.strokeStyle = 'rgba(255,255,255,0.6)';
     mctx.lineWidth = 1.5;
-    mctx.strokeRect(cx - fx * k, cy - fy * k, 2 * fx * k, 2 * fy * k);
-    const vx = fx / ctrl.viewZoom, vy = fy / ctrl.viewZoom;
-    const x0 = cx + (ctrl.viewCx - vx) * k, y0 = cy + (ctrl.viewCy - vy) * k;
-    const x1 = cx + (ctrl.viewCx + vx) * k, y1 = cy + (ctrl.viewCy + vy) * k;
+    mctx.strokeRect(fX, fY, fW, fH);
+    const [vX, vY, vW, vH] = rect(ctrl.viewCx, ctrl.viewCy, vx, vy);
     const accent = getComputedStyle(host).getPropertyValue('--accent').trim() || '#e8702a';
     mctx.strokeStyle = accent;
     mctx.fillStyle = accent;
     mctx.globalAlpha = 0.3;
-    mctx.fillRect(Math.max(0, x0), Math.max(0, y0), Math.min(W, x1) - Math.max(0, x0), Math.min(H, y1) - Math.max(0, y0));
+    mctx.fillRect(vX, vY, vW, vH);
     mctx.globalAlpha = 1;
     mctx.lineWidth = 2;
-    mctx.strokeRect(Math.max(0.75, x0), Math.max(0.75, y0), Math.min(W - 0.75, x1) - Math.max(0.75, x0), Math.min(H - 0.75, y1) - Math.max(0.75, y0));
+    mctx.strokeRect(vX, vY, vW, vH);
     // zoom readout
     mctx.fillStyle = 'rgba(255,255,255,0.75)';
     mctx.font = '600 15px ui-monospace, Menlo, monospace';
