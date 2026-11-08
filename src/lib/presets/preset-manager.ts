@@ -86,6 +86,21 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
     return binding.prepare ? binding.prepare(filled) : filled;
   };
 
+  // A custom preset that was promoted to a built-in (same name, same params
+  // once both are filled from defaults) would show twice; retire the copy to
+  // the trash. Locks are ignored for this comparison.
+  {
+    const key = (b: PresetBody<P>) => {
+      const merged = { ...binding.defaults, ...b.params } as ParamRecord;
+      const known = Object.fromEntries(Object.keys(binding.defaults).map(k => [k, merged[k]])) as P;
+      return bodyKey({ ...b, params: known } as PresetBody<P>);
+    };
+    const builtKeys = new Map(binding.builtIn.map(p => [p.name.trim().toLowerCase(), key(bodyOf(p))]));
+    for (const c of store.list()) {
+      if (builtKeys.get(c.name.trim().toLowerCase()) === key(bodyOf(c))) store.remove(c.id);
+    }
+  }
+
   function findPreset(id: string | undefined): BasePreset<P> | undefined {
     if (!id) return undefined;
     return binding.builtIn.find(p => p.id === id) ?? store.get(id);

@@ -50,13 +50,21 @@
   min-width: 200px;
   min-height: 80px;
   overflow: hidden;
-  background: var(--bg-nav);
   border: 1px solid var(--bg-surface-border);
   border-radius: var(--border-radius);
-  backdrop-filter: blur(8px);
   z-index: 20;
   display: flex;
   flex-direction: column;
+  isolation: isolate;
+}
+/* Frosted background on its own layer. With backdrop-filter on the panel
+   itself, Chromium composites the sticky .fb-head's region against the
+   panel's background instead of the page, which read as an opaque black
+   band across the top of the field-boids / CPPN panels. */
+.params-panel::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--bg-nav); border-radius: inherit;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 
 .panel-drag-handle {
@@ -109,6 +117,13 @@
 }
 
 /* ── Phone scrub panel (field-boids): list on the left, canvas is the scrub area ── */
+/* Frosted background on its own layer (see .params-panel::before). */
+.scrub-list::before, .shader-panel::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: var(--bg-nav);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.scrub-list::before { background: rgba(8,6,4,0.78); }
 .scrub-list {
   position: absolute;
   left: 0.5rem; top: 0.6rem; bottom: 3.6rem;
@@ -116,9 +131,8 @@
   display: flex; flex-direction: column;
   overflow: hidden;
   transition: width 0.2s ease;
-  background: rgba(8,6,4,0.78); border: 1px solid var(--bg-surface-border); border-radius: 10px;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  z-index: 5;
+  border: 1px solid var(--bg-surface-border); border-radius: 10px;
+  z-index: 5; isolation: isolate;
   touch-action: pan-y;
   -webkit-touch-callout: none; user-select: none;
 }
@@ -258,7 +272,10 @@
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 4px;
   padding: 0.55rem 0 0.5rem; margin-bottom: 4px;
-  background: var(--bg-nav); border-bottom: 1px solid var(--bg-surface-border);
+  /* Sticky over the scrolling rows: a light frosted cover, not a second
+     --bg-nav layer (that stacked to near-black over the panel's own). */
+  background: color-mix(in srgb, var(--bg-nav) 35%, transparent);
+  border-bottom: 1px solid var(--bg-surface-border);
 }
 .fb-head button {
   min-height: 0 !important; padding: 4px 8px; border-radius: 6px;
@@ -693,11 +710,9 @@
   right: 250px;
   width: 520px;
   max-height: 75vh;
-  background: var(--bg-nav);
   border: 1px solid var(--bg-surface-border);
   border-radius: var(--border-radius);
-  backdrop-filter: blur(8px);
-  z-index: 20;
+  z-index: 20; isolation: isolate;
   display: flex;
   flex-direction: column;
 }
