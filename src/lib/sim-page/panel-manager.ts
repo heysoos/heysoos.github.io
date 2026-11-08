@@ -94,26 +94,24 @@ export class PanelManager {
   }
 
   private _attachListeners(): void {
-    // Drag from the dotted handle (phone sheet / fallback) or from the sim's
-    // own header bar (.fb-head, .panel-tab-bar) on desktop, where the dotted
-    // handle is hidden. Buttons and inputs inside the header still work.
-    this.panel.addEventListener('mousedown', (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      const onHandle = t.closest('.panel-drag-handle');
-      const onHead = t.closest('.fb-head, .panel-tab-bar') && !t.closest('button, input, select, textarea, a, label');
-      if (!onHandle && !onHead) return;
-      e.preventDefault();
-      const vRect = this.viewport.getBoundingClientRect();
-      const pRect = this.panel.getBoundingClientRect();
-      this.panel.style.right = 'auto';
-      this.panel.style.left  = `${pRect.left - vRect.left}px`;
-      this.panel.style.top   = `${pRect.top  - vRect.top}px`;
-      this.dragging = true;
-      this.dragOX = e.clientX; this.dragOY = e.clientY;
-      this.startL = pRect.left - vRect.left;
-      this.startT = pRect.top  - vRect.top;
-      document.body.style.userSelect = 'none';
-    });
+    const dragHandle = this.panel.querySelector('.panel-drag-handle');
+    if (!dragHandle) {
+      console.warn('PanelManager: .panel-drag-handle not found — drag disabled');
+    } else {
+      dragHandle.addEventListener('mousedown', (e: MouseEvent) => {
+        e.preventDefault();
+        const vRect = this.viewport.getBoundingClientRect();
+        const pRect = this.panel.getBoundingClientRect();
+        this.panel.style.right = 'auto';
+        this.panel.style.left  = `${pRect.left - vRect.left}px`;
+        this.panel.style.top   = `${pRect.top  - vRect.top}px`;
+        this.dragging = true;
+        this.dragOX = e.clientX; this.dragOY = e.clientY;
+        this.startL = pRect.left - vRect.left;
+        this.startT = pRect.top  - vRect.top;
+        document.body.style.userSelect = 'none';
+      });
+    }
 
     this.panel.addEventListener('mousemove', (e: MouseEvent) => {
       if (this.dragging || this.resizeZone) return;
@@ -125,7 +123,7 @@ export class PanelManager {
     });
 
     this.panel.addEventListener('mousedown', (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest('.panel-drag-handle, .fb-head, .panel-tab-bar')) return;
+      if ((e.target as HTMLElement).closest('.panel-drag-handle')) return;
       const zone = this._getResizeZone(e);
       if (!zone) return;
       e.preventDefault();

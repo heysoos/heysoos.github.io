@@ -65,7 +65,6 @@ export function buildBoidsPanel(
 
   // ── Tab bar ───────────────────────────────────────────────────────────────
   const tabBar = document.createElement('div');
-  tabBar.className = 'panel-tab-bar';
   tabBar.style.cssText = [
     'display:flex',
     'border-bottom:1px solid var(--bg-surface-border)',

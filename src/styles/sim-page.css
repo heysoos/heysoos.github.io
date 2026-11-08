@@ -72,14 +72,6 @@
 }
 
 .panel-drag-handle:active { cursor: grabbing; }
-/* Desktop: every sim panel has its own header (×, undo/redo, tabs), so the
-   dotted handle is just a black bar. Hide it; the header drags the panel. */
-@media (min-width: 769px) {
-  .panel-drag-handle { display: none; }
-  .fb-head, .panel-tab-bar { cursor: grab; }
-  .fb-head:active, .panel-tab-bar:active { cursor: grabbing; }
-  .fb-head button, .panel-tab-bar button { cursor: pointer; }
-}
 
 .panel-handle-actions {
   display: none;
