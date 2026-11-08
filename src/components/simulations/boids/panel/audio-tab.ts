@@ -43,7 +43,7 @@ function makeMatrixTrace(
     render: makeMiniRenderer(bandColor),
     initialHeight: 16,
   });
-  rbc.canvas.style.cssText = STYLES.matrixCanvas + 'width:100%;height:16px;margin-top:2px;';
+  rbc.canvas.style.cssText = 'background:transparent;border-radius:2px;display:block;width:100%;height:16px;margin-top:2px;';
   return {
     canvas:     rbc.canvas,
     push:       (v) => rbc.push(v),
@@ -542,6 +542,8 @@ export function buildAudioTab(
   const sysBtn = document.createElement('button');
   sysBtn.textContent = 'System Audio';
   sysBtn.style.cssText = pillStyle(false);
+  // System audio rides on screen-share capture (getDisplayMedia), which no mobile browser implements: hide the pill where it cannot work.
+  if (!navigator.mediaDevices?.getDisplayMedia) sysBtn.hidden = true;
 
   // Status dot
   const statusDot = document.createElement('span');

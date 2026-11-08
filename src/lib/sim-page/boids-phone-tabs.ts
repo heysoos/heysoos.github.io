@@ -93,6 +93,8 @@ function audioStrip(container: HTMLElement, ctrl: BoidsController, reactor: Audi
   const src = el('div', 'pm-row');
   const mic = el('button', '', 'Microphone');
   const sys = el('button', '', 'System Audio');
+  // System audio rides on screen-share capture (getDisplayMedia), which no mobile browser implements: hide the pill where it cannot work.
+  if (!navigator.mediaDevices?.getDisplayMedia) sys.hidden = true;
   const dot = el('span', 'pm-dot');
   const err = el('div', 'pm-err');
   src.append(mic, sys, dot);
