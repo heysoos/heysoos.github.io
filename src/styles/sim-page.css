@@ -877,7 +877,12 @@
   /* Immersive: the sim fills the screen, the nav slides away until the page
      is scrolled to the write-up. Pause/reset and fps show only with the list. */
   main.sim-main { padding-top: 0 !important; }
-  .sim-viewport { height: 100vh; height: 100dvh; }
+  .sim-viewport { height: 100vh; height: 100dvh; overflow: hidden; }
+  /* The canvas is sized to the large viewport (URL bar collapsed) and clipped
+     by the viewport while the bar is shown. dvh would resize it on every
+     scroll, and a resize reallocates the trail/image textures and rebuilds
+     bind groups: a hitch and a visible reset. Same trick as the home page. */
+  .sim-viewport #sim-canvas { height: 100vh; height: 100lvh; }
   body.sim-immersive .nav { transform: translateY(-100%); }
   .nav { transition: transform 0.25s ease; }
   .scroll-down {
