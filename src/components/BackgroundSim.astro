@@ -40,6 +40,9 @@ const { sim } = Astro.props;
     z-index: 0;
     pointer-events: none;
   }
+  /* Vertical swipes and pinch stay with the browser; a sideways drag or a
+     hold reaches the swarm (see BoidsController.bindPointer). */
+  :global(body) { touch-action: pan-y pinch-zoom; }
   #bg-sim-debug {
     position: fixed;
     inset: 0;
@@ -249,6 +252,13 @@ const { sim } = Astro.props;
     );
     tracker.start();
 
+    // The canvas is pointer-events:none behind the page, so pointer input
+    // comes from the window: a held mouse button attracts and carries, a
+    // touch drag carries; plain hovering and vertical swipes do nothing.
+    controller.bindPointer(window, { hover: false });
     controller.start();
+  } else {
+    // No WebGPU: the page is plain; hide the preset picker, which would do nothing.
+    document.getElementById('preset-picker')!.style.display = 'none';
   }
 </script>

@@ -111,6 +111,9 @@ export class BoidsController {
   private mouseX = 0;
   private mouseY = 0;
   private mouseActive = false;
+  /** Pointer movement accumulated since the last frame, consumed by _packUniforms. */
+  private mouseDX = 0;
+  private mouseDY = 0;
   private trailRenderer = new TrailRenderer();
 
   /** Page background color used for trail decay target + no-trails swapchain
@@ -152,7 +155,7 @@ export class BoidsController {
       const { device } = this.gpu;
 
       // ── Uniform / obstacle / vertex buffers ──────────────────────────
-      this.uniformBuffer = createUniformBuffer(device, 112);
+      this.uniformBuffer = createUniformBuffer(device, 128);
       // 16 × vec4f (256 bytes) + u32 count (4) + vec3u padding (12) = 272 bytes
       this.obstacleBuffer = createUniformBuffer(device, 272);
 
@@ -290,21 +293,7 @@ export class BoidsController {
 
       this._initThemeObserver();
 
-      // Pointer events cover mouse and touch alike: a finger drag drives the
-      // force and lifting it (or a cancelled touch when the page scrolls)
-      // releases it. mouseleave alone left the force stuck on after a tap.
-      const setPointer = (e: PointerEvent) => {
-        const rect = canvas.getBoundingClientRect();
-        this.mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        this.mouseY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        this.mouseActive = true;
-      };
-      const clearPointer = () => { this.mouseActive = false; };
-      canvas.addEventListener('pointerdown', setPointer);
-      canvas.addEventListener('pointermove', setPointer);
-      canvas.addEventListener('pointerup', clearPointer);
-      canvas.addEventListener('pointercancel', clearPointer);
-      canvas.addEventListener('pointerleave', clearPointer);
+      this.bindPointer(canvas);
 
       // ResizeObserver writes canvas dimensions directly — no layout reads in the GPU rAF loop.
       const canvasRO = new ResizeObserver((entries) => {
@@ -506,8 +495,68 @@ export class BoidsController {
     this.gpu.device.queue.writeBuffer(this.obstacleBuffer, 0, buf);
   }
 
+  /**
+   * Listen for pointer input on `target` and feed the mouse force + drag-to-carry.
+   * Defaults to the canvas (init binds it, with hover attraction); the
+   * background sim's canvas is pointer-events:none behind the page, so it
+   * binds `window` with `hover: false`: a mouse acts only while a button is
+   * held, and touch only once a drag survives the browser's scroll decision
+   * (body is touch-action: pan-y pinch-zoom, so vertical swipes and pinch
+   * never reach it). Nothing is preventDefault-ed: clicks, text selection
+   * and scrolling keep working; a cancelled touch releases the force.
+   */
+  bindPointer(target: HTMLElement | Window, opts: { hover?: boolean } = {}): void {
+    const canvas = this.gpu?.canvas;
+    if (!canvas) return;
+    const hover = opts.hover ?? true;
+    let pressed = false;
+    const ndc = (e: PointerEvent): [number, number] => {
+      const rect = canvas.getBoundingClientRect();
+      return [((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)];
+    };
+    const release = () => {
+      pressed = false;
+      this.mouseActive = false;
+      this.mouseDX = 0;
+      this.mouseDY = 0;
+    };
+    const engage = (x: number, y: number) => {
+      this.mouseX = x;
+      this.mouseY = y;
+      this.mouseDX = 0;
+      this.mouseDY = 0;
+      this.mouseActive = true;
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
+      pressed = true;
+      const [x, y] = ndc(e);
+      // Touch waits for a move: a vertical swipe gets pointercancel instead.
+      if (e.pointerType === 'touch') { this.mouseX = x; this.mouseY = y; return; }
+      engage(x, y);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
+      const [x, y] = ndc(e);
+      if (!this.mouseActive) {
+        if (pressed || (hover && e.pointerType !== 'touch')) engage(x, y);
+        return;
+      }
+      // Movement between frames accumulates; _packUniforms consumes it.
+      this.mouseDX += x - this.mouseX;
+      this.mouseDY += y - this.mouseY;
+      this.mouseX = x;
+      this.mouseY = y;
+    };
+    target.addEventListener('pointerdown', onDown as EventListener);
+    target.addEventListener('pointermove', onMove as EventListener);
+    target.addEventListener('pointerup', release);
+    target.addEventListener('pointercancel', release);
+    target.addEventListener(target === window ? 'blur' : 'pointerleave', release);
+  }
+
   private _packUniforms(aspect: number): ArrayBuffer {
-    const buf = new ArrayBuffer(112);
+    const buf = new ArrayBuffer(128);
     const v   = new DataView(buf);
     v.setFloat32( 0, this.params.dt,                   true);
     v.setFloat32( 4, this.params.attractionRadius,      true);
@@ -539,6 +588,10 @@ export class BoidsController {
     v.setUint32 (100, imgParams.imageForceMode,         true);
     v.setUint32 (104, imgParams.imageInvert,            true);
     v.setFloat32(108, this.params.noise ?? 0.0,         true);
+    v.setFloat32(112, this.mouseDX,                     true);
+    v.setFloat32(116, this.mouseDY,                     true);
+    this.mouseDX = 0;
+    this.mouseDY = 0;
     return buf;
   }
 

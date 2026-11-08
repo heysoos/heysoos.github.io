@@ -32,6 +32,10 @@ struct Params {
   imageForceMode: u32,  // 100
   imageInvert:    u32,  // 104
   noise:          f32,  // 108 — random velocity perturbation magnitude per frame
+  mouseDX:        f32,  // 112 — pointer displacement this step (NDC), for drag-to-carry
+  mouseDY:        f32,  // 116
+  _pad0:          f32,  // 120
+  _pad1:          f32,  // 124
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -234,6 +238,23 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
     let nsp = length(vel);
     if (nsp > params.maxSpeed && nsp > 0.0001) {
       vel = vel * (params.maxSpeed / nsp);
+    }
+  }
+
+  // Drag-to-carry: the pointer's displacement this step is added to the
+  // position of particles inside mouseRadius (of the old or new pointer
+  // position), so a drag moves the clump regardless of maxSpeed; 30% also
+  // goes into velocity so they coast when the finger stops.
+  if (params.mouseActive > 0.5) {
+    let carry = vec2f(params.mouseDX, params.mouseDY);
+    let m = vec2f(params.mouseX, params.mouseY);
+    let dNew = m - pos;
+    let dOld = m - carry - pos;
+    let sNew = length(vec2f(dNew.x * params.aspect, dNew.y));
+    let sOld = length(vec2f(dOld.x * params.aspect, dOld.y));
+    if (min(sNew, sOld) < params.mouseRadius) {
+      pos += carry;
+      vel += carry * 0.3 / max(params.deltaTime, 0.0001);
     }
   }
 
