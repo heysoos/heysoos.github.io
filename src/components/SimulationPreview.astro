@@ -108,16 +108,40 @@ const { simulation } = Astro.props
       if (e.controller) {
         // A short run so the first frame shown is a settled one, not the seed.
         e.controller.resume()
-        await new Promise<void>((r) => setTimeout(r, 800))
+        await settle(800)
         e.controller.pause()
         e.ready = true
         e.hovered = !!e.card?.matches(':hover')
         sync(e)
+        // Setting a canvas's size wipes it, so a card that is resized while
+        // parked (fonts arriving, the grid reflowing, a rotation) would sit
+        // black until hovered. Draw a fresh frame whenever that happens.
+        new ResizeObserver(() => {
+          if (!e.ready || e.running || !e.controller) return
+          const c = e.controller
+          c.resume()
+          void settle(120).then(() => { if (!e.running) c.pause() })
+        }).observe(e.canvas)
       }
     } catch (err) {
       console.warn('preview failed:', e.sim, err)
     }
     idle(() => void warm(i + 1))
+  }
+
+  // Wait at least `ms`, and for a few animation frames to have actually run
+  // (a background or throttled tab may get none in that time).
+  function settle(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let frames = 0
+      const t0 = performance.now()
+      const step = (): void => {
+        frames++
+        if (frames >= 3 && performance.now() - t0 >= ms) resolve()
+        else requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    })
   }
 
   const observer = new IntersectionObserver(
