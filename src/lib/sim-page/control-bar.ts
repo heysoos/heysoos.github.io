@@ -49,7 +49,7 @@ export function setSettingsOpen(open: boolean): void {
 // ── Rows shared by every sim ──
 export const KEY_ROWS: HelpRow[] = [
   { glyph: 'hp-key', label: 'P · R · H', effect: 'pause · reset · hide UI' },
-  { glyph: '<span></span>', label: 'ctrl Z · ctrl Y · ?', effect: 'undo · redo · this card' },
+  { glyph: 'hp-key', label: 'ctrl Z · ctrl Y · ?', effect: 'undo · redo · this card' },
 ];
 export const PARAM_ROWS_TOUCH: HelpRow[] = [
   { glyph: 'hp-lr', label: 'drag row', effect: 'scrub value' },
@@ -57,6 +57,6 @@ export const PARAM_ROWS_TOUCH: HelpRow[] = [
 ];
 export const PARAM_ROWS_MOUSE: HelpRow[] = [
   { glyph: 'hp-lr', label: 'drag row', effect: 'scrub · shift fine' },
-  { glyph: 'hp-cursor', label: 'click value', effect: 'type' },
+  { glyph: 'hp-cursor', label: 'click value · ctrl + click', effect: 'type a value' },
   { glyph: 'hp-lock', label: 'alt + click', effect: 'lock' },
 ];
