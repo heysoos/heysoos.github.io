@@ -8,6 +8,7 @@
 
 import type { FieldBoidsParams } from './field-boids-types';
 import { FIELD_BOIDS_GROUPS, PALETTES, type NumSpec } from './field-boids-spec';
+import { randomColor } from '../../../lib/sim-page/palette';
 
 const SKIP = new Set<string>(['numParticles', 'stepsPerFrame']);
 
@@ -31,5 +32,7 @@ export function randomizeFieldBoidsParams(p: FieldBoidsParams): void {
       pr[item.key as string] = roll(item);
     }
   }
-  p.palette = Math.floor(Math.random() * PALETTES.length);
+  // Half the time a tinted palette from the curated colour list, else one of the named ramps.
+  if (Math.random() < 0.5) { p.palette = 0; p.tint = randomColor(); }
+  else { p.palette = 1 + Math.floor(Math.random() * (PALETTES.length - 1)); p.tint = -1; }
 }

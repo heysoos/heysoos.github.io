@@ -16,6 +16,7 @@ import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
 import { BOIDS_COLORS, BOIDS_GROUPS, colorIndex, randomizeBoidsParams } from '../../../components/simulations/boids/boids-spec';
 import { boidsPhoneTabs } from '../boids-phone-tabs';
 import { packRGB, unpackRGB } from '../custom-swatch';
+import { randomColor } from '../palette';
 
 type Params = BoidsPresetBody['params'];
 
@@ -110,9 +111,8 @@ export async function setupBoids(
     mgr.history.endGesture();
     const kept = mgr.locks.keys().map(k => [k, pr[k]] as const);
     randomizeBoidsParams(ctrl.params);
-    if (!mgr.locks.keys().includes('color')) {           // a swatch colour too
-      const c = BOIDS_COLORS[Math.floor(Math.random() * BOIDS_COLORS.length)];
-      ctrl.params.colorR = c.r; ctrl.params.colorG = c.g; ctrl.params.colorB = c.b;
+    if (!mgr.locks.keys().includes('color')) {           // a colour from the curated list
+      [ctrl.params.colorR, ctrl.params.colorG, ctrl.params.colorB] = unpackRGB(randomColor());
     }
     for (const [k, v] of kept) pr[k] = v;
     mgr.history.push('Randomize');
