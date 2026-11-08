@@ -34,6 +34,10 @@ export interface EnumSpec<K extends string = string> {
   ui: 'segmented' | 'swatches' | 'select' | 'cycle';
   /** swatches: one CSS colour per name. */
   colors?: readonly string[];
+  /** swatches: virtual key holding a custom colour as 0xRRGGBB, or -1 for
+   *  none. Picking it selects entry 0 (the tintable one) and sets the key;
+   *  picking a named swatch sets the key back to -1. */
+  custom?: string;
   /** Changing this re-renders the panel (other rows depend on it). */
   rebuilds?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

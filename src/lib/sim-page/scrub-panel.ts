@@ -16,6 +16,7 @@ import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
 import { DICE_SVG, UNDO_SVG, REDO_SVG } from './icons';
+import { makeCustomSwatch, type CustomSwatch } from './custom-swatch';
 
 export type ScrubTabSize = 'strip' | 'full';
 /** An extra tab in the card header (Params is always first). `build` fills
@@ -68,7 +69,7 @@ const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
 const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
 
-type Row = { spec: ParamSpec; el: HTMLElement; val?: HTMLElement; choices?: HTMLElement[]; select?: HTMLSelectElement };
+type Row = { spec: ParamSpec; el: HTMLElement; val?: HTMLElement; choices?: HTMLElement[]; select?: HTMLSelectElement; custom?: CustomSwatch };
 
 export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   const { host, groups, get, set, history, locks } = opts;
@@ -284,10 +285,15 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
         const c = document.createElement('button');
         if (spec.ui === 'swatches') { c.className = 'sw'; c.title = name; c.style.background = spec.colors?.[i] ?? 'currentColor'; }
         else c.textContent = name;
-        c.addEventListener('click', () => pick(i));
+        c.addEventListener('click', () => { if (spec.custom) set(spec.custom, -1); pick(i); });
         bar.appendChild(c);
         return c;
       });
+      if (spec.ui === 'swatches' && spec.custom) {
+        const ck = spec.custom;
+        row.custom = makeCustomSwatch(() => get(ck), (v) => { set(spec.key as string, 0); set(ck, v); }, refresh, () => { history?.push(spec.label); refresh(); });
+        bar.appendChild(row.custom.el);
+      }
       wrap.appendChild(bar);
       wrap.appendChild(note);
     }
@@ -382,7 +388,9 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       } else if (r.select) {
         r.select.value = String(v);
       } else {
-        r.choices!.forEach((c, i) => c.classList.toggle('on', i === v));
+        const customOn = r.spec.custom ? get(r.spec.custom) >= 0 : false;
+        r.choices!.forEach((c, i) => c.classList.toggle('on', !customOn && i === v));
+        r.custom?.refresh();
       }
       if (r.spec.kind === 'enum' && r.spec.ui !== 'cycle') {
         const n = r.el.querySelector<HTMLElement>('.note')!;

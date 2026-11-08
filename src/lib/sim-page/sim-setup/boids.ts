@@ -15,6 +15,7 @@ import { isPhoneLayout } from '../bottom-sheet';
 import { createScrubPanel, type ScrubPanelHandle } from '../scrub-panel';
 import { BOIDS_COLORS, BOIDS_GROUPS, colorIndex, randomizeBoidsParams } from '../../../components/simulations/boids/boids-spec';
 import { boidsPhoneTabs } from '../boids-phone-tabs';
+import { packRGB, unpackRGB } from '../custom-swatch';
 
 type Params = BoidsPresetBody['params'];
 
@@ -88,6 +89,7 @@ export async function setupBoids(
   const pr = ctrl.params as unknown as Record<string, number>;
   const getKey = (k: string): number => {
     if (k === 'color') return colorIndex(ctrl.params);
+    if (k === 'colorHex') return colorIndex(ctrl.params) >= 0 ? -1 : packRGB(ctrl.params.colorR, ctrl.params.colorG, ctrl.params.colorB);
     if (k === 'trails') return ctrl.trailsEnabled ? 1 : 0;
     if (k === 'trailDecay') return ctrl.trailDecay;
     return pr[k] ?? 0;
@@ -96,6 +98,8 @@ export async function setupBoids(
     if (k === 'color') {
       const c = BOIDS_COLORS[Math.round(v)];
       if (c) { ctrl.params.colorR = c.r; ctrl.params.colorG = c.g; ctrl.params.colorB = c.b; }
+    } else if (k === 'colorHex') {
+      if (v >= 0) [ctrl.params.colorR, ctrl.params.colorG, ctrl.params.colorB] = unpackRGB(v);
     } else if (k === 'trails') ctrl.trailsEnabled = v === 1;
     else if (k === 'trailDecay') ctrl.trailDecay = v;
     else pr[k] = v;

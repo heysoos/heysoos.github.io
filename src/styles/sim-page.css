@@ -1182,3 +1182,7 @@
 /* ── Boids desktop panel: Params tab in the shared spec style, under the tab bar ── */
 .boids-spec-params { --fb-head-top: 27px; }
 .boids-spec-params .fb-head { padding-top: 0.45rem; }
+
+/* ── Custom colour swatch: rainbow ring → native picker; shows the colour when active ── */
+.sw.custom { position: relative; overflow: hidden; background: conic-gradient(#e84040, #e8c040, #40e060, #40c0e8, #6060e8, #e040c0, #e84040); }
+.sw.custom input { position: absolute; inset: -6px; width: auto; height: auto; min-height: 0 !important; padding: 0; margin: 0; border: 0; opacity: 0; cursor: pointer; }

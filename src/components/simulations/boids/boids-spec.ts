@@ -48,7 +48,7 @@ export const BOIDS_GROUPS: ParamGroup[] = [
   { name: 'Look', items: [
     en('shapeId', 'Shape', BOIDS_SHAPES, 'segmented'),
     num('size', 'Size', 0.001, 0.08, 0.001),
-    en('color', 'Colour', BOIDS_COLORS.map(c => c.name), 'swatches', { colors: BOIDS_COLORS.map(c => c.hex) }),
+    en('color', 'Colour', BOIDS_COLORS.map(c => c.name), 'swatches', { colors: BOIDS_COLORS.map(c => c.hex), custom: 'colorHex' }),
     en('opacityMode', 'Opacity by', BOIDS_OPACITY_MODES, 'segmented'),
     num('opacity', 'Opacity', 0.01, 1, 0.01),
     en('trails', 'Trails', ['Off', 'On'], 'segmented', { rebuilds: true }),
@@ -56,9 +56,9 @@ export const BOIDS_GROUPS: ParamGroup[] = [
   ] },
 ];
 
-/** Index of the swatch nearest the current colour. */
+/** Index of the swatch matching the current colour, or -1 for a custom one. */
 export function colorIndex(p: BoidsParams): number {
-  let best = 0, bd = Infinity;
+  let best = -1, bd = 1e-4;   // ~ one 8-bit step per channel
   BOIDS_COLORS.forEach((c, i) => {
     const d = (c.r - p.colorR) ** 2 + (c.g - p.colorG) ** 2 + (c.b - p.colorB) ** 2;
     if (d < bd) { bd = d; best = i; }

@@ -25,6 +25,7 @@ export interface FieldBoidsParams {
   curve: number;          // 0 linear, 1 sqrt, 2 log, 3 asinh, 4 gamma
   tonemap: number;        // 0 clip, 1 reinhard, 2 aces
   palette: number;        // 0 accent tint, 1 ember, 2 ice, 3 spectral
+  tint: number;           // palette 0 colour as 0xRRGGBB; -1 = the theme accent
   bloom: number;          // 0 = off; adds coarse mips of the density back in
   longExposure: number;   // render-only frame blending, 0 = off, 0.98 = long
 }
@@ -60,6 +61,7 @@ export const DEFAULT_FIELD_BOIDS_PARAMS: FieldBoidsParams = {
   curve: 3,
   tonemap: 2,
   palette: 0,
+  tint: -1,
   bloom: 0,
   longExposure: 0,
 };

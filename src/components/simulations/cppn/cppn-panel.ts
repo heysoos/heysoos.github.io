@@ -18,6 +18,7 @@ import { pillStyle } from '../boids/panel/panel-styles';
 import { CPPN_GROUPS, configFromFlat, isArchKey, isWeightKey, toFlat, type CPPNFlatParams, type FlatKey } from './cppn-spec';
 import { renderNetworkRows } from './cppn-network-rows';
 import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
+import { makeCustomSwatch } from '../../../lib/sim-page/custom-swatch';
 
 export interface CPPNPanelOpts {
   /** Groups to render; defaults to CPPN_GROUPS with the layer stack attached. */
@@ -238,12 +239,20 @@ function enumRow(
       const b = document.createElement('button');
       if (spec.ui === 'swatches') { b.className = 'sw'; b.title = n; b.style.background = spec.colors?.[i] ?? 'currentColor'; }
       else b.textContent = n;
-      b.addEventListener('click', () => pick(i));
+      b.addEventListener('click', () => { if (spec.custom) set(spec.custom, -1); pick(i); });
       bar.appendChild(b);
       return b;
     });
+    const ck = spec.ui === 'swatches' ? spec.custom : undefined;
+    const custom = ck ? makeCustomSwatch(() => get(ck), (v) => { set(spec.key, 0); set(ck, v); }, () => update(), () => commit(spec.label)) : null;
+    if (custom) bar.appendChild(custom.el);
     row.appendChild(bar);
-    update = () => { const v = Math.round(get(spec.key)); btns.forEach((b, i) => b.classList.toggle('on', i === v)); };
+    update = () => {
+      const v = Math.round(get(spec.key));
+      const customOn = ck ? get(ck) >= 0 : false;
+      btns.forEach((b, i) => b.classList.toggle('on', !customOn && i === v));
+      custom?.refresh();
+    };
   }
   if (locks) lab.addEventListener('click', (e) => { if (e.altKey) { locks.toggle(spec.key); } });
   parent.appendChild(row);

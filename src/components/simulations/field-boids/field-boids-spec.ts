@@ -52,7 +52,7 @@ export const FIELD_BOIDS_GROUPS: ParamGroup[] = [
   ] },
   { name: 'Look', items: [
     en('viewMode', 'View', VIEW_MODES, 'segmented', { rebuilds: true }),
-    en('palette', 'Palette', PALETTES, 'swatches', { colors: PALETTE_COLORS }),
+    en('palette', 'Palette', PALETTES, 'swatches', { colors: PALETTE_COLORS, custom: 'tint' }),
     en('curve', 'Curve', CURVES, 'select'),
     en('tonemap', 'Tonemap', TONEMAPS, 'select'),
     num('exposure', 'Exposure', 0.1, 20, 0.1, { scale: 'log' }),

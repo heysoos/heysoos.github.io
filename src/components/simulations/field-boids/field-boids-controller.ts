@@ -495,9 +495,13 @@ export class FieldBoidsController {
     v.setFloat32(84,  this.fieldW, true);
     v.setFloat32(88,  this.fieldH, true);
     v.setFloat32(92,  this.mipCount - 1, true);
-    v.setFloat32(96,  this.accent.r, true);
-    v.setFloat32(100, this.accent.g, true);
-    v.setFloat32(104, this.accent.b, true);
+    // Palette 0 tint: a custom colour when the preset carries one, else the theme accent.
+    const tint = (p.tint ?? -1) >= 0
+      ? { r: ((p.tint >> 16) & 255) / 255, g: ((p.tint >> 8) & 255) / 255, b: (p.tint & 255) / 255 }
+      : this.accent;
+    v.setFloat32(96,  tint.r, true);
+    v.setFloat32(100, tint.g, true);
+    v.setFloat32(104, tint.b, true);
     v.setFloat32(108, this.bgColor.r, true);
     v.setFloat32(112, this.bgColor.g, true);
     v.setFloat32(116, this.bgColor.b, true);

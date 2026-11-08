@@ -10,6 +10,7 @@ import { randomizeFieldBoidsParams } from './field-boids-randomize';
 import type { ParamLocks, ParamLockBinding } from '../../../lib/presets/param-locks';
 import { LOOK_GROUP, type EnumSpec } from './field-boids-spec';
 import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
+import { makeCustomSwatch } from '../../../lib/sim-page/custom-swatch';
 
 export interface FieldBoidsPanelOpts {
   presets?: FieldBoidsPreset[];
@@ -42,9 +43,12 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** One enum control, drawn as the spec says: segmented bar, swatches or select. */
-function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i: number) => void, history?: UndoHistory, after?: () => void): void {
+function enumRow(parent: HTMLElement, spec: EnumSpec, getK: (k: string) => number, setK: (k: string, v: number) => void, history?: UndoHistory, after?: () => void): void {
   const row = el('div', 'display:flex;align-items:center;gap:6px;margin:0 0 0.35rem;');
   row.appendChild(el('span', 'font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);min-width:4.2rem;', spec.label));
+  const key = spec.key as string;
+  const get = () => getK(key);
+  const set = (i: number) => { if (spec.custom) setK(spec.custom, -1); setK(key, i); };
   const pick = (i: number) => { set(i); history?.push(spec.label); after?.(); };
   if (spec.ui === 'select') {
     const sel = document.createElement('select');
@@ -56,15 +60,23 @@ function enumRow(parent: HTMLElement, spec: EnumSpec, get: () => number, set: (i
   } else {
     const bar = el('div', '');
     bar.className = spec.ui === 'swatches' ? 'look-swatches' : 'look-segmented';
+    const ck = spec.ui === 'swatches' ? spec.custom : undefined;
+    const customOn = () => (ck ? getK(ck) >= 0 : false);
     const btns = spec.names.map((n, i) => {
       const b = document.createElement('button');
       if (spec.ui === 'swatches') { b.className = 'sw'; b.title = n; b.style.background = spec.colors?.[i] ?? 'currentColor'; }
       else b.textContent = n;
-      b.classList.toggle('on', get() === i);
-      b.addEventListener('click', () => { pick(i); btns.forEach((x, k) => x.classList.toggle('on', k === i)); });
+      b.classList.toggle('on', !customOn() && get() === i);
+      b.addEventListener('click', () => { pick(i); btns.forEach((x, k) => x.classList.toggle('on', k === i)); custom?.refresh(); });
       bar.appendChild(b);
       return b;
     });
+    const custom = ck
+      ? makeCustomSwatch(() => getK(ck), (v) => { setK(key, 0); setK(ck, v); },
+          () => { btns.forEach(x => x.classList.remove('on')); },
+          () => { history?.push(spec.label); after?.(); })
+      : null;
+    if (custom) bar.appendChild(custom.el);
     row.appendChild(bar);
   }
   parent.appendChild(row);
@@ -232,7 +244,7 @@ export function buildFieldBoidsPanel(
   for (const item of LOOK_GROUP.items) {
     if (item.showIf && !item.showIf(p)) continue;
     if (item.kind === 'enum') {
-      enumRow(body, item, () => pr[item.key], i => { pr[item.key] = i; }, history, item.rebuilds ? rebuild : undefined);
+      enumRow(body, item, k => pr[k], (k, v) => { pr[k] = v; }, history, item.rebuilds ? rebuild : undefined);
     } else {
       row(item.key, item.label, item.min, item.max, item.step, { scale: item.scale, int: item.int });
     }
