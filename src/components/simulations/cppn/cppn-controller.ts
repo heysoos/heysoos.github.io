@@ -111,6 +111,7 @@ export class CPPNController {
   /** Fires with true when a shader compile starts and false when the queue drains (for a spinner). */
   onBusy: ((busy: boolean) => void) | null = null;
   private running   = false;
+  private paused    = false;   // ⏸: motion frozen, frames still drawn (zoom/pan/edits stay live)
   private animId    = 0;
   private usingRaf  = true;
   maxFps    = Infinity;
@@ -376,7 +377,12 @@ export class CPPNController {
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────
+  /** Freeze the latent motion but keep rendering: the view, weights and
+   *  architecture all stay editable while paused. */
+  pause(): void { this.paused = true; }
+
   start(): void {
+    this.paused = false;
     if (this.running) return;
     this.running  = true;
     this.startTime = performance.now();
@@ -454,7 +460,7 @@ export class CPPNController {
     const now = performance.now();
     const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
-    if (this.animate && !this.motionHeld) this.advanceMotion(dt);
+    if (this.animate && !this.motionHeld && !this.paused) this.advanceMotion(dt);
     const t = (now - this.startTime) / 1000;
     const z = this.computeZ();
 
