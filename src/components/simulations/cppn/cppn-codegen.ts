@@ -179,13 +179,16 @@ struct Params {
   view       : vec4f,          // world centre x, y, zoom, unused
 }
 
+// tanh is evaluated as (e^2x-1)/(e^2x+1) on most GPUs and overflows to
+// inf/inf = NaN past |x| ~ 44 (black pixels when zoomed far out); tanh(15)
+// is already 1.0 in f32, so clamp. sigmoid is clamped the same way.
 fn act(id: u32, x: f32) -> f32 {
   switch id {
-    case 0u: { return tanh(x); }
+    case 0u: { return tanh(clamp(x, -15.0, 15.0)); }
     case 1u: { return sin(x); }
     case 2u: { return cos(x); }
     case 3u: { return abs(x); }
-    default: { return sigmoid_f(x); }
+    default: { return sigmoid_f(clamp(x, -40.0, 40.0)); }
   }
 }
 
@@ -247,7 +250,7 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   const lastW   = layers[lastIdx].width;
   for (let i = 0; i < 3; i++) {
     const expr = dot4Sum(lastW, (j) => `h${lastIdx}_${j}`, nextSlot, '0.0');
-    src += `  let rgb_${i} = sigmoid_f(${expr});\n`;
+    src += `  let rgb_${i} = sigmoid_f(clamp(${expr}, -40.0, 40.0));\n`;
   }
 
   if (!groups.next().done) throw new Error('CPPN codegen: unconsumed weight slots');

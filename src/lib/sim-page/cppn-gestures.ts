@@ -62,8 +62,8 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     const k = (0.6 * Math.min(W, H) / 2) / Math.max(fx, fy);
     const cx = W / 2, cy = H / 2;
     mctx.save();
-    mctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    mctx.lineWidth = 1;
+    mctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    mctx.lineWidth = 1.5;
     mctx.strokeRect(cx - fx * k, cy - fy * k, 2 * fx * k, 2 * fy * k);
     const vx = fx / ctrl.viewZoom, vy = fy / ctrl.viewZoom;
     const x0 = cx + (ctrl.viewCx - vx) * k, y0 = cy + (ctrl.viewCy - vy) * k;
@@ -71,10 +71,10 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     const accent = getComputedStyle(host).getPropertyValue('--accent').trim() || '#e8702a';
     mctx.strokeStyle = accent;
     mctx.fillStyle = accent;
-    mctx.globalAlpha = 0.18;
+    mctx.globalAlpha = 0.3;
     mctx.fillRect(Math.max(0, x0), Math.max(0, y0), Math.min(W, x1) - Math.max(0, x0), Math.min(H, y1) - Math.max(0, y0));
     mctx.globalAlpha = 1;
-    mctx.lineWidth = 1.5;
+    mctx.lineWidth = 2;
     mctx.strokeRect(Math.max(0.75, x0), Math.max(0.75, y0), Math.min(W - 0.75, x1) - Math.max(0.75, x0), Math.min(H - 0.75, y1) - Math.max(0.75, y0));
     // zoom readout
     mctx.fillStyle = 'rgba(255,255,255,0.75)';
