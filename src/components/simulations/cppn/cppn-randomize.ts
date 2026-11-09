@@ -7,7 +7,7 @@
 // a pinned layer sensibly).
 
 import {
-  ACTIVATIONS, DIST_TYPES, MAX_LAYERS, MAX_WIDTH, MIN_WIDTH, layersFromFlat, paramCount,
+  ACTIVATIONS, DIST_TYPES, MAX_LAYERS, MAX_WIDTH, MIN_WIDTH, DEFAULT_INPUT_COUNT, Z_LATENT, layersFromFlat, paramCount,
   type CPPNFlatParams, type FlatKey,
 } from './cppn-spec';
 import type { LayerConfig } from './cppn-types';
@@ -47,7 +47,7 @@ const randomLayer = (): LayerConfig => ({
  * stack is at least deep enough to hold the deepest fixed layer. `count`,
  * when given, pins the layer count (the Layers row is locked).
  */
-export function randomArchitecture(budget: number, fixed: Map<number, LayerConfig> = new Map(), count?: number): LayerConfig[] {
+export function randomArchitecture(budget: number, fixed: Map<number, LayerConfig> = new Map(), count?: number, nInputs: number = DEFAULT_INPUT_COUNT): LayerConfig[] {
   const deepest = Math.max(-1, ...fixed.keys()) + 1;
   const n = Math.min(MAX_LAYERS, Math.max(deepest, count ?? rollLayerCount()));
   const slots: Array<LayerConfig | null> = Array.from({ length: n }, () => null);
@@ -58,15 +58,15 @@ export function randomArchitecture(budget: number, fixed: Map<number, LayerConfi
   // Fit the budget by scaling the free widths together (weights are
   // ~quadratic in width, so sqrt of the overshoot per step).
   let guard = 0;
-  while (free.length > 0 && paramCount(layers) > budget && guard++ < 40) {
-    const k = 0.97 / Math.sqrt(paramCount(layers) / budget);
+  while (free.length > 0 && paramCount(layers, nInputs) > budget && guard++ < 40) {
+    const k = 0.97 / Math.sqrt(paramCount(layers, nInputs) / budget);
     layers = layers.map((l, i) => free.includes(i) ? { ...l, width: Math.max(MIN_WIDTH, Math.floor(l.width * k)) } : l);
     if (free.every(i => layers[i].width === MIN_WIDTH)) break;
   }
   return layers;
 }
 
-export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number): CPPNFlatParams {
+export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], budget: number, nInputs: number = DEFAULT_INPUT_COUNT): CPPNFlatParams {
   const locked = new Set(lockedKeys);
   const f: CPPNFlatParams = { ...current };
   const set = (k: FlatKey, v: number) => { if (!locked.has(k)) f[k] = v; };
@@ -77,7 +77,7 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   const cur = layersFromFlat(current);
   const fixed = new Map<number, LayerConfig>();
   cur.forEach((l, i) => { if (locked.has(`layer${i}Width`) || locked.has(`layer${i}Act`)) fixed.set(i, l); });
-  const layers = randomArchitecture(budget, fixed, locked.has('layers') ? cur.length : undefined);
+  const layers = randomArchitecture(budget, fixed, locked.has('layers') ? cur.length : undefined, nInputs);
   f.layers = layers.length;
   layers.forEach((l, i) => {
     f[`layer${i}Width`] = l.width;
@@ -90,7 +90,7 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   // narrow random net at σ 1 has gain ≈ 2 and comes out grey. So draw a
   // gain, log-normal around 4, and derive each distribution's parameter
   // from the network's typical fan-in.
-  const fanIns = [19, ...layers.slice(0, -1).map(l => l.width)];   // `layers` = the architecture just rolled above
+  const fanIns = [nInputs + Z_LATENT, ...layers.slice(0, -1).map(l => l.width)];   // `layers` = the architecture just rolled above
   const fanIn = Math.exp(fanIns.reduce((s, x) => s + Math.log(x), 0) / fanIns.length);   // geometric mean
   const gain = Math.exp(Math.log(4) + gauss() * 0.45);                                   // ~[2.2, 7.3] at ±1σ
   const std = gain / Math.sqrt(fanIn);
@@ -116,6 +116,6 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
 }
 
 /** For a budget readout: the count the current flat architecture implies. */
-export function flatParamCount(f: CPPNFlatParams): number {
-  return paramCount(layersFromFlat(f));
+export function flatParamCount(f: CPPNFlatParams, nInputs: number = DEFAULT_INPUT_COUNT): number {
+  return paramCount(layersFromFlat(f), nInputs);
 }

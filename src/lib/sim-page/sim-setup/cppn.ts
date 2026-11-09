@@ -12,13 +12,14 @@
 import type { CPPNController } from '../../../components/simulations/cppn/cppn-controller';
 import { buildCPPNPanel } from '../../../components/simulations/cppn/cppn-panel';
 import {
-  CPPN_GROUPS, DEFAULT_FLAT, configFromFlat, isArchKey, isWeightKey, presetToBody, toFlat,
+  CPPN_GROUPS, DEFAULT_FLAT, configFromFlat, isArchKey, isWeightKey, presetToBody, prepareCPPNBody, toFlat,
   type CPPNBody, type CPPNFlatParams, type FlatKey,
 } from '../../../components/simulations/cppn/cppn-spec';
 import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat } from '../../../components/simulations/cppn/cppn-randomize';
 import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
 import { CPPN_PRESETS } from '../../../data/cppn-presets';
 import { createPresetManager } from '../../presets/preset-manager';
+import { createParamLocks } from '../../presets/param-locks';
 import { buildPresetSection, type PresetSectionHandle } from '../../presets/preset-ui';
 import { attachUndoKeys } from '../../presets/undo-history';
 import { isPhoneLayout } from '../bottom-sheet';
@@ -40,6 +41,7 @@ export async function setupCPPN(
   if (import.meta.env.DEV) (window as unknown as { __cppn?: CPPNController }).__cppn = ctrl;   // dev hook: pixel checks
   const builtIn = CPPN_PRESETS.map(presetToBody);
   const budget = () => (isPhoneLayout() ? BUDGET_PHONE : BUDGET_DESKTOP);
+  const locks = createParamLocks('cppn');
 
   const mgr = createPresetManager<CPPNFlatParams>({
     simId: 'cppn',
@@ -48,14 +50,21 @@ export async function setupCPPN(
     capture: (): CPPNBody => ({
       params: toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating),
       weights: Array.from(ctrl.weights),
+      inputs: [...ctrl.config.inputs],
     }),
     apply: async (body) => {
       const b = body as CPPNBody;
       ctrl.setAnimate(b.params.animate !== 0);
-      await ctrl.setState(configFromFlat(ctrl.config, b.params), b.params.seed, b.weights);
+      const config = configFromFlat(ctrl.config, b.params);
+      if (b.inputs && b.inputs.length > 0) config.inputs = [...b.inputs];
+      await ctrl.setState(config, b.params.seed, b.weights);
     },
+    // Pre-expression bodies get x, y, r + normalize off; locked input slots keep their text.
+    prepare: (body) => prepareCPPNBody(body as CPPNBody, ctrl.config.inputs, locks.keys()),
+    locks,
   });
 
+  if (import.meta.env.DEV) (window as unknown as { __cppnMgr?: unknown }).__cppnMgr = mgr;
   const defaultPreset = builtIn.find(p => p.isDefault) ?? builtIn[0];
   if (defaultPreset) {
     await mgr.load(defaultPreset);
@@ -125,7 +134,7 @@ export async function setupCPPN(
   };
   const randomize = (): void => {
     mgr.history.endGesture();
-    const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), mgr.locks.keys(), budget());
+    const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), mgr.locks.keys(), budget(), ctrl.config.inputs.length);
     ctrl.setAnimate(f.animate !== 0);
     void ctrl.setState(configFromFlat(ctrl.config, f), f.seed).then(() => {
       mgr.history.push('Randomize');
@@ -142,7 +151,7 @@ export async function setupCPPN(
   const flatProxy = new Proxy({}, { get: (_t, k) => flat()[k as FlatKey] }) as CPPNFlatParams;
   const groups: ParamGroup<string>[] = CPPN_GROUPS.map(g => g.name === 'Network'
     ? { ...g,
-        note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat()).toLocaleString()} / ${budget().toLocaleString()} weights`,
+        note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat(), ctrl.config.inputs.length).toLocaleString()} / ${budget().toLocaleString()} weights`,
         render: renderNetworkRows }
     : g);
 

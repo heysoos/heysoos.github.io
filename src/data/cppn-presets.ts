@@ -72,10 +72,22 @@ export const CPPN_PRESETS: CPPNPreset[] = [
           "phase": 0
         }
       ],
-      "scale": 2
+      "scale": 2,
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1992860420,
     "isDefault": true,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": softColorsWeights
   },
   {
@@ -128,9 +140,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
           "phase": 0
         }
       ],
-      "scale": 1.25
+      "scale": 1.25,
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1995755334,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": rosesWeights
   },
   {
@@ -167,9 +191,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1488675912,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": halloweenWeights
   },
   {
@@ -206,9 +242,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 31118744,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": dawnDuskWeights
   },
   {
@@ -245,9 +293,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 4216275578,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": acidWeights
   },
   {
@@ -276,9 +336,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 3962981586,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": acidSnailWeights
   },
   {
@@ -308,9 +380,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 3916083385,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": hypnosisWeights
   },
   {
@@ -344,9 +428,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.2,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1847516787,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": ebbsFlowsWeights
   },
   {
@@ -380,9 +476,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.1,
         "falloff": 0.99,
         "bands": 3
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 2597083346,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": filmNoirWeights
   },
   {
@@ -416,9 +524,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.1,
         "falloff": 0.99,
         "bands": 3
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 3749548003,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": wavePoolWeights
   },
   {
@@ -471,9 +591,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.32,
         "falloff": 0.81,
         "bands": 3
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 2359444083,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": hyperbolicFractalWeights
   },
   {
@@ -514,9 +646,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.13,
         "falloff": 0.92,
         "bands": 2
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1313534052,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": metalFlowerWeights
   },
   {
@@ -558,9 +702,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.13,
         "falloff": 0.92,
         "bands": 2
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 3569530071,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": eventHorizonWeights
   },
   {
@@ -602,9 +758,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.13,
         "falloff": 0.92,
         "bands": 2
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1656409221,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": hal9000Weights
   },
   {
@@ -641,9 +809,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.34,
         "falloff": 0.7,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1809152984,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": flandersFieldsWeights
   },
   {
@@ -677,9 +857,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.24,
         "falloff": 0.83,
         "bands": 1
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1176697194,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": acidMoireWeights
   },
   {
@@ -713,9 +905,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.24,
         "falloff": 0.8,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 2792998312,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": verySleepyWeights
   },
   {
@@ -744,9 +948,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.6,
         "falloff": 1,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 93829109,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": relaxWeights
   },
   {
@@ -779,9 +995,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.6,
         "falloff": 0.65,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 295845391,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": corpusculeWeights
   },
   {
@@ -827,9 +1055,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.19,
         "falloff": 0.57,
         "bands": 2
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 3283690098,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": qaponWeights
   },
   {
@@ -875,9 +1115,21 @@ export const CPPN_PRESETS: CPPNPreset[] = [
         "depth": 0.06,
         "falloff": 0.7000000000000001,
         "bands": 4
-      }
+      },
+      "inputs": [
+        "x",
+        "y",
+        "r"
+      ],
+      "normalizeInputs": false
     },
     "seed": 1315508710,
+    "inputs": [
+      "x",
+      "y",
+      "r"
+    ],
+    "normalizeInputs": false,
     "weights": boyOrGirlWeights
   }
 ];
