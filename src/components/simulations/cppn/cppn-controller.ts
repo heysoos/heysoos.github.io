@@ -32,6 +32,7 @@ export const MIN_ZOOM = 0.02;
 
 // ── PRNG (mulberry32) ─────────────────────────────────────────────
 import { makePRNG } from '../../../lib/webgpu/prng';
+import { trackShaderError } from '../../../lib/analytics';
 export { makePRNG };
 
 function boxMuller(rand: () => number): number {
@@ -238,6 +239,7 @@ export class CPPNController {
     const info   = await module.getCompilationInfo();
     const errs   = info.messages.filter(m => m.type === 'error');
     if (errs.length) {
+      trackShaderError('CPPN: ' + errs[0].message);
       throw new Error('CPPN shader error: ' + errs.map(e => e.message).join(', '));
     }
     const pipeline = await device.createRenderPipelineAsync({

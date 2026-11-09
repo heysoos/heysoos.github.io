@@ -478,7 +478,7 @@ const underConstruction = project.data.underConstruction ?? false;
     } else {
       try {
         const ok = await controller.init(canvas);
-        const session = trackSimSession(sim, ok);
+        const session = trackSimSession(sim, ok, ok ? { tickCount: () => (controller as unknown as { tickCount?: number }).tickCount ?? 0, canvas } : undefined);
         (window as unknown as { __simTrack?: (kind: string) => void }).__simTrack = session.interact;
         if (ok) {
           controller.start();
