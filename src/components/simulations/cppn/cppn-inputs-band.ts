@@ -228,7 +228,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     cur = i; dirty = false;
     field.value = api.inputs()[i] ?? '';
     setView('edit');
-    renderStatus();
+    renderField();   // thumbnail, range and signature for the opened expression
     field.focus({ preventScroll: true });
     field.setSelectionRange(field.value.length, field.value.length);
   }
