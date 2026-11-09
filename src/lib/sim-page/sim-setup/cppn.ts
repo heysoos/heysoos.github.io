@@ -20,6 +20,7 @@ import { loadGenSettings, saveGenSettings } from '../../../components/simulation
 import type { GenSettings } from '../../../components/simulations/cppn/cppn-expr/generator';
 import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
 import { buildInputsPage, type InputsApi } from '../../../components/simulations/cppn/cppn-inputs-panel';
+import { createInputsBand, type InputsBandHandle } from '../../../components/simulations/cppn/cppn-inputs-band';
 import { makeThumb } from '../../../components/simulations/cppn/cppn-expr/thumb';
 import { generateExpression, canonical } from '../../../components/simulations/cppn/cppn-expr/generator';
 import type { PanelMode } from '../../../components/simulations/cppn/cppn-panel';
@@ -96,6 +97,7 @@ export async function setupCPPN(
 
   // Compile spinner.
   const viewport = panel.parentElement as HTMLElement;   // .sim-viewport, positioned
+  viewport.classList.add('sim-cppn');                    // scopes the CPPN-only touch-action (pinch-zoom) rules
   ctrl.onBusy = (busy) => viewport.classList.toggle('sim-busy', busy);
 
   // Canvas gestures: pinch/wheel zoom of the coordinate window, pan, one-
@@ -179,7 +181,7 @@ export async function setupCPPN(
   };
 
   // ── Inputs page API (desktop page and phone band share it) ──
-  const commitInputs = (label: string): void => { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); };
+  const commitInputs = (label: string): void => { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); band?.refresh(); };
   const inputsApi: InputsApi = {
     inputs: () => ctrl.config.inputs,
     setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
@@ -202,6 +204,14 @@ export async function setupCPPN(
     dynamicVars: () => ({ t: 2 * Math.PI * ((ctrl.exprClock % 60) / 60), px: ctrl.pointer[0], py: ctrl.pointer[1] }),
   };
   let panelMode: PanelMode = 'main';
+  // Phone: the band replaces the scrub card while inputs are being edited.
+  let band: InputsBandHandle | null = null;
+  const ensureBand = (): InputsBandHandle => band ??= createInputsBand(viewport, {
+    ...inputsApi,
+    back: () => {},
+    onBack: () => { setScrubOpen(true); },
+    onClose: () => { setScrubOpen(false); },
+  });
   const inputThumbs = (): HTMLCanvasElement[] => {
     const d = inputsApi.dynamicVars!();
     return ctrl.config.inputs.slice(0, 6).map(src => makeThumb(src, 16, { normalize: ctrl.config.normalizeInputs, ...d }));
@@ -222,7 +232,10 @@ export async function setupCPPN(
         render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass, { inputsRow: {
           count: () => ctrl.config.inputs.length,
           thumbs: inputThumbs,
-          onOpen: () => { if (desktop) { desktop.setMode('inputs'); panelMode = 'inputs'; } },
+          onOpen: () => {
+            if (desktop) { desktop.setMode('inputs'); panelMode = 'inputs'; }
+            else if (scrub) { scrub.setVisible(false); viewport.classList.remove('scrub-open'); ensureBand().show(); }
+          },
         } }) }
     : g);
 
@@ -245,16 +258,20 @@ export async function setupCPPN(
       panel.style.display = 'none';
       sessionStorage.setItem('cppn-panel-open', 'false');
       setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
+      // Swipe down or left on the card header (not on rows: those scrub) closes it.
+      attachHeaderSwipe(viewport.querySelector<HTMLElement>('.scrub-list .scrub-head'), () => setScrubOpen(false));
     } else if (!want && scrub) {
       scrub.dispose();
       scrub = null;
       viewport.classList.remove('scrub-open');
       setSettingsOpen(false);
     }
+    if (!want && band) { band.dispose(); band = null; }
   }
   // ⚙ opens the list and turns into × while it is open (sim-page.css phone rules).
   const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
   function setScrubOpen(open: boolean): void {
+    if (open && band?.isVisible()) band.hide();
     scrub?.setVisible(open);
     sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
     viewport.classList.toggle('scrub-open', open);
@@ -340,4 +357,24 @@ function helpSections(touch: boolean): HelpSection[] {
   ] };
   const keys = KEY_ROWS.map(r => (r.label === 'P / R / H' ? { ...r, effect: 'pause / new seed / hide UI' } : r));
   return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: keys }];
+}
+
+/** Swipe down (60px) or left (70px) on a card header closes the card; buttons and rows are left alone. */
+function attachHeaderSwipe(head: HTMLElement | null, onClose: () => void): void {
+  if (!head || head.dataset.swipeWired) return;
+  head.dataset.swipeWired = '1';
+  let x0 = 0, y0 = 0, id = -1;
+  head.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+  });
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
+    id = -1;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (dy > 60 && Math.abs(dx) < dy) onClose();
+    else if (dx < -70 && Math.abs(dy) < -dx) onClose();
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', () => { id = -1; });
 }
