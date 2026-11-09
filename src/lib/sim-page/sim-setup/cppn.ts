@@ -170,6 +170,7 @@ export async function setupCPPN(
     void ctrl.setState(config, f.seed).then(() => {
       mgr.history.push('Randomize');
       mgr.rebuild();
+      band?.refresh();
     });
   };
   /** The inputs page's ⚄: fresh expressions for the unlocked slots only (a buffer write). */
@@ -260,13 +261,12 @@ export async function setupCPPN(
         buildPresets: (c) => buildPresetSection(c, mgr, { showTitle: false }).dispose,
         onRandomize: randomize,
         onClose: () => setScrubOpen(false),
+        groupLocks: true,
       });
       // The page script must not reopen the sheet from its own saved state.
       panel.style.display = 'none';
       sessionStorage.setItem('cppn-panel-open', 'false');
       setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
-      // Drag the card header down (not rows: those scrub) to close it.
-      attachHeaderSwipe(viewport.querySelector<HTMLElement>('.scrub-list .scrub-head'), () => setScrubOpen(false));
     } else if (!want && scrub) {
       scrub.dispose();
       scrub = null;
@@ -360,7 +360,7 @@ function helpSections(touch: boolean): HelpSection[] {
       ] };
   const params: HelpSection = { title: 'Parameters', rows: [
     ...(touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE),
-    { glyph: 'hp-lock', label: touch ? 'hold header' : 'alt + click header', effect: 'lock whole group' },
+    { glyph: 'hp-lock', label: touch ? 'hold group title / in row' : 'alt + click group title / in row', effect: 'lock whole group / all inputs' },
     { glyph: IX, label: 'drag', effect: 'reorder layer' },
     { glyph: CHIP, label: touch ? 'tap' : 'click', effect: 'next activation' },
     { glyph: CHIP, label: 'hold + slide', effect: 'scrub activations' },
@@ -369,7 +369,8 @@ function helpSections(touch: boolean): HelpSection[] {
     ? [
         { glyph: IN, label: 'tap in row', effect: 'edit input expressions' },
         { glyph: FN, label: 'ƒ(…)', effect: 'function drawer' },
-        { glyph: 'hp-lr', label: 'swipe right / down', effect: 'back / close' },
+        { glyph: 'hp-lr', label: 'swipe left / down · tap canvas', effect: 'close' },
+        { glyph: 'hp-lr', label: 'swipe right', effect: 'back' },
         { glyph: 'hp-lock', label: 'hold row', effect: 'lock input' },
       ]
     : [
@@ -383,54 +384,3 @@ function helpSections(touch: boolean): HelpSection[] {
 }
 
 /** Swipe down (60px) or left (70px) on a card header closes the card; buttons and rows are left alone. */
-/**
- * Drag the card header down to close it: the card follows the finger (the
- * header has touch-action:none so the browser never claims the gesture),
- * springs back under the threshold and slides off past it. Buttons are
- * exempt so taps on undo/redo/Presets/× still work.
- */
-function attachHeaderSwipe(head: HTMLElement | null, onClose: () => void): void {
-  if (!head || head.dataset.swipeWired) return;
-  head.dataset.swipeWired = '1';
-  const card = head.parentElement as HTMLElement;
-  const CLOSE_PX = 70;
-  let y0 = 0, id = -1, active = false;
-  head.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    id = e.pointerId; y0 = e.clientY; active = false;
-  });
-  head.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== id) return;
-    const dy = e.clientY - y0;
-    if (!active) {
-      if (dy < 8) return;
-      active = true;
-      try { head.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-      card.style.transition = 'none';
-    }
-    const d = Math.max(0, dy);
-    card.style.transform = `translateY(${d}px)`;
-    card.style.opacity = String(Math.max(0.35, 1 - d / 400));
-  });
-  const end = (e: PointerEvent) => {
-    if (e.pointerId !== id) return;
-    id = -1;
-    if (!active) return;
-    active = false;
-    const dy = e.clientY - y0;
-    card.style.transition = 'transform 0.22s ease, opacity 0.22s ease';
-    if (dy > CLOSE_PX) {
-      card.style.transform = 'translateY(110%)';
-      card.style.opacity = '0';
-      const reset = () => { card.style.transition = ''; card.style.transform = ''; card.style.opacity = ''; };
-      card.addEventListener('transitionend', reset, { once: true });
-      setTimeout(() => { onClose(); reset(); }, 230);
-    } else {
-      card.style.transform = '';
-      card.style.opacity = '';
-      card.addEventListener('transitionend', () => { card.style.transition = ''; }, { once: true });
-    }
-  };
-  head.addEventListener('pointerup', end);
-  head.addEventListener('pointercancel', end);
-}

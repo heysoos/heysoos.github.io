@@ -30,7 +30,7 @@ export interface InputsBandHandle {
 type View = 'list' | 'edit' | 'generator';
 const LONG_PRESS_MS = 480;
 const SLOP = 8;
-const EDGE_PX = 28, BACK_PX = 70, CLOSE_PX = 60;
+const BACK_PX = 70, CLOSE_PX = 60;
 const KEYS: string[][] = [
   ['x', 'y', 'r', 'a', 't', 'px', 'py'],
   ['7', '8', '9', '(', ')', ',', '^'],
@@ -46,7 +46,6 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   band.className = 'inputs-band';
   band.hidden = true;
   band.innerHTML = `
-    <div class="band-edge"></div>
     <div class="band-head">
       <button class="b-back" aria-label="Back">‹</button><span class="b-title">Inputs</span>
       <span class="look-segmented b-views"><button data-view="list" class="on">list</button><button data-view="generator">generator</button></span>
@@ -76,6 +75,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     band.classList.toggle('edit', v === 'edit');
     viewBtns.forEach(b => b.classList.toggle('on', b.dataset.view === (v === 'edit' ? 'list' : v)));
     if (v === 'list') renderList();
+    requestAnimationFrame(markScrollers);
     if (v === 'generator') gen.refresh();
   }
   viewBtns.forEach(b => b.addEventListener('click', () => setView(b.dataset.view as View)));
@@ -99,7 +99,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     const list = api.inputs();
     const results = api.results();
     const d = dyn();
-    vList.innerHTML = `<div class="band-two"><div class="band-rows"></div><div class="band-side"><div class="band-sect"><span>all inputs</span><button class="norm-toggle">normalize</button></div><div class="band-tiles"></div><div class="band-hint">tap a row to edit · hold to lock · swipe left to delete</div></div></div>`;
+    vList.innerHTML = `<div class="band-two"><div class="band-rows"></div><div class="band-side"><div class="band-sect"><span>all inputs</span><button class="norm-toggle">normalize</button></div><div class="band-tiles"></div><div class="band-hint">tap a row to edit · hold to lock · × removes</div></div></div>`;
     const rowsEl = vList.querySelector<HTMLElement>('.band-rows')!;
     const tilesEl = vList.querySelector<HTMLElement>('.band-tiles')!;
     const normBtn = vList.querySelector<HTMLButtonElement>('.norm-toggle')!;
@@ -109,7 +109,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       const r = results[i];
       const row = document.createElement('div');
       row.className = 'band-row' + (api.isLocked(i) ? ' locked' : '');
-      row.innerHTML = `<canvas width="24" height="24"></canvas><div class="band-row-txt"><div class="f">${src ? esc(src) : '<span class="dim">empty</span>'}</div><div class="m">${r ? (r.ok ? `${r.range.lo.toFixed(2)} … ${r.range.hi.toFixed(2)}${api.normalize() ? ' → −1 … 1' : ''}` : `<span class="err">${esc(r.error.msg)}</span>`) : ''}</div></div><div class="lk">🔒</div><button class="swipe">delete</button>`;
+      row.innerHTML = `<canvas width="24" height="24"></canvas><div class="band-row-txt"><div class="f">${src ? esc(src) : '<span class="dim">empty</span>'}</div><div class="m">${r ? (r.ok ? `${r.range.lo.toFixed(2)} … ${r.range.hi.toFixed(2)}${api.normalize() ? ' → −1 … 1' : ''}` : `<span class="err">${esc(r.error.msg)}</span>`) : ''}</div></div><div class="lk">🔒</div><button class="swipe" aria-label="Remove input" title="Remove input">×</button>`;
       paintThumb(row.querySelector('canvas')!, src, { normalize: api.normalize(), ...d });
       attachRowGestures(row, i);
       rowsEl.appendChild(row);
@@ -136,15 +136,12 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     });
     row.addEventListener('pointermove', (e) => {
       if (e.pointerId !== id) return;
-      const dx = e.clientX - x0;
-      if (Math.abs(dx) > SLOP) { moved = true; if (timer) { clearTimeout(timer); timer = 0; } }
-      if (dx < -40) row.classList.add('rev');
-      if (dx > 20) row.classList.remove('rev');
+      if (Math.abs(e.clientX - x0) > SLOP) { moved = true; if (timer) { clearTimeout(timer); timer = 0; } }
     });
     const end = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
       id = -1;
-      if (timer) { clearTimeout(timer); timer = 0; if (!moved) { if (row.classList.contains('rev')) row.classList.remove('rev'); else openEdit(i); } }
+      if (timer) { clearTimeout(timer); timer = 0; if (!moved) openEdit(i); }
     };
     row.addEventListener('pointerup', end);
     row.addEventListener('pointercancel', (e) => { if (e.pointerId === id) { id = -1; clearTimeout(timer); timer = 0; } });
@@ -315,42 +312,64 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   };
 
   // ── Gestures: edge swipe right = back, header swipe down = close ──
-  // An edge press only *arms* the back swipe; taps on keys, rows and tiles in
-  // that strip still work. The swipe takes over once the finger has moved
-  // sideways (then the band follows it and the pointer is captured).
-  let g0: { x: number; y: number; edge: boolean; head: boolean; id: number; active: boolean } | null = null;
+  // Whole-band swipes: any press on the band (except the histogram, which is
+  // painted, and the text field) arms a gesture; once the finger has moved
+  // 12px in a clear direction it takes over: right = back, left or down =
+  // close. Down only when the touched list is at its scroll top, so a
+  // scrolled list still scrolls. Taps are never swallowed (arms on movement).
+  const EXCLUDE = '.gen-hist, .band-field';
+  let g0: { x: number; y: number; id: number; axis: 'x' | 'y' | null } | null = null;
   band.addEventListener('pointerdown', (e) => {
-    const r = band.getBoundingClientRect();
-    const edge = e.clientX - r.left < EDGE_PX && !(e.target as HTMLElement).closest('.gen-hist');
-    const onHead = !!(e.target as HTMLElement).closest('.band-head') && !(e.target as HTMLElement).closest('button');
-    if (!edge && !onHead) return;
-    g0 = { x: e.clientX, y: e.clientY, edge, head: onHead, id: e.pointerId, active: onHead };
-    if (onHead) { try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ } band.classList.add('swiping'); }
+    if ((e.target as HTMLElement).closest(EXCLUDE)) return;
+    g0 = { x: e.clientX, y: e.clientY, id: e.pointerId, axis: null };
   }, { capture: true });
   band.addEventListener('pointermove', (e) => {
     if (!g0 || e.pointerId !== g0.id) return;
     const dx = e.clientX - g0.x, dy = e.clientY - g0.y;
-    if (g0.edge && !g0.active) {
-      if (dx > 12 && dx > Math.abs(dy)) {
-        g0.active = true;
-        try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-        band.classList.add('swiping');
-      } else return;
+    if (!g0.axis) {
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) g0.axis = 'x';
+      else if (dy > 12 && dy > Math.abs(dx) * 1.2 && scrollTopOf(e.target as HTMLElement) <= 0) g0.axis = 'y';
+      else return;
+      try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+      band.classList.add('swiping');
     }
-    if (g0.edge && dx > 0) band.style.transform = `translateX(${dx * 0.6}px)`;
-    if (g0.head && dy > 0) band.style.transform = `translateY(${dy * 0.8}px)`;
+    if (g0.axis === 'x') band.style.transform = `translateX(${dx * 0.6}px)`;
+    else band.style.transform = `translateY(${Math.max(0, dy) * 0.8}px)`;
   }, { capture: true });
   const gEnd = (e: PointerEvent) => {
     if (!g0 || e.pointerId !== g0.id) return;
     const dx = e.clientX - g0.x, dy = e.clientY - g0.y;
-    const { edge, head: onHead, active } = g0;
+    const { axis } = g0;
     g0 = null;
-    if (!active) return;
+    if (!axis) return;
     band.classList.remove('swiping');
     band.style.transform = '';
-    if (edge && dx > BACK_PX) goBack();
-    else if (onHead && dy > CLOSE_PX) { if (view === 'edit') finishEdit(); slideOut('y', () => api.onClose()); }
+    if (axis === 'x' && dx > BACK_PX) goBack();
+    else if (axis === 'x' && dx < -BACK_PX) closeBand('x');
+    else if (axis === 'y' && dy > CLOSE_PX) closeBand('y');
   };
+  function scrollTopOf(el: HTMLElement): number {
+    let n: HTMLElement | null = el;
+    while (n && n !== band) { if (n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== 'visible') return n.scrollTop; n = n.parentElement; }
+    return 0;
+  }
+  /** Lists that overflow get `can-scroll` (touch-action: pan-y); the rest leave vertical swipes to the band. */
+  function markScrollers(): void {
+    for (const el of band.querySelectorAll<HTMLElement>('.band-two > div, .band-drawer, .band-view')) el.classList.toggle('can-scroll', el.scrollHeight > el.clientHeight + 1);
+  }
+  function closeBand(axis: 'x' | 'y'): void { if (view === 'edit') finishEdit(); slideOut(axis, () => api.onClose()); }
+  // A plain tap anywhere outside the band (canvas, write-up) closes it; the control bar handles itself.
+  let t0: { x: number; y: number; id: number; t: number } | null = null;
+  const outside = (e: PointerEvent) => !band.contains(e.target as Node) && !(e.target as HTMLElement).closest('.ctrl-btn, [data-action]');
+  const onDocDown = (e: PointerEvent) => { t0 = visible && outside(e) ? { x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() } : null; };
+  const onDocUp = (e: PointerEvent) => {
+    if (!t0 || e.pointerId !== t0.id) return;
+    const ok = Math.abs(e.clientX - t0.x) < 8 && Math.abs(e.clientY - t0.y) < 8 && performance.now() - t0.t < 350;
+    t0 = null;
+    if (ok && visible) closeBand('y');
+  };
+  document.addEventListener('pointerdown', onDocDown, { capture: true });
+  document.addEventListener('pointerup', onDocUp, { capture: true });
   band.addEventListener('pointerup', gEnd, { capture: true });
   band.addEventListener('pointercancel', gEnd, { capture: true });
   void head;
@@ -358,14 +377,18 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   function refresh(): void {
     if (!visible) return;
     if (view === 'list') renderList();
-    else if (view === 'edit') { if (cur >= api.inputs().length) setView('list'); else renderField(); }
+    else if (view === 'edit') {
+      if (cur >= api.inputs().length) setView('list');
+      else { const now = api.inputs()[cur]; if (now !== src && !dirty) { src = now; caret = Math.min(caret, src.length); } renderField(); }
+    }
     else gen.refresh();
   }
-  function show(): void { visible = true; band.hidden = false; host.classList.add('band-open'); setView('list'); }
+  function show(): void { visible = true; band.hidden = false; host.classList.add('band-open'); setView('list'); requestAnimationFrame(markScrollers); }
   function hide(): void { if (view === 'edit') finishEdit(); visible = false; band.hidden = true; host.classList.remove('band-open'); }
 
   // Dynamic thumbnails repaint slowly while the list is up.
   const timer = window.setInterval(() => {
+    markScrollers();
     if (!visible || view !== 'list') return;
     // repaint in place: a rebuild would reset the scroll and drop a revealed delete / a drag
     const d = dyn(); const list = api.inputs();
@@ -381,7 +404,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   return {
     show, hide, refresh,
     isVisible: () => visible,
-    dispose() { clearInterval(timer); genBlock.dispose(); band.remove(); host.classList.remove('band-open'); },
+    dispose() { clearInterval(timer); genBlock.dispose(); band.remove(); host.classList.remove('band-open'); document.removeEventListener('pointerdown', onDocDown, { capture: true }); document.removeEventListener('pointerup', onDocUp, { capture: true }); },
   };
 }
 

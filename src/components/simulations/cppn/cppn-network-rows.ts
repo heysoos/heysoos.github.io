@@ -174,7 +174,18 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     r.className = 'cppn-layer io in';
     r.title = 'Edit the input expressions';
     r.innerHTML = `<span class="ix">in</span><span class="strip"></span><span class="go"></span>`;
-    r.addEventListener('click', (e) => { e.stopPropagation(); ir.onOpen(); });
+    // Long-press (phone) / alt-click (desktop) locks every input expression (`group:Inputs`).
+    api.attachLongPress(r, 'group:Inputs');
+    let pressed = 0;
+    r.addEventListener('pointerdown', () => { pressed = performance.now(); });
+    r.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.altKey) { api.setLocked('group:Inputs', !api.isLocked('group:Inputs')); api.refresh(); return; }
+      const held = pressed && performance.now() - pressed > 400;   // the long-press already fired
+      pressed = 0;
+      if (held) return;
+      ir.onOpen();
+    });
     return r;
   }
   function refreshInRow(): void {
@@ -187,6 +198,7 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     const n = ir.count();
     if (n > 6) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${n - 6}`; strip.appendChild(m); }
     inRow.querySelector<HTMLElement>('.go')!.textContent = `${n} input${n === 1 ? '' : 's'} · z16 ›`;
+    inRow.classList.toggle('locked', api.isLocked('group:Inputs'));
   }
 
   function build(n: number): void {

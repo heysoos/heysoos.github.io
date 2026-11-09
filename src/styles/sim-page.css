@@ -1268,10 +1268,16 @@
 .expr-sig .d { opacity: 0.7; font-family: ui-sans-serif, system-ui; }
 
 /* ── CPPN phone inputs band (300px at rest, 440px while editing; over the canvas, never full screen) ── */
-.sim-cppn :is(.scrub-list, .inputs-band) { touch-action: pan-y pinch-zoom; }
-/* CPPN scrub card: the header is a drag handle (drag down to close), so it carries a grab pill and owns its touches. */
-.sim-cppn .scrub-list .scrub-head { position: relative; touch-action: none; padding-top: 12px; }
-.sim-cppn .scrub-list .scrub-head::before { content: ''; position: absolute; left: 50%; top: 4px; width: 32px; height: 3px; margin-left: -16px; border-radius: 2px; background: var(--text-body); opacity: 0.6; }
+.sim-cppn .scrub-list { touch-action: pan-y pinch-zoom; }
+/* The band owns its touches (swipe left/down = close, right = back); only a list that actually overflows pans. */
+.sim-cppn .inputs-band, .inputs-band .band-row, .inputs-band .band-two > div, .inputs-band .band-drawer { touch-action: none; }
+.inputs-band .can-scroll { touch-action: pan-y; }
+/* Scrub card open/close: a fast slide, no drag gesture (tap the canvas or × to close). */
+@keyframes scrub-in { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes scrub-out { from { transform: none; opacity: 1; } to { transform: translateY(14px); opacity: 0; } }
+.scrub-list.opening { animation: scrub-in 0.18s ease-out; }
+.scrub-list.closing { animation: scrub-out 0.16s ease-in forwards; pointer-events: none; }
+.scrub-list h6.locked::after { content: ' 🔒'; font-size: 0.6rem; }
 .sim-cppn .inputs-band .band-head::before { background: var(--text-body); opacity: 0.6; width: 32px; margin-left: -16px; }
 .sim-cppn :is(.scrub-row, .scrub-enum, .scrub-scroll) { touch-action: pan-y pinch-zoom; }
 .inputs-band {
@@ -1285,8 +1291,7 @@
 .inputs-band.edit { height: 440px; }
 .inputs-band.swiping { transition: none; }
 .inputs-band[hidden] { display: none !important; }
-.band-edge { position: absolute; left: 0; top: 50%; width: 3px; height: 36px; margin-top: -18px; border-radius: 0 2px 2px 0; background: var(--accent); opacity: 0.35; pointer-events: none; z-index: 2; }
-.band-head { position: relative; flex: none; display: flex; align-items: center; gap: 6px; padding: 9px 8px 6px; border-bottom: 1px solid var(--bg-surface-border); touch-action: none; }
+.band-head { position: relative; flex: none; display: flex; align-items: center; gap: 6px; padding: 9px 8px 6px; border-bottom: 1px solid var(--bg-surface-border); }
 .band-head::before { content: ''; position: absolute; left: 50%; top: 3px; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: var(--text-muted); opacity: 0.45; }
 .band-head button { min-height: 0 !important; background: none; border: 1px solid var(--bg-surface-border); color: var(--text-body); border-radius: 6px; padding: 4px 9px; font-size: 0.72rem; line-height: 1.2; cursor: pointer; }
 .band-head .b-back { border-color: transparent; color: var(--text-muted); font-size: 1rem; padding: 2px 6px; }
@@ -1298,7 +1303,7 @@
 .band-view[hidden] { display: none !important; }
 .band-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: 100%; }
 .band-two > div { min-width: 0; overflow-y: auto; scrollbar-width: none; }
-.band-row { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 6px; align-items: center; padding: 4px 0; touch-action: pan-y pinch-zoom; }
+.band-row { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 6px; align-items: center; padding: 4px 0; }
 .band-row canvas { width: 34px; height: 34px; border-radius: 4px; border: 1px solid var(--bg-surface-border); image-rendering: pixelated; display: block; }
 .band-row.locked canvas { outline: 1px solid var(--accent); }
 .band-row-txt { min-width: 0; }
@@ -1308,8 +1313,9 @@
 .band-row .m .err { color: #e05a5a; }
 .band-row .lk { position: absolute; left: 0; top: 4px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); text-shadow: 0 0 4px #000; opacity: 0; pointer-events: none; }
 .band-row.locked .lk { opacity: 1; }
-.band-row .swipe { position: absolute; right: 0; top: 4px; bottom: 4px; width: 0; padding: 0; overflow: hidden; background: #e05a5a; border: none; border-radius: 4px; color: #fff; font-size: 11px; min-height: 0 !important; transition: width 0.15s; }
-.band-row.rev .swipe { width: 64px; }
+.band-row .swipe { position: absolute; right: 2px; top: 50%; width: 22px; height: 22px; margin-top: -11px; padding: 0; background: none; border: none; border-radius: 4px; color: var(--text-muted); font-size: 15px; line-height: 1; min-height: 0 !important; }
+.band-row .swipe:active { color: #e05a5a; }
+.band-row .band-row-txt { padding-right: 24px; }
 .band-add { width: 100%; border: 1px dashed var(--bg-surface-border); background: none; border-radius: 4px; text-align: center; color: var(--text-body); padding: 6px; margin: 4px 0; font-size: 11.5px; min-height: 0 !important; }
 .band-add:disabled { opacity: 0.35; }
 .band-sect { display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); padding: 0 0 4px; }
