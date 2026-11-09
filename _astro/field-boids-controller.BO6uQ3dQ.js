@@ -1,4 +1,4 @@
-import{i as G,r as M}from"./prng.Ch_t7kXI.js";import{r as F}from"./utils.DCtYZSmS.js";const b=`// field-common.wgsl — shared declarations. The controller prepends this\r
+import{i as G,r as M}from"./prng.DNg0itDJ.js";import{r as F}from"./utils.DCtYZSmS.js";const b=`// field-common.wgsl — shared declarations. The controller prepends this\r
 // string to every field-boids shader module, so the uniform layout is\r
 // declared exactly once. Byte offsets must match packUniforms() in\r
 // field-boids-controller.ts.\r
