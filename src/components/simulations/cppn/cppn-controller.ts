@@ -17,15 +17,8 @@ export const MAX_ZOOM = 1e4;
 export const MIN_ZOOM = 0.02;
 
 // ── PRNG (mulberry32) ─────────────────────────────────────────────
-export function makePRNG(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s += 0x6d2b79f5;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { makePRNG } from '../../../lib/webgpu/prng';
+export { makePRNG };
 
 function boxMuller(rand: () => number): number {
   const u1 = rand() || 1e-10;
@@ -454,14 +447,54 @@ export class CPPNController {
       return;
     }
     const frameStart = performance.now();
-    const { device, context, canvas } = this.gpu;
+    const { device, canvas } = this.gpu;
     this._resizeCanvas(canvas);
 
     const now = performance.now();
     const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
     if (this.animate && !this.motionHeld && !this.paused) this.advanceMotion(dt);
-    const t = (now - this.startTime) / 1000;
+    this._draw((now - this.startTime) / 1000);
+    this.tickCount++;
+    if (Number.isFinite(this.maxFps)) {
+      // Capped mode: wait for the GPU so the cap measures real frame time.
+      this.usingRaf = false;
+      void device.queue.onSubmittedWorkDone().then(() => {
+        if (!this.running) return;
+        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
+        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
+      });
+    } else {
+      // Unlimited: let the browser pipeline CPU and GPU work. Waiting on a
+      // GPU fence here quantised the frame rate to vsync divisors.
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+    }
+  };
+
+  /**
+   * Reproducible still for /admin/og: an exact backing size, per-dimension
+   * phase offsets from `motionSeed`, and the latent motion evaluated at
+   * `time` seconds from phase 0. Draws synchronously, so the caller can copy
+   * the canvas in the same task. Call after loadPreset/setState has resolved.
+   */
+  renderStill(opts: { width: number; height: number; time?: number; motionSeed?: number }): void {
+    if (!this.gpu || !this.pipeline || !this.bindGroup) return;
+    const { canvas } = this.gpu;
+    if (canvas.width !== opts.width) canvas.width = opts.width;
+    if (canvas.height !== opts.height) canvas.height = opts.height;
+    const rand = makePRNG((opts.motionSeed ?? 0) >>> 0);
+    for (let i = 0; i < Z_DIM; i++) this.dimOffsets[i] = rand() * 2 * Math.PI;
+    const m = this.config.motion;
+    const time = opts.time ?? 0;
+    for (let b = 0; b < 4; b++) {
+      this.bandPhase[b] = (2 * Math.PI * m.speed * Math.pow(m.spread, b) * time) % (2 * Math.PI);
+    }
+    this._draw(time);
+  }
+
+  private _draw(t: number): void {
+    const { device, context, canvas } = this.gpu!;
     const z = this.computeZ();
 
     const params = new Float32Array(PARAMS_FLOATS);
@@ -491,20 +524,5 @@ export class CPPNController {
     pass.draw(6);
     pass.end();
     device.queue.submit([encoder.finish()]);
-    this.tickCount++;
-    if (Number.isFinite(this.maxFps)) {
-      // Capped mode: wait for the GPU so the cap measures real frame time.
-      this.usingRaf = false;
-      void device.queue.onSubmittedWorkDone().then(() => {
-        if (!this.running) return;
-        const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
-        this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
-      });
-    } else {
-      // Unlimited: let the browser pipeline CPU and GPU work. Waiting on a
-      // GPU fence here quantised the frame rate to vsync divisors.
-      this.usingRaf = true;
-      this.animId = requestAnimationFrame(this.tick);
-    }
-  };
+  }
 }

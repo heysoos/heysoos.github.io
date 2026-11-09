@@ -1,14 +1,18 @@
 ---
 import Nav from '../components/Nav.astro';
 import '../styles/global.css';
+import Seo from '../components/Seo.astro';
 import { siteConfig } from '../config';
 
 interface Props {
   title: string;
   description?: string;
+  /** Share image under public/ (see Seo.astro). */
+  image?: string;
+  noindex?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, image, noindex } = Astro.props;
 const pageTitle = `${title} — ${siteConfig.name}`;
 ---
 
@@ -17,9 +21,8 @@ const pageTitle = `${title} — ${siteConfig.name}`;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content={description || title} />
     <title>{pageTitle}</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <Seo title={pageTitle} description={description || title} image={image} noindex={noindex} />
     <script is:inline>
       // Apply saved theme before first paint to avoid a flash.
       try {

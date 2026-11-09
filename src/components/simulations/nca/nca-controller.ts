@@ -1,4 +1,5 @@
 // src/components/simulations/nca/nca-controller.ts
+import { rng } from '../../../lib/webgpu/prng';
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
 import {
   computeWeightLayout, generateComputeShader, generateRenderShader, generateWeights,
@@ -87,13 +88,14 @@ export class NCAController {
     });
   }
 
-  private seedGrid(): void {
+  private seedGrid(seed?: number): void {
     const { device } = this.gpu!;
     const { gridWidth: W, gridHeight: H, channels, seedMode } = this.config;
     const data = new Float32Array(W * H * channels);
     if (seedMode === 'random') {
       // Match Python's initGrid: uniform [-1, 1]
-      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const rand = rng(seed);
+      for (let i = 0; i < data.length; i++) data[i] = rand() * 2 - 1;
     } else if (seedMode === 'center') {
       // Match Python's seed(): zeros everywhere, channels [3..] = 1 at center pixel
       const cx = Math.floor(W / 2), cy = Math.floor(H / 2);
@@ -285,7 +287,8 @@ export class NCAController {
     if (wasRunning) this.start();
   }
 
-  loadPreset(preset: NCAPreset): void {
+  /** Resolves once a recompile (if the architecture changed) has finished. */
+  loadPreset(preset: NCAPreset): Promise<void> {
     const prev = this.config;
     const next = preset.config;
     const archChanged =
@@ -315,12 +318,68 @@ export class NCAController {
     this.currentWeights = w;
 
     if (archChanged) {
-      void this.recompile(next).then(() => {
+      return this.recompile(next).then(() => {
         this.gpu!.device.queue.writeBuffer(this.weightBuffer, 0, w); // re-write after recompile
       });
-    } else {
-      this.updateUniforms();
     }
+    this.updateUniforms();
+    return Promise.resolve();
+  }
+
+  // ── Stills (/admin/og) ────────────────────────────────────────────
+  /** Seeded grid, then `steps` updates in batches. Must not be running.
+   *  The canvas is the grid size; finish with drawStill() in the same task as the copy. */
+  async prepareStill(opts: { seed: number; steps: number; onProgress?: (done: number, total: number) => void }): Promise<void> {
+    if (!this.gpu) return;
+    const { device } = this.gpu;
+    this.stop();
+    const { gridWidth: W, gridHeight: H } = this.config;
+    this.canvas.width = W;
+    this.canvas.height = H;
+    this.frameIndex = 0;
+    this.pingPong = 0;
+    this.seedGrid(opts.seed);
+    // Same cadence as the live loop: frameIndex (the fire-mask seed) advances every
+    // stepsPerFrame steps, one submit per "frame"; queue order keeps each uniform
+    // write ahead of its submit. Only wait on the GPU every ~1024 steps.
+    const total = Math.max(0, Math.round(opts.steps));
+    const spf = Math.max(1, this.config.stepsPerFrame);
+    let left = total, sinceWait = 0;
+    while (left > 0) {
+      const n = Math.min(left, spf);
+      this.updateUniforms();
+      const encoder = device.createCommandEncoder();
+      for (let s = 0; s < n; s++) {
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.computePipeline);
+        pass.setBindGroup(0, this.computeBindGroups[this.pingPong]);
+        pass.dispatchWorkgroups(Math.ceil(W / 16), Math.ceil(H / 16));
+        pass.end();
+        this.pingPong ^= 1;
+      }
+      this.frameIndex += n;
+      device.queue.submit([encoder.finish()]);
+      left -= n; sinceWait += n;
+      if (sinceWait >= 1024 || left === 0) {
+        sinceWait = 0;
+        await device.queue.onSubmittedWorkDone();
+        opts.onProgress?.(this.frameIndex, total);
+      }
+    }
+  }
+
+  drawStill(): void {
+    const { device, context } = this.gpu!;
+    this.updateUniforms();
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
+    });
+    pass.setPipeline(this.renderPipeline);
+    pass.setBindGroup(0, this.renderBindGroups[this.pingPong]);
+    pass.draw(6);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
   }
 
   randomInit(): void {

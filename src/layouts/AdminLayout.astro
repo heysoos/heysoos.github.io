@@ -13,7 +13,7 @@ interface Props {
 const { title, tabs = ['params', 'presets'], paramsPaneId, canvasStyle } = Astro.props;
 ---
 
-<BaseLayout title={title}>
+<BaseLayout title={title} noindex>
   <div class="admin-wrap">
     <div class="admin-canvas-area">
       <canvas id="admin-canvas" style={canvasStyle}></canvas>

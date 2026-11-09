@@ -18,7 +18,7 @@ const sim = project.data.simulation;
 const underConstruction = project.data.underConstruction ?? false;
 ---
 
-<SimLayout title={project.data.title} description={project.data.description}>
+<SimLayout title={project.data.title} description={project.data.description} image={`og/gallery-${sim}.png`}>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
   <!-- Attraction: bold inward chevrons, two particles converging -->
   <symbol id="ic-attract" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -1,5 +1,6 @@
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
 import { createBuffer, createUniformBuffer } from '../../../lib/webgpu/utils';
+import { rng } from '../../../lib/webgpu/prng';
 import shaderCode from './boids.wgsl?raw';
 import gridShaderCode from './boids-grid.wgsl?raw';
 import { TrailRenderer } from './trail-renderer';
@@ -517,19 +518,62 @@ export class BoidsController {
     clearTimeout(this.animId);
   }
 
-  reset() {
+  /** New random particles. A seed makes the start reproducible (/admin/og). */
+  reset(seed?: number) {
     if (!this.gpu) return;
     const { device } = this.gpu;
+    const rand = rng(seed);
     const data = new Float32Array(MAX_PARTICLES * 4);
     for (let i = 0; i < MAX_PARTICLES; i++) {
-      data[i * 4 + 0] = (Math.random() - 0.5) * 2;
-      data[i * 4 + 1] = (Math.random() - 0.5) * 2;
-      data[i * 4 + 2] = (Math.random() - 0.5) * 0.1;
-      data[i * 4 + 3] = (Math.random() - 0.5) * 0.1;
+      data[i * 4 + 0] = (rand() - 0.5) * 2;
+      data[i * 4 + 1] = (rand() - 0.5) * 2;
+      data[i * 4 + 2] = (rand() - 0.5) * 0.1;
+      data[i * 4 + 3] = (rand() - 0.5) * 0.1;
     }
     device.queue.writeBuffer(this.particleBuffers[0], 0, data);
     device.queue.writeBuffer(this.particleBuffers[1], 0, data);
     this.frame = 0;
+  }
+
+  // ── Stills (/admin/og) ────────────────────────────────────────────
+  /**
+   * Reproducible still, part 1: exact backing size, seeded particles, then
+   * `steps - 1` frames (the last 300 also render, so trails build up).
+   * Must not be running. Finish with drawStill() and copy the canvas in the
+   * same task.
+   */
+  async prepareStill(opts: { width: number; height: number; seed: number; steps: number; viewZoom?: number; viewCx?: number; viewCy?: number; onProgress?: (done: number, total: number) => void }): Promise<void> {
+    if (!this.gpu) return;
+    const { device, canvas } = this.gpu;
+    this.stop();
+    canvas.width = opts.width;
+    canvas.height = opts.height;
+    this._preFrameSetup();                       // resizes trail + image targets
+    this.trailRenderer.primeBg(device, this.bgColor);
+    this.viewZoom = opts.viewZoom ?? 1;
+    this.viewCx = opts.viewCx ?? 0;
+    this.viewCy = opts.viewCy ?? 0;
+    this.mouseActive = false;
+    this.reset(opts.seed);
+    const total = Math.max(1, Math.round(opts.steps));
+    for (let s = 0; s < total - 1; s++) {
+      this._stillStep(s >= total - 1 - 300);
+      if (s % 32 === 31) { await device.queue.onSubmittedWorkDone(); opts.onProgress?.(s + 1, total); }
+    }
+    await device.queue.onSubmittedWorkDone();
+  }
+
+  /** Reproducible still, part 2: the final frame, synchronously. */
+  drawStill(): void { this._stillStep(true); }
+
+  private _stillStep(render: boolean): void {
+    const { device, context, aspect } = this._preFrameSetup();
+    device.queue.writeBuffer(this.uniformBuffer, 0, this._packUniforms(aspect));
+    const N = this.params.numParticles;
+    const gridDim = Math.max(4, Math.min(MAX_GRID_DIM, Math.floor(2.0 / Math.max(this.params.attractionRadius, this.params.repulsionRadius))));
+    this._runComputePasses(device, N, gridDim, gridDim * gridDim);
+    if (render) this._renderFrame(device, context, N);
+    this.frame++;
   }
 
   setObstacles(rects: Float32Array, count: number): void {

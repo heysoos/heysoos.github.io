@@ -1,6 +1,7 @@
 // src/components/simulations/field-boids/field-boids-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
 import { resizeCanvasToDisplaySize } from '../../../lib/webgpu/utils';
+import { rng } from '../../../lib/webgpu/prng';
 import commonSrc from './field-common.wgsl?raw';
 import depositSrc from './field-deposit.wgsl?raw';
 import viewSrc from './field-view.wgsl?raw';
@@ -427,15 +428,17 @@ export class FieldBoidsController {
     clearTimeout(this.animId);
   }
 
-  reset(): void {
+  /** New random particles. A seed makes the start reproducible (/admin/og). */
+  reset(seed?: number): void {
     if (!this.gpu) return;
     const { device } = this.gpu;
+    const rand = rng(seed);
     const data = new Float32Array(MAX_PARTICLES * 4);
     for (let i = 0; i < MAX_PARTICLES; i++) {
-      data[i * 4 + 0] = (Math.random() - 0.5) * 2;
-      data[i * 4 + 1] = (Math.random() - 0.5) * 2;
-      data[i * 4 + 2] = (Math.random() - 0.5) * 0.1;
-      data[i * 4 + 3] = (Math.random() - 0.5) * 0.1;
+      data[i * 4 + 0] = (rand() - 0.5) * 2;
+      data[i * 4 + 1] = (rand() - 0.5) * 2;
+      data[i * 4 + 2] = (rand() - 0.5) * 0.1;
+      data[i * 4 + 3] = (rand() - 0.5) * 0.1;
     }
     device.queue.writeBuffer(this.particleBuffers[0], 0, data);
     device.queue.writeBuffer(this.particleBuffers[1], 0, data);
@@ -603,6 +606,56 @@ export class FieldBoidsController {
     };
     if (this.inFlight >= 2) void done.then(schedule); else schedule();
   };
+
+  // ── Stills (/admin/og) ────────────────────────────────────────────
+  /**
+   * Reproducible still, part 1: exact backing size, seeded particles, then
+   * `steps - 1` sim steps (the last `exposureSteps` of them also run the
+   * display pass so long exposure has history). Must not be running.
+   * Finish with drawStill() and copy the canvas in the same task.
+   */
+  async prepareStill(opts: { width: number; height: number; seed: number; steps: number; viewZoom?: number; viewCx?: number; viewCy?: number; onProgress?: (done: number, total: number) => void }): Promise<void> {
+    if (!this.gpu) return;
+    const { device, canvas } = this.gpu;
+    this.stop();
+    canvas.width = opts.width;
+    canvas.height = opts.height;
+    this.createFieldTextures(device, opts.width, opts.height);
+    this.viewZoom = opts.viewZoom ?? 1;
+    this.viewCx = opts.viewCx ?? 0;
+    this.viewCy = opts.viewCy ?? 0;
+    this.mouseActive = false;
+    this.pointers.clear();
+    this.reset(opts.seed);
+    this.accumIdx = 0;
+    const total = Math.max(1, Math.round(opts.steps));
+    const exposureFrom = total - 1 - 120;
+    for (let s = 0; s < total - 1; s++) {
+      this._stillStep(s >= exposureFrom);
+      if (s % 32 === 31) { await device.queue.onSubmittedWorkDone(); opts.onProgress?.(s + 1, total); }
+    }
+    await device.queue.onSubmittedWorkDone();
+  }
+
+  /** Reproducible still, part 2: the final step plus display, synchronously. */
+  drawStill(): void { this._stillStep(true); }
+
+  private _stillStep(display: boolean): void {
+    const { device, context, canvas } = this.gpu!;
+    const aspect = canvas.width / canvas.height;
+    const N = Math.min(this.params.numParticles, MAX_PARTICLES);
+    device.queue.writeBuffer(this.uniformBuffer, 0, this.packUniforms(aspect));
+    const readIdx = this.frame % 2;
+    const encoder = device.createCommandEncoder();
+    this.runDecay(encoder);
+    this.runDeposit(encoder, readIdx, N);
+    this.runMips(encoder);
+    this.runCompute(encoder, readIdx, N);
+    if (display) this.runDisplay(encoder, context, readIdx, N);
+    device.queue.submit([encoder.finish()]);
+    this.frame++;
+    this.writeIdx = 1 - this.writeIdx;
+  }
 
   /** B = A × memory. Skipped when memory is 0: the deposit pass clears instead. */
   private runDecay(encoder: GPUCommandEncoder): void {

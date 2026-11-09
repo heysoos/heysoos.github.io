@@ -1,8 +1,11 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import { writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { createPresetsMiddleware, generateWeightsPresetsFile, generateParamsPresetsFile } from './src/lib/admin/presets.ts';
+
+import sitemap from '@astrojs/sitemap';
 
 const SHADERS_DIR = 'src/data/boids-shaders';
 
@@ -126,6 +129,7 @@ export const BOIDS_PRESETS: BoidsPreset[] = ${arrJson};
 
 export default defineConfig({
   site: 'https://heysoos.github.io',
+
   vite: {
     // Don't trigger HMR / full-reload when the admin pages write their own
     // auto-generated outputs back to disk — otherwise clicking "Write to disk"
@@ -142,6 +146,11 @@ export default defineConfig({
           '**/src/data/nca-presets.ts',
           '**/src/data/nca-weights/**',
           '**/src/data/field-boids-presets.ts',
+          '**/src/data/og-recipes.json',
+          '**/public/og/**',
+          '**/public/favicon*',
+          '**/public/icon-*.png',
+          '**/public/apple-touch-icon.png',
         ],
       },
     },
@@ -189,8 +198,34 @@ export default defineConfig({
               presets,
             }),
           ));
+          // /admin/og: picked favicon + share images → public/, recipes → src/data/og-recipes.json
+          server.middlewares.use('/api/admin/save-og', (req, res) => {
+            if (req.method !== 'POST') { res.statusCode = 405; res.end(); return; }
+            let body = '';
+            req.on('data', (c) => { body += c; });
+            req.on('end', () => {
+              try {
+                const { recipes, files } = JSON.parse(body);
+                const SAFE = /^(og\/[a-z0-9-]+\.png|favicon\.ico|favicon-\d+\.png|icon-\d+\.png|apple-touch-icon\.png)$/;
+                for (const f of files) {
+                  if (!SAFE.test(f.path)) throw new Error(`refusing path ${f.path}`);
+                  const out = resolve('public', f.path);
+                  mkdirSync(dirname(out), { recursive: true });
+                  writeFileSync(out, Buffer.from(f.base64, 'base64'));
+                }
+                writeFileSync('src/data/og-recipes.json', JSON.stringify(recipes, null, 2) + '\n');
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ ok: true, wrote: files.map((f) => f.path) }));
+              } catch (e) {
+                res.statusCode = 400;
+                res.end(String(e));
+              }
+            });
+          });
         },
       },
     ],
   },
+
+  integrations: [sitemap({ filter: (page) => !page.includes('/admin/') })]
 });

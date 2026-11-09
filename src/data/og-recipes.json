@@ -1,0 +1,359 @@
+{
+  "version": 1,
+  "slots": {
+    "favicon": {
+      "pick": "fav-planetary-crystal",
+      "candidates": [
+        {
+          "id": "fav-metal-flower",
+          "shape": "circle",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "metal-flower",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "fav-event-horizon",
+          "shape": "circle",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "event-horizon",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "fav-hal9000",
+          "shape": "squircle",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "hal9000",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "fav-roses-swarm",
+          "shape": "squircle",
+          "bg": "transparent",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "roses",
+              "seed": 1,
+              "time": 0
+            },
+            {
+              "sim": "field-boids",
+              "preset": "tidal",
+              "seed": 7,
+              "steps": 900,
+              "zoom": 3,
+              "blend": "mask",
+              "gain": 2
+            }
+          ]
+        },
+        {
+          "id": "fav-hypnosis-flock",
+          "shape": "circle",
+          "bg": "transparent",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "hypnosis",
+              "seed": 1,
+              "time": 0
+            },
+            {
+              "sim": "boids",
+              "preset": "bokeh",
+              "seed": 3,
+              "steps": 900,
+              "zoom": 2,
+              "blend": "mask",
+              "gain": 2.5
+            }
+          ]
+        },
+        {
+          "id": "fav-planetary-crystal",
+          "shape": "circle",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "soft-colors",
+              "seed": 1,
+              "zoom": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "fav-soft-glow",
+          "shape": "circle",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "soft-colors",
+              "seed": 1,
+              "time": 0
+            },
+            {
+              "sim": "field-boids",
+              "preset": "structure",
+              "seed": 7,
+              "steps": 900,
+              "zoom": 2,
+              "blend": "screen"
+            }
+          ]
+        },
+        {
+          "id": "fav-qapon-worms",
+          "shape": "circle",
+          "bg": "transparent",
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "qapon",
+              "seed": 1,
+              "time": 0,
+              "zoom": 2
+            },
+            {
+              "sim": "field-boids",
+              "preset": "worms",
+              "seed": 7,
+              "steps": 900,
+              "zoom": 2,
+              "blend": "mask",
+              "gain": 2
+            }
+          ]
+        }
+      ]
+    },
+    "home": {
+      "pick": "home-bokeh",
+      "candidates": [
+        {
+          "id": "home-tidal",
+          "title": true,
+          "layers": [
+            {
+              "sim": "field-boids",
+              "preset": "tidal",
+              "seed": 7,
+              "steps": 900
+            }
+          ]
+        },
+        {
+          "id": "home-flower-swarm",
+          "title": true,
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "metal-flower",
+              "seed": 1,
+              "time": 0
+            },
+            {
+              "sim": "field-boids",
+              "preset": "tidal",
+              "seed": 7,
+              "steps": 900,
+              "blend": "mask",
+              "gain": 2
+            }
+          ]
+        },
+        {
+          "id": "home-bokeh",
+          "title": true,
+          "layers": [
+            {
+              "sim": "boids",
+              "preset": "bokeh",
+              "seed": 551291,
+              "steps": 2000
+            }
+          ]
+        }
+      ]
+    },
+    "gallery/boids": {
+      "pick": "boids-space-worms",
+      "candidates": [
+        {
+          "id": "boids-bokeh",
+          "title": true,
+          "layers": [
+            {
+              "sim": "boids",
+              "preset": "bokeh",
+              "seed": 3,
+              "steps": 900
+            }
+          ]
+        },
+        {
+          "id": "boids-space-worms",
+          "title": true,
+          "layers": [
+            {
+              "sim": "boids",
+              "preset": "porosity",
+              "seed": 984893,
+              "steps": 10000
+            }
+          ]
+        },
+        {
+          "id": "boids-chain-link",
+          "title": true,
+          "layers": [
+            {
+              "sim": "boids",
+              "preset": "chain-link",
+              "seed": 3,
+              "steps": 900
+            }
+          ]
+        }
+      ]
+    },
+    "gallery/field-boids": {
+      "pick": "fb-tidal",
+      "candidates": [
+        {
+          "id": "fb-tidal",
+          "title": true,
+          "layers": [
+            {
+              "sim": "field-boids",
+              "preset": "tidal",
+              "seed": 307939,
+              "steps": 1800
+            }
+          ]
+        },
+        {
+          "id": "fb-planetary-crystal",
+          "title": true,
+          "layers": [
+            {
+              "sim": "field-boids",
+              "preset": "planetary-crystal",
+              "seed": 7,
+              "steps": 900
+            }
+          ]
+        },
+        {
+          "id": "fb-entanglements",
+          "title": true,
+          "layers": [
+            {
+              "sim": "field-boids",
+              "preset": "entanglements",
+              "seed": 7,
+              "steps": 900
+            }
+          ]
+        }
+      ]
+    },
+    "gallery/cppn": {
+      "pick": "cppn-roses",
+      "candidates": [
+        {
+          "id": "cppn-event-horizon",
+          "title": true,
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "event-horizon",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "cppn-roses",
+          "title": true,
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "roses",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "id": "cppn-hyperbolic-fractal",
+          "title": true,
+          "layers": [
+            {
+              "sim": "cppn",
+              "preset": "hyperbolic-fractal",
+              "seed": 1,
+              "time": 0
+            }
+          ]
+        }
+      ]
+    },
+    "gallery/nca": {
+      "pick": "nca-starry",
+      "candidates": [
+        {
+          "id": "nca-starry",
+          "title": true,
+          "layers": [
+            {
+              "sim": "nca",
+              "preset": "ca-vgg16-starry",
+              "seed": 1,
+              "steps": 20000
+            }
+          ]
+        },
+        {
+          "id": "nca-zebra",
+          "title": true,
+          "layers": [
+            {
+              "sim": "nca",
+              "preset": "ca-vgg16-zebra",
+              "seed": 1,
+              "steps": 600
+            }
+          ]
+        },
+        {
+          "id": "nca-checkerboard",
+          "title": true,
+          "layers": [
+            {
+              "sim": "nca",
+              "preset": "ca-vgg16-checkerboard",
+              "seed": 1,
+              "steps": 600
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
