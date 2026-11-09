@@ -1288,7 +1288,11 @@
   -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
 }
 .inputs-band::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: rgba(8,6,4,0.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+/* Edit view sizes the band to its content: the body stops being a fixed-height
+   frame and the edit view flows in it (the other views stay absolute). */
 .inputs-band.edit { height: auto; max-height: calc(100dvh - 120px); bottom: calc(0.5rem + 40px + 8px + var(--kb, 0px)); }
+.inputs-band.edit .band-body { flex: none; overflow: visible; }
+.inputs-band.edit .v-edit { position: static; }
 .inputs-band.swiping { transition: none; }
 .inputs-band .band-body { will-change: transform; }
 .band-head .b-views button.target { background: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--text-primary); }
