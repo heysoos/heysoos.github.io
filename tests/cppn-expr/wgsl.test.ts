@@ -21,5 +21,5 @@ test('post-process clamps and drops non-finite values', () => {
   const src = wgslPostProcess();
   expect(src).toContain('fn finiteClamp(v: f32) -> f32');
   expect(src).toContain('clamp(');
-  expect(src).toContain('-8.0, 8.0');
+  expect(src).toContain('-10000.0, 10000.0');
 });

@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { parse } from '../../src/components/simulations/cppn/cppn-expr/parser';
 import { OPCODE } from '../../src/components/simulations/cppn/cppn-expr/optable';
-import { compile, MAX_OPS, MAX_INPUTS, STACK_DEPTH } from '../../src/components/simulations/cppn/cppn-expr/compile';
+import { compile, MAX_OPS, MAX_INPUTS, STACK_DEPTH, CHANNEL_LIMIT } from '../../src/components/simulations/cppn/cppn-expr/compile';
 import { evalProgram, makeVars } from '../../src/components/simulations/cppn/cppn-expr/eval-js';
 
 test('round trip', () => {
@@ -18,7 +18,7 @@ test('safe semantics are total', () => {
   for (const [src, v] of cases) {
     const out = evalProgram(compile(parse(src)), v);
     expect(Number.isFinite(out), src).toBe(true);
-    expect(Math.abs(out), src).toBeLessThanOrEqual(8);
+    expect(Math.abs(out), src).toBeLessThanOrEqual(CHANNEL_LIMIT);
   }
   expect(evalProgram(compile(parse('1 / x')), makeVars(-1e-9, 0))).toBeLessThan(0);   // sign kept
 });

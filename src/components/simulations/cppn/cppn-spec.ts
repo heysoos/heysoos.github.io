@@ -131,6 +131,8 @@ export function configFromFlat(base: CPPNConfig, f: CPPNFlatParams): CPPNConfig 
       speed: f.speed, spread: f.spread, depth: f.depth, falloff: f.falloff,
       bands: Math.min(4, Math.max(1, Math.round(f.bands))),
     },
+    inputs: [...base.inputs],
+    normalizeInputs: base.normalizeInputs,
   };
 }
 

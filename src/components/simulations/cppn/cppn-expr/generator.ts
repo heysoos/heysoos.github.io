@@ -69,6 +69,7 @@ const UNARY  = ['sin', 'cos', 'tanh', 'gauss', 'abs', 'sqrt', 'exp', 'log', 'sig
 const NARY   = ['length', 'min', 'max', 'pow', 'mix', 'smoothstep', 'mod', 'atan2', 'step'] as const;
 const LEAVES = ['x', 'y', 'r', 'const', 't', 'px', 'py', 'a'] as const;
 const WRAPS  = ['sin', 'cos', 'tanh', 'gauss'] as const;
+const GEN_BINARY = ['+', '-', '*', '/'] as const;   // `^` is typed-only; pow is the n-ary form
 
 interface Ctx { rng: () => number; w: Weights; c: number; spatial: boolean; dynamic: boolean }
 
@@ -139,7 +140,7 @@ function gen(budget: number, ctx: Ctx): Ast {
   const c = ctx.c;
   const kinds: [string, number][] = [];
   if (wpick(ctx, UNARY)) kinds.push(['unary', 1.5 + 4 * c]);
-  if (wpick(ctx, BINARY)) kinds.push(['binary', 2 + 3.5 * c]);
+  if (wpick(ctx, GEN_BINARY)) kinds.push(['binary', 2 + 3.5 * c]);
   if (wpick(ctx, NARY)) kinds.push(['nary', 0.3 + 3 * c]);
   kinds.push(['scaled', 5 - 3 * c]);
   const kind = pickBy(ctx, kinds) ?? 'scaled';
@@ -165,7 +166,7 @@ function gen(budget: number, ctx: Ctx): Ast {
   }
 
   if (kind === 'binary') {
-    const op = wpick(ctx, BINARY)!;
+    const op = wpick(ctx, GEN_BINARY)!;
     const na = 1 + Math.floor(ctx.rng() * (budget - 1)), nb = Math.max(1, budget - 1 - na);
     const a = gen(na, ctx);
     let b = gen(nb, ctx);

@@ -1,13 +1,14 @@
 // src/components/simulations/cppn/cppn-codegen.ts
 import type { CPPNConfig, Activation } from './cppn-types';
-
+import { emitEvalProgram, wgslPostProcess } from './cppn-expr/wgsl';
+import { MAX_INPUTS } from './cppn-expr/compile';
 
 export const Z_DIM = 16; // fixed — not user-configurable
+export { MAX_INPUTS };
 
 export interface WeightLayout {
-  wxOffset: number;
-  wyOffset: number;
-  wrOffset: number;
+  /** Input weights: column k (0..MAX_INPUTS-1) for neuron i is at wInOffset + k*w0 + i. */
+  wInOffset: number;
   wzOffset: number;
   hiddenWeightOffsets: number[]; // [i] = weights for transition layers[i] → layers[i+1]
   hiddenBiasOffsets: number[];   // [i] = biases for that transition
@@ -15,14 +16,17 @@ export interface WeightLayout {
   totalCount: number;
 }
 
+/**
+ * The first layer always has MAX_INPUTS (8) input columns, whatever the
+ * number of expressions in use: adding or removing an input is then a buffer
+ * write, never a layout change. Unused columns are fed 0 by the shader.
+ */
 export function computeWeightLayout(config: CPPNConfig): WeightLayout {
   const { layers } = config;
   const w0 = layers[0].width;
 
-  const wxOffset = 0;
-  const wyOffset = w0;
-  const wrOffset = 2 * w0;
-  const wzOffset = 3 * w0;
+  const wInOffset = 0;
+  const wzOffset = MAX_INPUTS * w0;
   let offset = wzOffset + Z_DIM * w0;
 
   const hiddenWeightOffsets: number[] = [];
@@ -39,10 +43,32 @@ export function computeWeightLayout(config: CPPNConfig): WeightLayout {
   offset += layers[layers.length - 1].width * 3;
 
   return {
-    wxOffset, wyOffset, wrOffset, wzOffset,
+    wInOffset, wzOffset,
     hiddenWeightOffsets, hiddenBiasOffsets,
     outWeightOffset, totalCount: offset,
   };
+}
+
+/** Weight count of the pre-expression layout (3 input columns: x, y, r). */
+export function legacyWeightCount(config: CPPNConfig): number {
+  const w0 = config.layers[0].width;
+  return computeWeightLayout(config).totalCount - (MAX_INPUTS - 3) * w0;
+}
+
+/**
+ * Re-lay a pre-expression weights array (x, y, r columns, then z, hidden,
+ * out) into the 8-column layout: the three columns keep their values,
+ * columns 3..7 are zero, and every later block moves to its new offset.
+ */
+export function migrateWeightsFromXYR(old: ArrayLike<number>, config: CPPNConfig): Float32Array {
+  const layout = computeWeightLayout(config);
+  const w0 = config.layers[0].width;
+  const out = new Float32Array(layout.totalCount);
+  const head = 3 * w0;                      // x, y, r columns: same offsets
+  for (let i = 0; i < head; i++) out[i] = old[i];
+  const shift = (MAX_INPUTS - 3) * w0;      // everything after moves up by the five new columns
+  for (let i = head; i < old.length; i++) out[i + shift] = old[i];
+  return out;
 }
 
 /** Activation ids as packed into Params.acts0/acts1 (two vec4<u32> = 8 layers). */
@@ -88,9 +114,9 @@ function* weightGroups(config: CPPNConfig, layout: WeightLayout): Generator<Grou
   const { layers } = config;
   const w0 = layers[0].width;
 
-  // Input layer: per neuron, one spatial group (cx, cy, cr, 0) then z groups.
+  // Input layer: per neuron, two input groups (8 expression inputs) then z groups.
   for (let i = 0; i < w0; i++) {
-    yield [layout.wxOffset + i, layout.wyOffset + i, layout.wrOffset + i, PAD];
+    yield* chunk4(MAX_INPUTS, (k) => layout.wInOffset + k * w0 + i);
     yield* chunk4(Z_DIM, (j) => layout.wzOffset + j * w0 + i);
   }
 
@@ -152,9 +178,9 @@ function dot4Sum(
 
 /**
  * Generate a WGSL shader for an architecture. Weights are read from a
- * `wv: array<vec4f>` storage buffer (binding 1) packed by `packWeights`, so the
- * shader depends only on layer widths/activations and recompiles only when
- * those change.
+ * `wv: array<vec4f>` storage buffer (binding 1) packed by `packWeights`, and
+ * the input expressions from a `prog` bytecode buffer (binding 2), so the
+ * shader depends only on layer widths and recompiles only when those change.
  */
 export function generateShader(config: CPPNConfig, layout: WeightLayout): string {
   const { layers } = config;
@@ -177,6 +203,12 @@ struct Params {
   acts0      : vec4<u32>,
   acts1      : vec4<u32>,
   view       : vec4f,          // world centre x, y, zoom, unused
+  numInputs  : u32,
+  exprTime   : f32,            // wrapped expression clock, 0..2π
+  normFlag   : u32,
+  _pad       : u32,
+  pointer    : vec4f,          // pointer x, y in world space
+  norm       : array<vec4f, 4>, // per input (mid, half), two inputs per vec4
 }
 
 // tanh is evaluated as (e^2x-1)/(e^2x+1) on most GPUs and overflows to
@@ -194,7 +226,8 @@ fn act(id: u32, x: f32) -> f32 {
 
 @group(0) @binding(0) var<uniform> params : Params;
 @group(0) @binding(1) var<storage, read> wv : array<vec4f>;
-
+${emitEvalProgram()}
+${wgslPostProcess()}
 @vertex
 fn vertexMain(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
   var pos = array<vec2f, 6>(
@@ -214,7 +247,26 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   let cx     = params.view.x + (uv.x * 2.0 - 1.0) * aspect * params.scale / params.view.z;
   let cy     = params.view.y + (uv.y * 2.0 - 1.0) * params.scale / params.view.z;
   let cr     = sqrt(cx * cx + cy * cy);
-  let sp     = vec4f(cx, cy, cr, 0.0);
+  let ca     = atan2(cy, cx);
+  // Expression inputs: one bytecode program per slot, unused slots read 0.
+  var inp: array<f32, ${MAX_INPUTS}>;
+  for (var i = 0u; i < ${MAX_INPUTS}u; i++) {
+    if (i < params.numInputs) {
+      var v = finiteClamp(evalProgram(i, cx, cy, cr, ca, params.exprTime, params.pointer.x, params.pointer.y));
+      if (params.normFlag != 0u) {
+        let n = params.norm[i / 2u];
+        let odd = (i & 1u) == 1u;
+        let mid = select(n.x, n.z, odd);
+        let half = select(n.y, n.w, odd);
+        v = (v - mid) / half;
+      }
+      inp[i] = v;
+    } else {
+      inp[i] = 0.0;
+    }
+  }
+  let in0    = vec4f(inp[0], inp[1], inp[2], inp[3]);
+  let in1    = vec4f(inp[4], inp[5], inp[6], inp[7]);
   let z0     = vec4f(params.z[0],  params.z[1],  params.z[2],  params.z[3]);
   let z1     = vec4f(params.z[4],  params.z[5],  params.z[6],  params.z[7]);
   let z2     = vec4f(params.z[8],  params.z[9],  params.z[10], params.z[11]);
@@ -222,10 +274,10 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
 
 `;
 
-  // Input layer — spatial slot + 4 z slots, no bias
+  // Input layer — two input slots + 4 z slots, no bias
   const w0 = layers[0].width;
   for (let i = 0; i < w0; i++) {
-    let expr = `dot(sp, wv[${nextSlot()}])`;
+    let expr = `dot(in0, wv[${nextSlot()}]) + dot(in1, wv[${nextSlot()}])`;
     for (const zv of ['z0', 'z1', 'z2', 'z3']) {
       expr += ` + dot(${zv}, wv[${nextSlot()}])`;
     }

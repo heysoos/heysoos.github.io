@@ -6,6 +6,8 @@ import { ExprError, type Ast } from './parser';
 export const MAX_INPUTS = 8;
 export const MAX_OPS = 64;
 export const STACK_DEPTH = 16;
+/** Channel values are clamped to ±CHANNEL_LIMIT after evaluation (finite-safety only). */
+export const CHANNEL_LIMIT = 1e4;
 
 export interface Program {
   /** MAX_OPS × 4 floats; op i at [i*4] = opcode, [i*4+1] = immediate. */
@@ -40,7 +42,7 @@ export function compile(ast: Ast): Program {
         for (const a of node.args) walk(a);
         const code = FN_OPCODE.get(node.fn);
         if (code === undefined) fail(`unknown function “${node.fn}”`);
-        emit(code, 0, 1, node.args.length);
+        emit(code as number, 0, 1, node.args.length);
         break;
       }
     }

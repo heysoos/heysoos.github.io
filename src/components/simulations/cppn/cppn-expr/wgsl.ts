@@ -1,16 +1,18 @@
 // Emits the WGSL stack-machine interpreter from the op table, so the shader
 // and the JS evaluator share one source of truth for opcodes and semantics.
 import { OPS, OPCODE, BINARY, BINARY_WGSL, WGSL_HELPERS } from './optable';
-import { MAX_OPS, STACK_DEPTH } from './compile';
+import { MAX_OPS, STACK_DEPTH, CHANNEL_LIMIT } from './compile';
 
 const ARG = ['a', 'b', 'c'];
 
-/** `finiteClamp`: non-finite → 0, then clamp to [-8, 8]. */
+/** `finiteClamp`: non-finite → 0, then clamp to ±CHANNEL_LIMIT. The bound is
+ *  only there to keep values finite: raw coordinates (|x| ≈ 9 at scale 5, far
+ *  more zoomed out) must pass through unchanged so old presets stay identical. */
 export function wgslPostProcess(): string {
   return `
 fn finiteClamp(v: f32) -> f32 {
   let f = select(0.0, v, v == v && abs(v) < 1e30);
-  return clamp(f, -8.0, 8.0);
+  return clamp(f, -${CHANNEL_LIMIT.toFixed(1)}, ${CHANNEL_LIMIT.toFixed(1)});
 }
 `;
 }

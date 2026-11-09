@@ -1,7 +1,7 @@
 // JS interpreter for compiled programs — the oracle the shader is checked
 // against, and what paints thumbnails and samples normalization ranges.
 import { OPCODE, OPS, BINARY_JS, VARS, type VarName } from './optable';
-import { STACK_DEPTH, type Program } from './compile';
+import { STACK_DEPTH, CHANNEL_LIMIT, type Program } from './compile';
 
 export type Vars = Record<VarName, number>;
 
@@ -12,7 +12,7 @@ export function makeVars(x: number, y: number, t = 0, px = 0, py = 0): Vars {
 
 const BIN_FNS = [BINARY_JS['+'], BINARY_JS['-'], BINARY_JS['*'], BINARY_JS['/'], BINARY_JS['^']];
 
-/** Always finite, clamped to [-8, 8] (the shader's finiteClamp). */
+/** Always finite, clamped to ±CHANNEL_LIMIT (the shader's finiteClamp). */
 export function evalProgram(p: Program, v: Vars): number {
   const st = new Float64Array(STACK_DEPTH);
   let sp = 0;
@@ -36,5 +36,5 @@ export function evalProgram(p: Program, v: Vars): number {
   }
   const out = sp > 0 ? st[sp - 1] : 0;
   if (!Number.isFinite(out)) return 0;
-  return out < -8 ? -8 : out > 8 ? 8 : out;
+  return out < -CHANNEL_LIMIT ? -CHANNEL_LIMIT : out > CHANNEL_LIMIT ? CHANNEL_LIMIT : out;
 }
