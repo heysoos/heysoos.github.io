@@ -11,6 +11,7 @@ import {
   type CPPNFlatParams, type FlatKey,
 } from './cppn-spec';
 import type { LayerConfig } from './cppn-types';
+import { generateExpression, canonical, type GenSettings } from './cppn-expr/generator';
 
 /** Weight budgets: Soft Colors is ~4k and runs 60 fps on an Intel iGPU at the
  *  320 cap; Roses is ~8k and fine on a discrete GPU. */
@@ -113,6 +114,22 @@ export function randomizeFlat(current: CPPNFlatParams, lockedKeys: string[], bud
   set('bands', 1 + Math.floor(rnd() * 4));
 
   return f;
+}
+
+/**
+ * Fresh expressions for every unlocked slot. Locked slots keep their text
+ * and, with the slots already rolled, feed the generator's dedupe set.
+ */
+export function randomizeInputs(current: string[], lockedSlots: ReadonlySet<number>, settings: GenSettings, rng: () => number = Math.random): string[] {
+  const out = [...current];
+  const taken = new Set<string>();
+  current.forEach((src, i) => { if (lockedSlots.has(i)) taken.add(canonical(src)); });
+  for (let i = 0; i < out.length; i++) {
+    if (lockedSlots.has(i)) continue;
+    out[i] = generateExpression(settings, taken, rng);
+    taken.add(canonical(out[i]));
+  }
+  return out;
 }
 
 /** For a budget readout: the count the current flat architecture implies. */

@@ -12,10 +12,12 @@
 import type { CPPNController } from '../../../components/simulations/cppn/cppn-controller';
 import { buildCPPNPanel } from '../../../components/simulations/cppn/cppn-panel';
 import {
-  CPPN_GROUPS, DEFAULT_FLAT, configFromFlat, isArchKey, isWeightKey, presetToBody, prepareCPPNBody, toFlat,
+  CPPN_GROUPS, DEFAULT_FLAT, GROUP_LOCK_PREFIX, configFromFlat, expandGroupLocks, isArchKey, isWeightKey, presetToBody, prepareCPPNBody, toFlat,
   type CPPNBody, type CPPNFlatParams, type FlatKey,
 } from '../../../components/simulations/cppn/cppn-spec';
-import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat } from '../../../components/simulations/cppn/cppn-randomize';
+import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat, randomizeInputs } from '../../../components/simulations/cppn/cppn-randomize';
+import { loadGenSettings, saveGenSettings } from '../../../components/simulations/cppn/cppn-expr/settings';
+import type { GenSettings } from '../../../components/simulations/cppn/cppn-expr/generator';
 import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
 import { CPPN_PRESETS } from '../../../data/cppn-presets';
 import { createPresetManager } from '../../presets/preset-manager';
@@ -42,6 +44,17 @@ export async function setupCPPN(
   const builtIn = CPPN_PRESETS.map(presetToBody);
   const budget = () => (isPhoneLayout() ? BUDGET_PHONE : BUDGET_DESKTOP);
   const locks = createParamLocks('cppn');
+  // Locks with `group:*` entries expanded to their members (Randomize and prepare use this; the UI shows raw keys).
+  const effectiveLockedKeys = (): string[] => expandGroupLocks(locks.keys());
+  const lockedInputSlots = (): Set<number> => {
+    const out = new Set<number>();
+    for (const k of effectiveLockedKeys()) { const m = /^input(\d)$/.exec(k); if (m) out.add(+m[1]); }
+    return out;
+  };
+  // Generator taste (device setting) + the preset's normalize flag.
+  let genStored = loadGenSettings();
+  const genSettings = (): GenSettings => ({ ...genStored, normalize: ctrl.config.normalizeInputs });
+  const setGenSettings = (s: GenSettings): void => { genStored = { weights: { ...s.weights }, complexity: s.complexity, normalize: true }; saveGenSettings(genStored); };
 
   const mgr = createPresetManager<CPPNFlatParams>({
     simId: 'cppn',
@@ -59,8 +72,14 @@ export async function setupCPPN(
       if (b.inputs && b.inputs.length > 0) config.inputs = [...b.inputs];
       await ctrl.setState(config, b.params.seed, b.weights);
     },
-    // Pre-expression bodies get x, y, r + normalize off; locked input slots keep their text.
-    prepare: (body) => prepareCPPNBody(body as CPPNBody, ctrl.config.inputs, locks.keys()),
+    // Pre-expression bodies get x, y, r + normalize off; locked input slots
+    // (and every member of a locked group) keep their current value.
+    prepare: (body) => {
+      const b = prepareCPPNBody(body as CPPNBody, ctrl.config.inputs, effectiveLockedKeys());
+      const current = toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating);
+      for (const k of effectiveLockedKeys()) if (k in current) (b.params as Record<string, unknown>)[k] = current[k as FlatKey];
+      return b;
+    },
     locks,
   });
 
@@ -132,15 +151,29 @@ export async function setupCPPN(
     ctrl.config = configFromFlat(ctrl.config, f);
     if (isWeightKey(k)) ctrl.randomizeWeights(f.seed);   // regenerate from the (possibly new) seed
   };
+  // Shift+R / both dice: everything unlocked — architecture, weights, motion
+  // and the input expressions. R / ↺ stay "new seed" (weights only).
   const randomize = (): void => {
     mgr.history.endGesture();
-    const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), mgr.locks.keys(), budget(), ctrl.config.inputs.length);
+    const lockedKeys = effectiveLockedKeys();
+    const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), lockedKeys, budget(), ctrl.config.inputs.length);
+    const config = configFromFlat(ctrl.config, f);
+    const inputsLocked = lockedKeys.includes(`${GROUP_LOCK_PREFIX}Network`) || lockedKeys.includes(`${GROUP_LOCK_PREFIX}Inputs`);
+    if (!inputsLocked) config.inputs = randomizeInputs(ctrl.config.inputs, lockedInputSlots(), genSettings());
     ctrl.setAnimate(f.animate !== 0);
-    void ctrl.setState(configFromFlat(ctrl.config, f), f.seed).then(() => {
+    void ctrl.setState(config, f.seed).then(() => {
       mgr.history.push('Randomize');
       mgr.rebuild();
     });
   };
+  /** The inputs page's ⚄: fresh expressions for the unlocked slots only (a buffer write). */
+  const randomizeInputsOnly = (): void => {
+    mgr.history.endGesture();
+    ctrl.setInputs(randomizeInputs(ctrl.config.inputs, lockedInputSlots(), genSettings()));
+    mgr.history.push('Randomize inputs');
+    mgr.rebuild();
+  };
+  void randomizeInputsOnly; void setGenSettings;   // wired into the inputs page (desktop) and band (phone)
 
   let section: PresetSectionHandle | null = null;
   let scrub: ScrubPanelHandle | null = null;

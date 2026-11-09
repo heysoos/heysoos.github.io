@@ -58,6 +58,26 @@ export type FlatKey = keyof CPPNFlatParams & string;
 export const ARCH_KEYS: FlatKey[] = ['layers', ...Array.from({ length: MAX_LAYERS }, (_, i) => [`layer${i}Width`, `layer${i}Act`] as FlatKey[]).flat()];
 export const WEIGHT_KEYS: FlatKey[] = ['distType', 'sigma', 'a', 'glorotScale', 'sparsity', 'magnitude', 'seed'];
 export const isArchKey = (k: string): boolean => (ARCH_KEYS as string[]).includes(k);
+export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands'];
+export const INPUT_LOCK_KEYS: string[] = Array.from({ length: 8 }, (_, i) => `input${i}`);
+/** Group locks are stored as `group:<Name>` so items added to a group later are covered. */
+export const GROUP_LOCK_PREFIX = 'group:';
+const GROUP_MEMBERS: Record<string, string[]> = {
+  Network: [...ARCH_KEYS, ...INPUT_LOCK_KEYS],
+  Inputs: INPUT_LOCK_KEYS,
+  Weights: WEIGHT_KEYS,
+  Motion: MOTION_KEYS,
+  View: ['scale'],
+};
+/** Lock keys with every `group:*` entry expanded to its member keys (the group key itself is kept). */
+export function expandGroupLocks(keys: readonly string[]): string[] {
+  const out = new Set<string>(keys);
+  for (const k of keys) {
+    if (!k.startsWith(GROUP_LOCK_PREFIX)) continue;
+    for (const m of GROUP_MEMBERS[k.slice(GROUP_LOCK_PREFIX.length)] ?? []) out.add(m);
+  }
+  return [...out];
+}
 export const isWeightKey = (k: string): boolean => (WEIGHT_KEYS as string[]).includes(k);
 
 /** Body stored in presets / undo snapshots: flat params plus the exact
