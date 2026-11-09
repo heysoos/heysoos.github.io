@@ -201,8 +201,10 @@ export class CPPNController {
       this.layout = computeWeightLayout(this.config);
       this.currentWeights = generateWeights(this.layout, this.config, this.seed);
       this.setInputs(this.config.inputs);
-      await this._ensurePipeline();
       this._uploadWeights();
+      // No compile here: every page loads a preset right after init, and that
+      // setState / loadPreset compiles the real architecture once. tick() waits
+      // for the pipeline; start() compiles the defaults only if nothing else has.
       return true;
     } catch (e) {
       console.error('CPPNController init error:', e);
@@ -545,6 +547,11 @@ export class CPPNController {
     this.running  = true;
     this.startTime = performance.now();
     this.lastTick = 0;
+    if (!this.pipeline && this.compilesInFlight === 0) {
+      // Fallback for a caller that starts without ever loading a preset: give
+      // a preset load a moment to claim the first compile, then build defaults.
+      window.setTimeout(() => { if (!this.pipeline && this.compilesInFlight === 0 && this.gpu) void this._ensurePipeline(); }, 300);
+    }
     this.tick();
   }
 
@@ -603,7 +610,12 @@ export class CPPNController {
   }
 
   private tick = (): void => {
-    if (!this.running || !this.gpu || !this.pipeline || !this.bindGroup) return;
+    if (!this.running || !this.gpu) return;
+    if (!this.pipeline || !this.bindGroup) {   // first compile still pending: keep the loop alive
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+      return;
+    }
     // While a recompile is pending the weight buffer already holds the new
     // layout, which the old pipeline would misread: present nothing new and
     // the canvas keeps the last good frame until the pipeline is bound.
