@@ -37,6 +37,7 @@ export async function setupCPPN(
   panelContent: HTMLElement,
   panel: HTMLElement,
 ): Promise<void> {
+  if (import.meta.env.DEV) (window as unknown as { __cppn?: CPPNController }).__cppn = ctrl;   // dev hook: pixel checks
   const builtIn = CPPN_PRESETS.map(presetToBody);
   const budget = () => (isPhoneLayout() ? BUDGET_PHONE : BUDGET_DESKTOP);
 
