@@ -339,6 +339,7 @@ const underConstruction = project.data.underConstruction ?? false;
   import { createFpsCounter } from "../../lib/sim-page/fps-counter";
   import { attachBench } from "../../lib/sim-page/bench";
   import { setupSim } from "../../lib/sim-page/sim-setup/index";
+  import { track, trackSimSession } from "../../lib/analytics";
 
   const viewport      = document.getElementById("sim-viewport") as HTMLElement;
   const sim           = viewport.dataset.sim!;
@@ -477,6 +478,8 @@ const underConstruction = project.data.underConstruction ?? false;
     } else {
       try {
         const ok = await controller.init(canvas);
+        const session = trackSimSession(sim, ok);
+        (window as unknown as { __simTrack?: (kind: string) => void }).__simTrack = session.interact;
         if (ok) {
           controller.start();
 

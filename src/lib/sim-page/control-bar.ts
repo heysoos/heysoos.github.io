@@ -14,10 +14,13 @@ export interface ControlBarOpts {
 }
 export interface ControlBarHandle { dispose(): void }
 
+/** Counts toward the page's `sim-leave` interactions (set by the gallery page). */
+const interact = (kind: string): void => (window as unknown as { __simTrack?: (k: string) => void }).__simTrack?.(kind);
+
 export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): ControlBarHandle {
   const dice = document.querySelector<HTMLElement>('[data-action="randomize"]');
   const helpBtn = document.querySelector<HTMLElement>('[data-action="help"]');
-  const onDice = () => opts.randomize?.();
+  const onDice = () => { interact('randomize'); opts.randomize?.(); };
   if (dice && opts.randomize) { dice.hidden = false; dice.addEventListener('click', onDice); }
 
   const touchMq = window.matchMedia('(hover: none), (pointer: coarse)');

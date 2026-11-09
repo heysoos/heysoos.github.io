@@ -4,6 +4,7 @@
 // else — active preset, dirty check, load-with-history, panel rebuild — is
 // shared.
 
+import { track } from '../analytics';
 import { type ParamRecord, type PresetBody, type BasePreset, bodyOf, bodyKey, cloneBody } from './preset-schema';
 import { createPresetStore, type PresetStore } from './preset-store';
 import { createUndoHistory, type UndoHistory } from './undo-history';
@@ -129,6 +130,7 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
     async load(preset) {
       history.endGesture();
       activeId = preset.id;
+      track('preset', { sim: binding.simId, id: preset.id, source: binding.builtIn.some(p => p.id === preset.id) ? 'built-in' : 'custom' });
       await binding.apply(prepare(cloneBody(bodyOf(preset))));
       history.push(`Load ${preset.name}`);
       rebuildFn();

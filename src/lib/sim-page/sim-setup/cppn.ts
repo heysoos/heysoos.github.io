@@ -181,7 +181,11 @@ export async function setupCPPN(
   };
 
   // ── Inputs page API (desktop page and phone band share it) ──
-  function commitInputs(label: string): void { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); band?.refresh(); }
+  function commitInputs(label: string): void {
+    mgr.history.push(label);
+    (window as unknown as { __simTrack?: (k: string) => void }).__simTrack?.(label === 'Input' ? 'inputs-edit' : 'inputs-' + label.toLowerCase().replace(/\s+/g, '-'));
+    desktop?.refresh(); section?.refresh(); scrub?.refresh(); band?.refresh();
+  }
   const inputsApi: InputsApi = {
     inputs: () => ctrl.config.inputs,
     setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
