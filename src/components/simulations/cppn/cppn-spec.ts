@@ -7,8 +7,9 @@
 // hidden by showIf).
 
 import type { NumSpec, EnumSpec, ParamGroup } from '../../../lib/sim-page/param-spec';
-import { normalizeConfig, type Activation, type CPPNConfig, type CPPNPreset, type DistributionType, type LayerConfig, type WeightDistribution } from './cppn-types';
+import { normalizeConfig, DEFAULT_INPUTS, type Activation, type CPPNConfig, type CPPNPreset, type DistributionType, type LayerConfig, type WeightDistribution } from './cppn-types';
 import type { PresetBody } from '../../../lib/presets/preset-schema';
+import { legacyWeightCount, migrateWeightsFromXYR } from './cppn-codegen';
 
 export const DIST_TYPES: readonly DistributionType[] = ['normal', 'uniform', 'glorot', 'sparse'];
 export const DIST_NAMES = ['Normal', 'Uniform', 'Glorot', 'Sparse'] as const;
@@ -17,7 +18,8 @@ export const ACT_NAMES = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'] as const;
 export const MAX_LAYERS = 8;
 export const MIN_WIDTH = 2;
 export const MAX_WIDTH = 256;
-export const Z_INPUTS = 3 + 16;   // x, y, r + z
+export const Z_LATENT = 16;       // latent dims feeding the first layer alongside the inputs
+export const DEFAULT_INPUT_COUNT = DEFAULT_INPUTS.length;
 
 export interface CPPNFlatParams extends Record<string, unknown> {
   // Network
@@ -47,6 +49,8 @@ export interface CPPNFlatParams extends Record<string, unknown> {
   bands: number;          // 1..4
   // Space
   scale: number;
+  // Inputs
+  normalizeInputs: number;   // 0 | 1 — map each input channel to [-1, 1]
 }
 
 export type FlatKey = keyof CPPNFlatParams & string;
@@ -54,11 +58,31 @@ export type FlatKey = keyof CPPNFlatParams & string;
 export const ARCH_KEYS: FlatKey[] = ['layers', ...Array.from({ length: MAX_LAYERS }, (_, i) => [`layer${i}Width`, `layer${i}Act`] as FlatKey[]).flat()];
 export const WEIGHT_KEYS: FlatKey[] = ['distType', 'sigma', 'a', 'glorotScale', 'sparsity', 'magnitude', 'seed'];
 export const isArchKey = (k: string): boolean => (ARCH_KEYS as string[]).includes(k);
+export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands'];
+export const INPUT_LOCK_KEYS: string[] = Array.from({ length: 8 }, (_, i) => `input${i}`);
+/** Group locks are stored as `group:<Name>` so items added to a group later are covered. */
+export const GROUP_LOCK_PREFIX = 'group:';
+const GROUP_MEMBERS: Record<string, string[]> = {
+  Network: [...ARCH_KEYS, ...INPUT_LOCK_KEYS],
+  Inputs: INPUT_LOCK_KEYS,
+  Weights: WEIGHT_KEYS,
+  Motion: MOTION_KEYS,
+  View: ['scale'],
+};
+/** Lock keys with every `group:*` entry expanded to its member keys (the group key itself is kept). */
+export function expandGroupLocks(keys: readonly string[]): string[] {
+  const out = new Set<string>(keys);
+  for (const k of keys) {
+    if (!k.startsWith(GROUP_LOCK_PREFIX)) continue;
+    for (const m of GROUP_MEMBERS[k.slice(GROUP_LOCK_PREFIX.length)] ?? []) out.add(m);
+  }
+  return [...out];
+}
 export const isWeightKey = (k: string): boolean => (WEIGHT_KEYS as string[]).includes(k);
 
 /** Body stored in presets / undo snapshots: flat params plus the exact
  *  weights, so a saved image is reproduced exactly even if the generator changes. */
-export type CPPNBody = PresetBody<CPPNFlatParams> & { weights?: number[] };
+export type CPPNBody = PresetBody<CPPNFlatParams> & { weights?: number[]; inputs?: string[] };
 
 export const DEFAULT_FLAT: CPPNFlatParams = {
   layers: 3,
@@ -68,12 +92,14 @@ export const DEFAULT_FLAT: CPPNFlatParams = {
   distType: 0, sigma: 1, a: 1, glorotScale: 1, sparsity: 0.8, magnitude: 2, seed: 1,
   animate: 1, speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4,
   scale: 1,
+  normalizeInputs: 1,
 };
 
-/** Weight count of an architecture: the per-pixel cost. Mirrors computeWeightLayout. */
-export function paramCount(layers: LayerConfig[]): number {
+/** Weight count of an architecture: the per-pixel cost, counting only the
+ *  `nInputs` input columns in use (the buffer layout always carries 8). */
+export function paramCount(layers: LayerConfig[], nInputs: number = DEFAULT_INPUT_COUNT): number {
   if (layers.length === 0) return 0;
-  let n = Z_INPUTS * layers[0].width;
+  let n = (nInputs + Z_LATENT) * layers[0].width;
   for (let i = 0; i < layers.length - 1; i++) n += layers[i].width * layers[i + 1].width + layers[i + 1].width;
   return n + 3 * layers[layers.length - 1].width;
 }
@@ -94,6 +120,7 @@ export function toFlat(config: CPPNConfig, seed: number, animate: boolean): CPPN
     animate: animate ? 1 : 0,
     speed: m.speed, spread: m.spread, depth: m.depth, falloff: m.falloff, bands: m.bands,
     scale: config.scale,
+    normalizeInputs: config.normalizeInputs ? 1 : 0,
   };
   config.layers.slice(0, MAX_LAYERS).forEach((l, i) => {
     out[`layer${i}Width`] = l.width;
@@ -131,6 +158,8 @@ export function configFromFlat(base: CPPNConfig, f: CPPNFlatParams): CPPNConfig 
       speed: f.speed, spread: f.spread, depth: f.depth, falloff: f.falloff,
       bands: Math.min(4, Math.max(1, Math.round(f.bands))),
     },
+    inputs: [...base.inputs],
+    normalizeInputs: f.normalizeInputs !== 0,
   };
 }
 
@@ -143,7 +172,36 @@ export function presetToBody(p: CPPNPreset): CPPNBody & { id: string; name: stri
     isDefault: p.isDefault,
     params: toFlat(config, p.seed, true),
     weights: p.weights,
+    inputs: [...config.inputs],
   };
+}
+
+/**
+ * CPPN-side body normaliser, run by the preset manager before a load and
+ * before the dirty check. A body saved before expression inputs existed has
+ * no `inputs`: it gets `x, y, r` and normalize off, so it renders as it did.
+ * Locked slots (`input0..7`) are pinned to the controller's current text.
+ */
+export function prepareCPPNBody(body: CPPNBody, currentInputs: readonly string[], lockedKeys: readonly string[]): CPPNBody {
+  const out: CPPNBody = { ...body, params: { ...body.params } };
+  if (!Array.isArray(out.inputs) || out.inputs.length === 0) {
+    out.inputs = [...DEFAULT_INPUTS];
+    out.params.normalizeInputs = 0;
+  } else {
+    out.inputs = out.inputs.slice(0, 8).map(String);
+  }
+  // Weights saved in the 3-column layout move to the 8-column one.
+  if (Array.isArray(out.weights) && out.weights.length > 0) {
+    const cfg = configFromFlat({ zDim: 16, layers: [], distribution: { type: 'normal' }, scale: 1, motion: { speed: 0, spread: 1, depth: 0, falloff: 1, bands: 1 }, inputs: out.inputs, normalizeInputs: false }, out.params);
+    if (out.weights.length === legacyWeightCount(cfg)) out.weights = Array.from(migrateWeightsFromXYR(out.weights, cfg));
+  }
+  for (const k of lockedKeys) {
+    const m = /^input(\d)$/.exec(k);
+    if (!m) continue;
+    const i = +m[1];
+    if (i < currentInputs.length && i < out.inputs.length) out.inputs[i] = currentInputs[i];
+  }
+  return out;
 }
 
 // ── Groups for the phone list ─────────────────────────────────────

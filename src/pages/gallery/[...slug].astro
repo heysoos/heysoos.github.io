@@ -519,7 +519,8 @@ const underConstruction = project.data.underConstruction ?? false;
             if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
             const k = e.key.toLowerCase();
             if (k === "p") togglePlay();
-            else if (k === "r") (controls?.querySelector('[data-action="reset"]') as HTMLElement | null)?.click();
+            // R = reset (CPPN: new seed, weights only); shift+R = Randomize everything (where the dice is wired).
+            else if (k === "r") (controls?.querySelector(e.shiftKey ? '[data-action="randomize"]:not([hidden])' : '[data-action="reset"]') as HTMLElement | null)?.click();
             else if (k === "h") viewport.classList.toggle("ui-hidden");
             else if (e.key === "?") (controls?.querySelector('[data-action="help"]:not([hidden])') as HTMLElement | null)?.click();
             else return;

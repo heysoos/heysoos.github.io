@@ -33,12 +33,18 @@ export interface MotionLadder {
 
 export const DEFAULT_MOTION: MotionLadder = { speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4 };
 
+export const DEFAULT_INPUTS: readonly string[] = ['x', 'y', 'r'];
+
 export interface CPPNConfig {
   zDim: number;            // always 16 — not user-configurable in this iteration
   layers: LayerConfig[];   // hidden layers only; input/output are fixed
   distribution: WeightDistribution;
   scale: number;           // coordinate space scale
   motion: MotionLadder;
+  /** Input expressions (1..8) over x, y, r, a, t, px, py; see cppn-expr/. */
+  inputs: string[];
+  /** Map each input channel to [-1, 1] over the unit square before the first layer. */
+  normalizeInputs: boolean;
 }
 
 /** Pre-ladder presets stored explicit bands; `normalizeConfig` fits a ladder. */
@@ -55,6 +61,8 @@ export interface LegacyCPPNConfig {
   numBands?: number;
   zBands?: ZBand[];
   motion?: MotionLadder;
+  inputs?: string[];
+  normalizeInputs?: boolean;
 }
 
 /** Accept either shape; a legacy band list is fitted to the ladder by its
@@ -92,6 +100,8 @@ export function normalizeConfig(raw: CPPNConfig | LegacyCPPNConfig): CPPNConfig 
     distribution: { ...c.distribution },
     scale: c.scale,
     motion,
+    inputs: c.inputs && c.inputs.length > 0 ? c.inputs.slice(0, 8) : [...DEFAULT_INPUTS],
+    normalizeInputs: c.normalizeInputs ?? false,
   };
 }
 
@@ -102,4 +112,7 @@ export interface CPPNPreset {
   config: CPPNConfig | LegacyCPPNConfig;
   weights: number[];  // serialized Float32Array — exact reproduction
   seed: number;       // seed that generated these weights
+  /** Plain copies of config.inputs / config.normalizeInputs for readable preset files. */
+  inputs?: string[];
+  normalizeInputs?: boolean;
 }

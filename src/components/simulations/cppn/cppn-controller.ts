@@ -1,16 +1,30 @@
 // src/components/simulations/cppn/cppn-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { generateShader, computeWeightLayout, packWeights, Z_DIM, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
-import { normalizeConfig, DEFAULT_MOTION, type CPPNConfig, type CPPNPreset, type LayerConfig, type LegacyCPPNConfig, type MotionLadder, type WeightDistribution } from './cppn-types';
+import { generateShader, computeWeightLayout, packWeights, migrateWeightsFromXYR, legacyWeightCount, removeInputColumn, Z_DIM, MAX_INPUTS, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
+import { normalizeConfig, DEFAULT_MOTION, DEFAULT_INPUTS, type CPPNConfig, type CPPNPreset, type LayerConfig, type LegacyCPPNConfig, type MotionLadder, type WeightDistribution } from './cppn-types';
+import { parse, tryParse, type Ast, type ParseError } from './cppn-expr/parser';
+import { compile, MAX_OPS, type Program } from './cppn-expr/compile';
+import { measureRange, type Range } from './cppn-expr/range';
 
 export type { CPPNConfig, CPPNPreset, LayerConfig, WeightDistribution, MotionLadder };
 export type { Activation, DistributionType } from './cppn-types';
 
-// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw, view.xyzw] = 32 × 4 = 128 bytes
-const PARAMS_FLOATS = 4 + Z_DIM + 8 + 4;
+// Params uniform: [resX, resY, time, scale, z0..z15, acts0.xyzw, acts1.xyzw, view.xyzw,
+//   numInputs, exprTime, normFlag, pad, pointer.xyzw, norm[4].xyzw] = 56 × 4 = 224 bytes
+export const PARAMS_FLOATS = 4 + Z_DIM + 8 + 4 + 4 + 4 + 16;
 const PARAMS_BYTES  = PARAMS_FLOATS * 4;
 const ACTS_OFFSET   = 4 + Z_DIM;
 const VIEW_OFFSET   = ACTS_OFFSET + 8;
+const INPUTS_OFFSET = VIEW_OFFSET + 4;     // numInputs (u32), exprTime, normFlag (u32), pad
+const POINTER_OFFSET = INPUTS_OFFSET + 4;
+const NORM_OFFSET   = POINTER_OFFSET + 4;  // 4 × vec4f: (mid, half) pairs, two inputs per vec4
+
+/** The expression clock wraps every 60 s: t = 2π · (clock mod 60) / 60. */
+export const EXPR_PERIOD_S = 60;
+
+export type InputCompileResult =
+  | { ok: true; range: Range }
+  | { ok: false; error: ParseError };
 
 /** f32 runs out of relative precision around here: deeper zooms go blocky. */
 export const MAX_ZOOM = 1e4;
@@ -26,17 +40,8 @@ function boxMuller(rand: () => number): number {
 }
 
 // ── Weight generation ─────────────────────────────────────────────
-export function generateWeights(
-  layout: WeightLayout,
-  config: CPPNConfig,
-  seed: number,
-): Float32Array {
-  const rand    = makePRNG(seed);
-  const weights = new Float32Array(layout.totalCount);
-  const dist    = config.distribution;
-  const { layers } = config;
-
-  function sample(fanIn: number, fanOut: number): number {
+function makeSampler(dist: WeightDistribution, rand: () => number): (fanIn: number, fanOut: number) => number {
+  return function sample(fanIn: number, fanOut: number): number {
     switch (dist.type) {
       case 'normal':  return boxMuller(rand) * (dist.sigma ?? 1.0);
       case 'uniform': { const a = dist.a ?? 1.0; return rand() * 2 * a - a; }
@@ -49,12 +54,24 @@ export function generateWeights(
         return (rand() < 0.5 ? -1 : 1) * (dist.magnitude ?? 2.0);
       }
     }
-  }
+  };
+}
+
+export function generateWeights(
+  layout: WeightLayout,
+  config: CPPNConfig,
+  seed: number,
+): Float32Array {
+  const rand    = makePRNG(seed);
+  const weights = new Float32Array(layout.totalCount);
+  const sample  = makeSampler(config.distribution, rand);
+  const { layers } = config;
 
   const w0 = layers[0].width;
-  for (let i = 0; i < w0; i++) weights[layout.wxOffset + i] = sample(1, w0);
-  for (let i = 0; i < w0; i++) weights[layout.wyOffset + i] = sample(1, w0);
-  for (let i = 0; i < w0; i++) weights[layout.wrOffset + i] = sample(1, w0);
+  // The first three input columns (x, y, r) and everything after draw from
+  // the stream in the pre-expression order, so a seed still gives the same
+  // image for a three-input preset; the five extra columns come last.
+  for (let k = 0; k < 3; k++) for (let i = 0; i < w0; i++) weights[layout.wInOffset + k * w0 + i] = sample(1, w0);
   for (let i = 0; i < Z_DIM * w0; i++) weights[layout.wzOffset + i] = sample(Z_DIM, w0);
 
   for (let li = 0; li < layers.length - 1; li++) {
@@ -72,6 +89,7 @@ export function generateWeights(
   for (let i = 0; i < lastW * 3; i++) {
     weights[layout.outWeightOffset + i] = sample(lastW, 3);
   }
+  for (let k = 3; k < MAX_INPUTS; k++) for (let i = 0; i < w0; i++) weights[layout.wInOffset + k * w0 + i] = sample(1, w0);
   return weights;
 }
 
@@ -87,6 +105,8 @@ function defaultConfig(): CPPNConfig {
     distribution: { type: 'normal', sigma: 1.0 },
     scale: 1.0,
     motion: { ...DEFAULT_MOTION },
+    inputs: [...DEFAULT_INPUTS],
+    normalizeInputs: false,
   };
 }
 
@@ -96,7 +116,16 @@ export class CPPNController {
   private pipeline:      GPURenderPipeline | null = null;
   private paramsBuffer!: GPUBuffer;
   private weightBuffer:  GPUBuffer | null = null;
+  private progBuffer:    GPUBuffer | null = null;
   private bindGroup!:    GPUBindGroup;
+  // ── Expression inputs: one bytecode program per slot (cppn-expr/) ──
+  private programs: Array<Program | null> = Array.from({ length: MAX_INPUTS }, () => null);
+  private inputResults: InputCompileResult[] = [];
+  private norms = new Float32Array(16);        // (mid, half) per slot, two slots per vec4
+  /** Integrated expression clock in seconds; pauses with ⏸, resets with ↺ and the minimap double-tap. */
+  exprClock = 0;
+  /** Pointer position in world space (same space as x, y); holds its last value. */
+  readonly pointer: [number, number] = [0, 0];
   private layout!:        WeightLayout;
   private compiledArch   = ''; // architecture key the current pipeline was built for
   private compileChain: Promise<void> = Promise.resolve();
@@ -157,11 +186,18 @@ export class CPPNController {
         size: PARAMS_BYTES,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
+      this.progBuffer = this.gpu.device.createBuffer({
+        size: MAX_INPUTS * MAX_OPS * 16,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
       this.randomizeDimOffsets();
       this.layout = computeWeightLayout(this.config);
       this.currentWeights = generateWeights(this.layout, this.config, this.seed);
-      await this._ensurePipeline();
+      this.setInputs(this.config.inputs);
       this._uploadWeights();
+      // No compile here: every page loads a preset right after init, and that
+      // setState / loadPreset compiles the real architecture once. tick() waits
+      // for the pipeline; start() compiles the defaults only if nothing else has.
       return true;
     } catch (e) {
       console.error('CPPNController init error:', e);
@@ -216,12 +252,13 @@ export class CPPNController {
   }
 
   private _rebuildBindGroup(): void {
-    if (!this.gpu || !this.pipeline || !this.weightBuffer) return;
+    if (!this.gpu || !this.pipeline || !this.weightBuffer || !this.progBuffer) return;
     this.bindGroup = this.gpu.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.paramsBuffer } },
         { binding: 1, resource: { buffer: this.weightBuffer } },
+        { binding: 2, resource: { buffer: this.progBuffer } },
       ],
     });
   }
@@ -274,6 +311,124 @@ export class CPPNController {
 
   // ── Scale (uniform write only) ────────────────────────────────
   setScale(scale: number): void { this.config = { ...this.config, scale }; }
+
+  // ── Expression inputs — compile to bytecode, upload; never a recompile ──
+  /**
+   * Replace the input expressions. Each is parsed, compiled and range-
+   * measured. A slot that fails to compile keeps its previous program *and*
+   * its previous source in `config.inputs` (so the canvas never goes black
+   * mid-keystroke and a broken draft never reaches presets or undo); the
+   * error is reported for the UI. A brand-new slot that never compiled
+   * falls back to `x`.
+   */
+  setInputs(exprs: string[]): InputCompileResult[] {
+    const prev = this.config.inputs;
+    const list = exprs.slice(0, MAX_INPUTS);
+    if (list.length === 0) list.push('x');
+    const results: InputCompileResult[] = [];
+    const kept: string[] = [];
+    list.forEach((src, i) => {
+      const parsed = tryParse(src);
+      let error: ParseError | null = 'error' in parsed ? parsed.error : null;
+      if (!error) {
+        try {
+          const ast = (parsed as { ast: Ast }).ast;
+          const prog = compile(ast);
+          const range = measureRange(prog, ast);
+          this.programs[i] = prog;
+          this.norms[i * 2] = range.mid;
+          this.norms[i * 2 + 1] = range.half;
+          results.push({ ok: true, range });
+          kept.push(src);
+          return;
+        } catch (e) {
+          const err = e as ParseError;
+          error = { msg: err.msg ?? String(e), pos: err.pos ?? 0 };
+        }
+      }
+      results.push({ ok: false, error });
+      if (i < prev.length && this.programs[i]) kept.push(prev[i]);
+      else {
+        // never compiled: fall back to x so the slot is deterministic
+        const xAst = parse('x');
+        const fallback = compile(xAst);
+        const range = measureRange(fallback, xAst);
+        this.programs[i] = fallback;
+        this.norms[i * 2] = range.mid; this.norms[i * 2 + 1] = range.half;
+        kept.push('x');
+      }
+    });
+    for (let i = list.length; i < MAX_INPUTS; i++) this.programs[i] = null;
+    this.config = { ...this.config, inputs: kept };
+    this.inputResults = results;
+    this._uploadPrograms();
+    if (list.length > prev.length) this._fillNewInputColumns(prev.length, list.length);
+    return results;
+  }
+
+  /** Remove input slot `i`: later slots, their programs and their weight columns move down. */
+  removeInput(i: number): InputCompileResult[] {
+    const list = this.config.inputs;
+    if (list.length <= 1 || i < 0 || i >= list.length) return this.inputResults;
+    if (this.layout) {
+      removeInputColumn(this.currentWeights, this.layout, this.config.layers[0].width, i);
+      this._uploadWeights();
+    }
+    return this.setInputs(list.filter((_, j) => j !== i));
+  }
+
+  /** Last compile result per input slot. */
+  get inputStatus(): readonly InputCompileResult[] { return this.inputResults; }
+
+  setNormalize(on: boolean): void { this.config = { ...this.config, normalizeInputs: on }; }
+
+  private _uploadPrograms(): void {
+    if (!this.gpu || !this.progBuffer) return;
+    const buf = new Float32Array(MAX_INPUTS * MAX_OPS * 4);
+    this.programs.forEach((p, i) => { if (p) buf.set(p.ops, i * MAX_OPS * 4); });
+    this.gpu.device.queue.writeBuffer(this.progBuffer, 0, buf);
+  }
+
+  /**
+   * Exact (preset) weights carry zeros in the unused input columns; when the
+   * input count grows, an all-zero new column would feed the network nothing.
+   * Fill such columns from the seed with the current distribution. Columns
+   * that already hold values are never touched.
+   */
+  private _fillNewInputColumns(from: number, to: number): void {
+    if (!this.layout) return;
+    const w0 = this.config.layers[0].width;
+    let changed = false;
+    for (let k = from; k < to; k++) {
+      const off = this.layout.wInOffset + k * w0;
+      let allZero = true;
+      for (let i = 0; i < w0; i++) if (this.currentWeights[off + i] !== 0) { allZero = false; break; }
+      if (!allZero) continue;
+      const sample = makeSampler(this.config.distribution, makePRNG((this.seed ^ (0xa11ce + k)) >>> 0));
+      for (let i = 0; i < w0; i++) this.currentWeights[off + i] = sample(1, w0);
+      changed = true;
+    }
+    if (changed) this._uploadWeights();
+  }
+
+  // ── Pointer (px, py inputs) ───────────────────────────────────
+  /** Screen NDC (x right, y down, −1..1) → world space, like the shader's cx, cy. */
+  setPointerNdc(sx: number, sy: number): void {
+    const [ex, ey] = this.viewExtent();
+    this.pointer[0] = this.viewCx + sx * ex;
+    this.pointer[1] = this.viewCy + sy * ey;
+  }
+  /** Hover and single-pointer moves feed px/py; the value holds on leave. */
+  bindPointer(target: HTMLElement): () => void {
+    const onMove = (e: PointerEvent) => {
+      const r = target.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      this.setPointerNdc(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
+    };
+    target.addEventListener('pointermove', onMove, { passive: true });
+    target.addEventListener('pointerdown', onMove, { passive: true });
+    return () => { target.removeEventListener('pointermove', onMove); target.removeEventListener('pointerdown', onMove); };
+  }
 
   // ── Motion ladder ─────────────────────────────────────────────
   setMotion(patch: Partial<MotionLadder>): void {
@@ -332,7 +487,7 @@ export class CPPNController {
     this.ensureLatentBasis();
     for (let i = 0; i < Z_DIM; i++) this.latentOffset[i] += du * this.latentU[i] + dv * this.latentV[i];
   }
-  resetLatent(): void { this.latentOffset.fill(0); }
+  resetLatent(): void { this.latentOffset.fill(0); this.exprClock = 0; }
   get isAnimating(): boolean { return this.animate; }
 
   // ── Presets ───────────────────────────────────────────────────
@@ -351,7 +506,10 @@ export class CPPNController {
     this.layout = computeWeightLayout(this.config);
     this.currentWeights = weights && weights.length === this.layout.totalCount
       ? Float32Array.from(weights)
-      : generateWeights(this.layout, this.config, this.seed);
+      : weights && weights.length === legacyWeightCount(this.config)
+        ? migrateWeightsFromXYR(weights, this.config)     // pre-expression preset: x, y, r columns only
+        : generateWeights(this.layout, this.config, this.seed);
+    this.setInputs(this.config.inputs);
     this._uploadWeights();
     await this._ensurePipeline();
   }
@@ -366,6 +524,8 @@ export class CPPNController {
       config:  JSON.parse(JSON.stringify(this.config)),
       weights: Array.from(this.currentWeights),
       seed:    this.seed,
+      inputs:  [...this.config.inputs],
+      normalizeInputs: this.config.normalizeInputs,
     };
   }
 
@@ -380,6 +540,11 @@ export class CPPNController {
     this.running  = true;
     this.startTime = performance.now();
     this.lastTick = 0;
+    if (!this.pipeline && this.compilesInFlight === 0) {
+      // Fallback for a caller that starts without ever loading a preset: give
+      // a preset load a moment to claim the first compile, then build defaults.
+      window.setTimeout(() => { if (!this.pipeline && this.compilesInFlight === 0 && this.gpu) void this._ensurePipeline(); }, 300);
+    }
     this.tick();
   }
 
@@ -391,6 +556,7 @@ export class CPPNController {
 
   reset(): void {
     this.randomizeDimOffsets();
+    this.exprClock = 0;
     this.randomizeWeights(Date.now() & 0xffffffff);
   }
 
@@ -437,7 +603,12 @@ export class CPPNController {
   }
 
   private tick = (): void => {
-    if (!this.running || !this.gpu || !this.pipeline || !this.bindGroup) return;
+    if (!this.running || !this.gpu) return;
+    if (!this.pipeline || !this.bindGroup) {   // first compile still pending: keep the loop alive
+      this.usingRaf = true;
+      this.animId = requestAnimationFrame(this.tick);
+      return;
+    }
     // While a recompile is pending the weight buffer already holds the new
     // layout, which the old pipeline would misread: present nothing new and
     // the canvas keeps the last good frame until the pipeline is bound.
@@ -454,6 +625,7 @@ export class CPPNController {
     const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
     this.lastTick = now;
     if (this.animate && !this.motionHeld && !this.paused) this.advanceMotion(dt);
+    if (!this.paused) this.exprClock += dt;   // expression time (t), pauses with ⏸
     this._draw((now - this.startTime) / 1000);
     this.tickCount++;
     if (Number.isFinite(this.maxFps)) {
@@ -508,6 +680,13 @@ export class CPPNController {
     params[VIEW_OFFSET] = this.viewCx;
     params[VIEW_OFFSET + 1] = this.viewCy;
     params[VIEW_OFFSET + 2] = this.viewZoom;
+    const u32 = new Uint32Array(params.buffer, INPUTS_OFFSET * 4, 4);
+    u32[0] = this.config.inputs.length;
+    params[INPUTS_OFFSET + 1] = 2 * Math.PI * ((this.exprClock % EXPR_PERIOD_S) / EXPR_PERIOD_S);
+    u32[2] = this.config.normalizeInputs ? 1 : 0;
+    params[POINTER_OFFSET] = this.pointer[0];
+    params[POINTER_OFFSET + 1] = this.pointer[1];
+    params.set(this.norms, NORM_OFFSET);
     device.queue.writeBuffer(this.paramsBuffer, 0, params);
 
     const encoder = device.createCommandEncoder();

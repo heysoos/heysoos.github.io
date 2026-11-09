@@ -47,6 +47,8 @@ export interface ScrubPanelOpts {
   note?: (key: string) => string;
   /** Called by × and by a plain tap on the canvas while the list is open. */
   onClose?: () => void;
+  /** Long-press a group header to lock the whole group (`group:<Name>` lock key). */
+  groupLocks?: boolean;
 }
 
 export interface ScrubPanelHandle {
@@ -217,10 +219,12 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     setLocked: (key, on) => locks?.set(key, on),
     refresh: () => refresh(),
   };
+  const groupHeads: Array<{ g: { name: string }; el: HTMLElement }> = [];
   for (const g of groups) {
     const h = document.createElement('h6');
     h.textContent = g.name;
     body.appendChild(h);
+    if (opts.groupLocks) { attachLongPress(h, `group:${g.name}`); groupHeads.push({ g, el: h }); }
     if (g.note) {
       const n = document.createElement('small');
       n.className = 'scrub-group-note';
@@ -409,6 +413,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
     }
     for (const { g, el } of groupNotes) el.textContent = g.note!();
+    for (const { g, el } of groupHeads) el.classList.toggle('locked', locks?.isLocked(`group:${g.name}`) ?? false);
     for (const b of customBlocks) b.refresh();
     hint.innerHTML = cur?.stepDrag
       ? '<b>◀ ▶</b> one step at a time · tap to finish'
@@ -489,7 +494,17 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     refresh,
     rebuildPresets,
     isVisible: () => visible,
-    setVisible(on) { visible = on; overlay.hidden = !on; select(null); },
+    setVisible(on) {
+      if (!on && visible && !list.hidden) {
+        // slide the card out, then hide it (a plain display:none cannot animate)
+        visible = false; overlay.hidden = true; chip.hidden = true;
+        list.classList.add('closing');
+        window.setTimeout(() => { list.classList.remove('closing'); select(null); }, 170);
+        return;
+      }
+      visible = on; overlay.hidden = !on; select(null);
+      if (on) { list.classList.add('opening'); window.setTimeout(() => list.classList.remove('opening'), 200); }
+    },
     setTab(name) { activeTab = tabs.some(t => t.name === name) ? name : ''; mountTab(); },
     dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); disposeTab?.(); list.remove(); chip.remove(); overlay.remove(); },
   };

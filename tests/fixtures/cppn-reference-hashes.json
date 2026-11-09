@@ -1,0 +1,8 @@
+{
+  "_note": "FNV-1a over RGBA of a 480x270 frame: motion.depth=0, resetLatent, resetView, paused. Captured before the 8-slot input layout (commit a4ec241). Recapture with the same procedure after runtime changes.",
+  "soft-colors": "84e09649", "roses": "d527d7f0", "halloween": "9c541e", "dawn-dusk": "f004bd37",
+  "acid": "c5938727", "acid-snail": "5a4a35a0", "hypnosis": "5e6f6891", "ebbs-flows": "a0bf18c5",
+  "film-noir": "30406706", "wave-pool": "47acc185", "hyperbolic-fractal": "4a00a416", "metal-flower": "b143bb5b",
+  "event-horizon": "cd5e1de5", "hal9000": "563237a9", "flanders-fields": "31dd2fb2", "acid-moire": "9f6d064d",
+  "very-sleepy": "2b4603a3", "relax": "ee40127c", "corpuscule": "1bd58edc", "qapon": "fd083405", "boy-or-girl": "e95e79d5"
+}
