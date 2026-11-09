@@ -190,7 +190,14 @@ export async function setupCPPN(
       const taken = new Set(ctrl.config.inputs.map(canonical));
       ctrl.setInputs([...ctrl.config.inputs, generateExpression(genSettings(), taken)]);
     },
-    removeInput: (i) => { if (ctrl.config.inputs.length <= 1) return; ctrl.setInputs(ctrl.config.inputs.filter((_, j) => j !== i)); },
+    removeInput: (i) => {
+      if (ctrl.config.inputs.length <= 1) return;
+      const n = ctrl.config.inputs.length;
+      ctrl.removeInput(i);
+      // the lock follows its expression: shift input locks above i down one
+      for (let j = i; j < n - 1; j++) locks.set(`input${j}`, locks.isLocked(`input${j + 1}`));
+      locks.set(`input${n - 1}`, false);
+    },
     results: () => ctrl.inputStatus,
     normalize: () => ctrl.config.normalizeInputs,
     setNormalize: (on) => ctrl.setNormalize(on),

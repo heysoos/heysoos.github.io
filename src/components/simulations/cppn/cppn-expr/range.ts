@@ -9,9 +9,11 @@ import { intervalOf, usesVars } from './interval';
 
 export interface Range { lo: number; hi: number; mid: number; half: number }
 
-// 25 points per axis so the grid includes both edges and the exact centre
-// (x spans the full [-1, 1], r reaches 0).
-const GRID = 25;
+// 24 points per axis including both edges (x spans the full [-1, 1]) but,
+// with an even count, never the exact centre: 1/x, log(r) and friends are
+// sampled next to their singularity (|x| ≥ 1/23), not on it, so a
+// normalized channel keeps its contrast instead of collapsing onto the spike.
+const GRID = 24;
 const T_PHASES = Array.from({ length: 8 }, (_, i) => (2 * Math.PI * i) / 8);
 const POINTERS: [number, number][] = [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
 

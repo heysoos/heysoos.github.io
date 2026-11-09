@@ -40,3 +40,11 @@ test('makeVars derives r and a', () => {
   const v = makeVars(1, 1);
   expect(v.r).toBeCloseTo(Math.SQRT2); expect(v.a).toBeCloseTo(Math.PI / 4); expect(v.t).toBe(0); expect(v.px).toBe(0);
 });
+
+test('a program that reaches the full stack depth evaluates correctly and the WGSL stack is not clamped below it', async () => {
+  const src = 'x + ('.repeat(15) + 'x' + ')'.repeat(15);          // right-nested: height 16
+  const p = compile(parse(src));
+  expect(evalProgram(p, makeVars(0.5, 0))).toBeCloseTo(8);
+  const { emitEvalProgram } = await import('../../src/components/simulations/cppn/cppn-expr/wgsl');
+  expect(emitEvalProgram()).not.toMatch(/min\(sp/);
+});

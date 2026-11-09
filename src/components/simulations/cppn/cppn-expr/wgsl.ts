@@ -58,7 +58,6 @@ fn evalProgram(slot: u32, x: f32, y: f32, r: f32, a: f32, t: f32, px: f32, py: f
     switch code {
 ${cases}      default: { }
     }
-    sp = min(sp, ${STACK_DEPTH - 1}u);
   }
   return select(0.0, st[max(sp, 1u) - 1u], sp > 0u);
 }

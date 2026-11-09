@@ -35,7 +35,7 @@ test('products and quotients', () => {
 test('n-ary and discrete rules', () => {
   expect(I('min(x, r)')[1]).toBeCloseTo(1); expect(I('max(x, r)')[0]).toBe(0);
   expect(I('length(x, y)')[1]).toBeCloseTo(Math.SQRT2);
-  expect(I('mix(x, 3, r)')).toEqual([-1, 3]);
+  expect(I('mix(x, 3, r)')).toEqual([-1, expect.closeTo(1 + 4 * Math.SQRT2, 5)]);   // x + (3 − x)·r, r up to √2
   expect(I('smoothstep(0, 1, x)')).toEqual([0, 1]);
   expect(I('step(0, x)')).toEqual([0, 1]);
   expect(I('fract(3*x)')).toEqual([0, 1]);
@@ -56,4 +56,18 @@ test('never NaN', () => {
     expect(Number.isNaN(lo) || Number.isNaN(hi), s).toBe(false);
     expect(lo <= hi, s).toBe(true);
   }
+});
+
+test('mix and clamp rules are sound against sampled values', async () => {
+  const { compile } = await import('../../src/components/simulations/cppn/cppn-expr/compile');
+  const { evalProgram, makeVars } = await import('../../src/components/simulations/cppn/cppn-expr/eval-js');
+  for (const s of ['mix(x, y, r)', 'mix(x, 3, r)', 'clamp(x + 5, 0, y*10)', 'mix(x, y, 2*r) / (mix(y, x, r) + 2.5)']) {
+    const ast = parse(s); const [lo, hi] = intervalOf(ast); const p = compile(ast);
+    for (let j = 0; j <= 20; j++) for (let i = 0; i <= 20; i++) {
+      const v = evalProgram(p, makeVars(-1 + i / 10, -1 + j / 10));
+      expect(v, `${s} at ${i},${j}`).toBeGreaterThanOrEqual(lo - 1e-9);
+      expect(v, `${s} at ${i},${j}`).toBeLessThanOrEqual(hi + 1e-9);
+    }
+  }
+  expect(I('mix(x, y, r)')[0]).toBeLessThan(-1.5);          // k up to √2 overshoots the hull
 });

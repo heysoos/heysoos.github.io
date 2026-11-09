@@ -1,8 +1,8 @@
 // src/components/simulations/cppn/cppn-controller.ts
 import { initWebGPU, type WebGPUContext } from '../../../lib/webgpu/device';
-import { generateShader, computeWeightLayout, packWeights, migrateWeightsFromXYR, legacyWeightCount, Z_DIM, MAX_INPUTS, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
+import { generateShader, computeWeightLayout, packWeights, migrateWeightsFromXYR, legacyWeightCount, removeInputColumn, Z_DIM, MAX_INPUTS, ACTIVATION_IDS, type WeightLayout } from './cppn-codegen';
 import { normalizeConfig, DEFAULT_MOTION, DEFAULT_INPUTS, type CPPNConfig, type CPPNPreset, type LayerConfig, type LegacyCPPNConfig, type MotionLadder, type WeightDistribution } from './cppn-types';
-import { tryParse, type ParseError } from './cppn-expr/parser';
+import { parse, tryParse, type Ast, type ParseError } from './cppn-expr/parser';
 import { compile, MAX_OPS, type Program } from './cppn-expr/compile';
 import { measureRange, type Range } from './cppn-expr/range';
 
@@ -320,34 +320,66 @@ export class CPPNController {
   // ── Expression inputs — compile to bytecode, upload; never a recompile ──
   /**
    * Replace the input expressions. Each is parsed, compiled and range-
-   * measured; a slot that fails to parse keeps its previous program (the
-   * canvas never goes black mid-keystroke) and reports the error.
+   * measured. A slot that fails to compile keeps its previous program *and*
+   * its previous source in `config.inputs` (so the canvas never goes black
+   * mid-keystroke and a broken draft never reaches presets or undo); the
+   * error is reported for the UI. A brand-new slot that never compiled
+   * falls back to `x`.
    */
   setInputs(exprs: string[]): InputCompileResult[] {
-    const prevCount = this.config.inputs.length;
+    const prev = this.config.inputs;
     const list = exprs.slice(0, MAX_INPUTS);
     if (list.length === 0) list.push('x');
     const results: InputCompileResult[] = [];
+    const kept: string[] = [];
     list.forEach((src, i) => {
       const parsed = tryParse(src);
-      if ('error' in parsed) { results.push({ ok: false, error: parsed.error }); return; }
-      try {
-        const prog = compile(parsed.ast);
-        const range = measureRange(prog, parsed.ast);
-        this.programs[i] = prog;
-        this.norms[i * 2] = range.mid;
-        this.norms[i * 2 + 1] = range.half;
-        results.push({ ok: true, range });
-      } catch (e) {
-        const err = e as ParseError;
-        results.push({ ok: false, error: { msg: err.msg ?? String(e), pos: err.pos ?? 0 } });
+      let error: ParseError | null = 'error' in parsed ? parsed.error : null;
+      if (!error) {
+        try {
+          const ast = (parsed as { ast: Ast }).ast;
+          const prog = compile(ast);
+          const range = measureRange(prog, ast);
+          this.programs[i] = prog;
+          this.norms[i * 2] = range.mid;
+          this.norms[i * 2 + 1] = range.half;
+          results.push({ ok: true, range });
+          kept.push(src);
+          return;
+        } catch (e) {
+          const err = e as ParseError;
+          error = { msg: err.msg ?? String(e), pos: err.pos ?? 0 };
+        }
+      }
+      results.push({ ok: false, error });
+      if (i < prev.length && this.programs[i]) kept.push(prev[i]);
+      else {
+        // never compiled: fall back to x so the slot is deterministic
+        const xAst = parse('x');
+        const fallback = compile(xAst);
+        const range = measureRange(fallback, xAst);
+        this.programs[i] = fallback;
+        this.norms[i * 2] = range.mid; this.norms[i * 2 + 1] = range.half;
+        kept.push('x');
       }
     });
-    this.config = { ...this.config, inputs: [...list] };
+    for (let i = list.length; i < MAX_INPUTS; i++) this.programs[i] = null;
+    this.config = { ...this.config, inputs: kept };
     this.inputResults = results;
     this._uploadPrograms();
-    if (list.length > prevCount) this._fillNewInputColumns(prevCount, list.length);
+    if (list.length > prev.length) this._fillNewInputColumns(prev.length, list.length);
     return results;
+  }
+
+  /** Remove input slot `i`: later slots, their programs and their weight columns move down. */
+  removeInput(i: number): InputCompileResult[] {
+    const list = this.config.inputs;
+    if (list.length <= 1 || i < 0 || i >= list.length) return this.inputResults;
+    if (this.layout) {
+      removeInputColumn(this.currentWeights, this.layout, this.config.layers[0].width, i);
+      this._uploadWeights();
+    }
+    return this.setInputs(list.filter((_, j) => j !== i));
   }
 
   /** Last compile result per input slot. */

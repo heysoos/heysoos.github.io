@@ -286,36 +286,44 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   };
 
   // ── Gestures: edge swipe right = back, header swipe down = close ──
-  let g0: { x: number; y: number; edge: boolean; head: boolean; id: number } | null = null;
+  // An edge press only *arms* the back swipe; taps on keys, rows and tiles in
+  // that strip still work. The swipe takes over once the finger has moved
+  // sideways (then the band follows it and the pointer is captured).
+  let g0: { x: number; y: number; edge: boolean; head: boolean; id: number; active: boolean } | null = null;
   band.addEventListener('pointerdown', (e) => {
     const r = band.getBoundingClientRect();
-    // The histogram's first bar sits in the edge zone: painting wins there (‹ all groups / ‹ remain).
     const edge = e.clientX - r.left < EDGE_PX && !(e.target as HTMLElement).closest('.gen-hist');
     const onHead = !!(e.target as HTMLElement).closest('.band-head') && !(e.target as HTMLElement).closest('button');
     if (!edge && !onHead) return;
-    g0 = { x: e.clientX, y: e.clientY, edge, head: onHead, id: e.pointerId };
-    try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-    band.classList.add('swiping');
-    if (edge) { e.stopPropagation(); e.preventDefault(); }
+    g0 = { x: e.clientX, y: e.clientY, edge, head: onHead, id: e.pointerId, active: onHead };
+    if (onHead) { try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ } band.classList.add('swiping'); }
   }, { capture: true });
   band.addEventListener('pointermove', (e) => {
     if (!g0 || e.pointerId !== g0.id) return;
     const dx = e.clientX - g0.x, dy = e.clientY - g0.y;
+    if (g0.edge && !g0.active) {
+      if (dx > 12 && dx > Math.abs(dy)) {
+        g0.active = true;
+        try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+        band.classList.add('swiping');
+      } else return;
+    }
     if (g0.edge && dx > 0) band.style.transform = `translateX(${dx * 0.6}px)`;
     if (g0.head && dy > 0) band.style.transform = `translateY(${dy * 0.8}px)`;
-  });
+  }, { capture: true });
   const gEnd = (e: PointerEvent) => {
     if (!g0 || e.pointerId !== g0.id) return;
     const dx = e.clientX - g0.x, dy = e.clientY - g0.y;
+    const { edge, head: onHead, active } = g0;
+    g0 = null;
+    if (!active) return;
     band.classList.remove('swiping');
     band.style.transform = '';
-    const { edge, head: onHead } = g0;
-    g0 = null;
     if (edge && dx > BACK_PX) goBack();
     else if (onHead && dy > CLOSE_PX) { if (view === 'edit') finishEdit(); slideOut('y', () => api.onClose()); }
   };
-  band.addEventListener('pointerup', gEnd);
-  band.addEventListener('pointercancel', gEnd);
+  band.addEventListener('pointerup', gEnd, { capture: true });
+  band.addEventListener('pointercancel', gEnd, { capture: true });
   void head;
 
   function refresh(): void {
@@ -330,7 +338,15 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   // Dynamic thumbnails repaint slowly while the list is up.
   const timer = window.setInterval(() => {
     if (!visible || view !== 'list') return;
-    if (api.inputs().some(s => /\b(t|px|py)\b/.test(s))) renderList();
+    // repaint in place: a rebuild would reset the scroll and drop a revealed delete / a drag
+    const d = dyn(); const list = api.inputs();
+    const rowCanvases = vList.querySelectorAll<HTMLCanvasElement>('.band-row canvas');
+    const tiles = vList.querySelectorAll<HTMLCanvasElement>('.band-tiles canvas');
+    list.forEach((src, i) => {
+      if (!/\b(t|px|py)\b/.test(src)) return;
+      if (rowCanvases[i]) paintThumb(rowCanvases[i], src, { normalize: api.normalize(), ...d });
+      if (tiles[i]) paintThumb(tiles[i], src, { normalize: api.normalize(), ...d });
+    });
   }, 700);
 
   return {

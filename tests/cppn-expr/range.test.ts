@@ -20,7 +20,7 @@ test('pointer-invariant for px', () => {
 });
 test('r maps 0..√2', () => {
   const r = M('r');
-  expect(r.lo).toBeCloseTo(0, 1); expect(r.hi).toBeCloseTo(Math.SQRT2, 1);
+  expect(r.lo).toBeLessThan(0.07); expect(r.hi).toBeCloseTo(Math.SQRT2, 1);
 });
 test('half has a floor and the range is clamped inside the interval', () => {
   expect(M('0*x + 1').half).toBe(1e-6);
@@ -28,3 +28,9 @@ test('half has a floor and the range is clamped inside the interval', () => {
   expect(r.hi).toBeLessThanOrEqual(Math.sin(0.5) + 1e-9);
 });
 test('usesVars', () => { expect([...usesVars(parse('sin(t) + px*x'))].sort()).toEqual(['px', 't', 'x']); });
+test('the grid never lands on a singularity: normalized 1/x and log(r) keep contrast', () => {
+  const a = parse('1/x'); const r = measureRange(compile(a), a);
+  expect(r.half).toBeLessThan(100); expect(Math.abs(r.mid)).toBeLessThan(1);
+  const b = parse('log(r)'); const rb = measureRange(compile(b), b);
+  expect(rb.lo).toBeGreaterThan(-5);
+});

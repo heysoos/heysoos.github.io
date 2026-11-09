@@ -66,7 +66,7 @@ export const OP_RANGE: Record<string, Rule> = {
   min:   ([a, b]) => [Math.min(a[0], b[0]), Math.min(a[1], b[1])],
   max:   ([a, b]) => [Math.max(a[0], b[0]), Math.max(a[1], b[1])],
   pow:   ([a, b]) => spow(a, b),
-  mix:   ([a, b]) => hull(a[0], a[1], b[0], b[1]),
+  mix:   ([a, b, k]) => add(a, mul(sub(b, a), k)),   // a + (b − a)·k; k may leave [0, 1] (the generator blends with r)
   smoothstep: () => [0, 1],
   mod:   ([, b]) => (b[0] > 0 ? [0, b[1]] : b[1] < 0 ? [b[0], 0] : [-BIG, BIG]),
   sign:  ([a]) => [Math.sign(a[0]), Math.sign(a[1])],
@@ -76,7 +76,7 @@ export const OP_RANGE: Record<string, Rule> = {
   step:  () => [0, 1],
   tan:   () => [-20, 20],
   atan:  ([a]) => monotone(Math.atan)(a),
-  clamp: ([x, lo, hi]) => { const l = Math.min(lo[0], hi[0]), h = Math.max(lo[1], hi[1]); const r: Interval = [Math.max(x[0], l), Math.min(x[1], h)]; return r[0] <= r[1] ? r : [l, h]; },
+  clamp: ([x, lo, hi]) => { const L: Interval = [Math.min(lo[0], hi[0]), Math.min(lo[1], hi[1])], H: Interval = [Math.max(lo[0], hi[0]), Math.max(lo[1], hi[1])]; return [Math.min(Math.max(x[0], L[0]), H[0]), Math.min(Math.max(x[1], L[1]), H[1])]; },   // monotone in each argument
 };
 
 for (const op of OPS) if (!OP_RANGE[op.name]) throw new Error(`interval: no range rule for ${op.name}`);

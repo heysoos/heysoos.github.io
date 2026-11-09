@@ -60,7 +60,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     inputs: () => ctrl.config.inputs,
     setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
     addInput: () => { if (ctrl.config.inputs.length < 8) ctrl.setInputs([...ctrl.config.inputs, generateExpression(genSettings(), new Set(ctrl.config.inputs.map(canonical)))]); },
-    removeInput: (i) => { if (ctrl.config.inputs.length > 1) ctrl.setInputs(ctrl.config.inputs.filter((_, j) => j !== i)); },
+    removeInput: (i) => { ctrl.removeInput(i); },
     results: () => ctrl.inputStatus,
     normalize: () => ctrl.config.normalizeInputs,
     setNormalize: (on) => ctrl.setNormalize(on),

@@ -71,6 +71,15 @@ export function migrateWeightsFromXYR(old: ArrayLike<number>, config: CPPNConfig
   return out;
 }
 
+/** Drop input column `k` in place: columns k+1..7 move down one, column 7 is zeroed. */
+export function removeInputColumn(weights: Float32Array, layout: WeightLayout, w0: number, k: number): void {
+  for (let c = k; c < MAX_INPUTS - 1; c++) {
+    const dst = layout.wInOffset + c * w0, src = layout.wInOffset + (c + 1) * w0;
+    for (let i = 0; i < w0; i++) weights[dst + i] = weights[src + i];
+  }
+  weights.fill(0, layout.wInOffset + (MAX_INPUTS - 1) * w0, layout.wInOffset + MAX_INPUTS * w0);
+}
+
 /** Activation ids as packed into Params.acts0/acts1 (two vec4<u32> = 8 layers). */
 export const ACTIVATION_IDS: readonly Activation[] = ['tanh', 'sin', 'cos', 'abs', 'sigmoid'];
 export const MAX_SHADER_LAYERS = 8;
