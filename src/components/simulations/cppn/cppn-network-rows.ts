@@ -180,7 +180,7 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     r.addEventListener('pointerdown', () => { pressed = performance.now(); });
     r.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (e.altKey) { api.setLocked('group:Inputs', !api.isLocked('group:Inputs')); api.refresh(); return; }
+      if (e.altKey) return;   // attachLongPress already toggled the lock on alt-click (desktop)
       const held = pressed && performance.now() - pressed > 400;   // the long-press already fired
       pressed = 0;
       if (held) return;
