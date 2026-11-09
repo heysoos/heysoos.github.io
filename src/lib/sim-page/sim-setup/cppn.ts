@@ -265,7 +265,7 @@ export async function setupCPPN(
       panel.style.display = 'none';
       sessionStorage.setItem('cppn-panel-open', 'false');
       setScrubOpen(sessionStorage.getItem(scrubKey) !== 'false');
-      // Swipe down or left on the card header (not on rows: those scrub) closes it.
+      // Drag the card header down (not rows: those scrub) to close it.
       attachHeaderSwipe(viewport.querySelector<HTMLElement>('.scrub-list .scrub-head'), () => setScrubOpen(false));
     } else if (!want && scrub) {
       scrub.dispose();
@@ -383,21 +383,54 @@ function helpSections(touch: boolean): HelpSection[] {
 }
 
 /** Swipe down (60px) or left (70px) on a card header closes the card; buttons and rows are left alone. */
+/**
+ * Drag the card header down to close it: the card follows the finger (the
+ * header has touch-action:none so the browser never claims the gesture),
+ * springs back under the threshold and slides off past it. Buttons are
+ * exempt so taps on undo/redo/Presets/× still work.
+ */
 function attachHeaderSwipe(head: HTMLElement | null, onClose: () => void): void {
   if (!head || head.dataset.swipeWired) return;
   head.dataset.swipeWired = '1';
-  let x0 = 0, y0 = 0, id = -1;
+  const card = head.parentElement as HTMLElement;
+  const CLOSE_PX = 70;
+  let y0 = 0, id = -1, active = false;
   head.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest('button')) return;
-    id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+    id = e.pointerId; y0 = e.clientY; active = false;
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== id) return;
+    const dy = e.clientY - y0;
+    if (!active) {
+      if (dy < 8) return;
+      active = true;
+      try { head.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+      card.style.transition = 'none';
+    }
+    const d = Math.max(0, dy);
+    card.style.transform = `translateY(${d}px)`;
+    card.style.opacity = String(Math.max(0.35, 1 - d / 400));
   });
   const end = (e: PointerEvent) => {
     if (e.pointerId !== id) return;
     id = -1;
-    const dx = e.clientX - x0, dy = e.clientY - y0;
-    if (dy > 60 && Math.abs(dx) < dy) onClose();
-    else if (dx < -70 && Math.abs(dy) < -dx) onClose();
+    if (!active) return;
+    active = false;
+    const dy = e.clientY - y0;
+    card.style.transition = 'transform 0.22s ease, opacity 0.22s ease';
+    if (dy > CLOSE_PX) {
+      card.style.transform = 'translateY(110%)';
+      card.style.opacity = '0';
+      const reset = () => { card.style.transition = ''; card.style.transform = ''; card.style.opacity = ''; };
+      card.addEventListener('transitionend', reset, { once: true });
+      setTimeout(() => { onClose(); reset(); }, 230);
+    } else {
+      card.style.transform = '';
+      card.style.opacity = '';
+      card.addEventListener('transitionend', () => { card.style.transition = ''; }, { once: true });
+    }
   };
   head.addEventListener('pointerup', end);
-  head.addEventListener('pointercancel', () => { id = -1; });
+  head.addEventListener('pointercancel', end);
 }

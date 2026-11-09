@@ -1269,6 +1269,10 @@
 
 /* ── CPPN phone inputs band (300px at rest, 440px while editing; over the canvas, never full screen) ── */
 .sim-cppn :is(.scrub-list, .inputs-band) { touch-action: pan-y pinch-zoom; }
+/* CPPN scrub card: the header is a drag handle (drag down to close), so it carries a grab pill and owns its touches. */
+.sim-cppn .scrub-list .scrub-head { position: relative; touch-action: none; padding-top: 12px; }
+.sim-cppn .scrub-list .scrub-head::before { content: ''; position: absolute; left: 50%; top: 4px; width: 32px; height: 3px; margin-left: -16px; border-radius: 2px; background: var(--text-body); opacity: 0.6; }
+.sim-cppn .inputs-band .band-head::before { background: var(--text-body); opacity: 0.6; width: 32px; margin-left: -16px; }
 .sim-cppn :is(.scrub-row, .scrub-enum, .scrub-scroll) { touch-action: pan-y pinch-zoom; }
 .inputs-band {
   position: absolute; left: 0.5rem; right: 0.5rem; bottom: calc(0.5rem + 40px + 8px); height: 300px; z-index: 5;
