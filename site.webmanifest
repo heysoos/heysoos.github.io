@@ -3,7 +3,7 @@
   "short_name": "Sina K.",
   "description": "Computational neuroscience, artificial life and WebGPU simulation art.",
   "start_url": "/",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#0a0804",
   "theme_color": "#0a0804",
   "icons": [
