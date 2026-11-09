@@ -86,7 +86,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     if (view === 'generator' && gen.openGroup()) { gen.closeGroup(); return; }
     if (view === 'edit') { setView('list'); return; }
     if (view === 'generator') { setView('list'); return; }
-    slideOut('x', () => api.onBack());
+    hide(); api.onBack();
   }
   function slideOut(axis: 'x' | 'y', then: () => void): void {
     band.style.transition = 'transform 0.25s ease';
@@ -312,12 +312,13 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   };
 
   // ── Gestures: edge swipe right = back, header swipe down = close ──
-  // Whole-band swipes: any press on the band (except the histogram, which is
-  // painted, and the text field) arms a gesture; once the finger has moved
-  // 12px in a clear direction it takes over: right = back, left or down =
-  // close. Down only when the touched list is at its scroll top, so a
-  // scrolled list still scrolls. Taps are never swallowed (arms on movement).
-  const EXCLUDE = '.gen-hist, .band-field';
+  // Whole-band swipes. Horizontal = tabs: left goes forward (list → generator),
+  // right goes back (generator → list, edit → list, list → main card); the
+  // band does not slide sideways, the view just switches on release. Down =
+  // close everything (the band follows the finger), only when the touched
+  // list is at its scroll top so a scrolled list still scrolls. Horizontal
+  // controls (histogram, complexity meter, text field) keep their own drags.
+  const EXCLUDE = '.gen-hist, .gen-complexity, .meter-row, input, .band-field';
   let g0: { x: number; y: number; id: number; axis: 'x' | 'y' | null } | null = null;
   band.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest(EXCLUDE)) return;
@@ -333,8 +334,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       try { band.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
       band.classList.add('swiping');
     }
-    if (g0.axis === 'x') band.style.transform = `translateX(${dx * 0.6}px)`;
-    else band.style.transform = `translateY(${Math.max(0, dy) * 0.8}px)`;
+    if (g0.axis === 'y') band.style.transform = `translateY(${Math.max(0, dy) * 0.8}px)`;
   }, { capture: true });
   const gEnd = (e: PointerEvent) => {
     if (!g0 || e.pointerId !== g0.id) return;
@@ -345,9 +345,12 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     band.classList.remove('swiping');
     band.style.transform = '';
     if (axis === 'x' && dx > BACK_PX) goBack();
-    else if (axis === 'x' && dx < -BACK_PX) closeBand('x');
+    else if (axis === 'x' && dx < -BACK_PX) goForward();
     else if (axis === 'y' && dy > CLOSE_PX) closeBand('y');
   };
+  function goForward(): void {
+    if (view === 'list' || view === 'edit') setView('generator');
+  }
   function scrollTopOf(el: HTMLElement): number {
     let n: HTMLElement | null = el;
     while (n && n !== band) { if (n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== 'visible') return n.scrollTop; n = n.parentElement; }
