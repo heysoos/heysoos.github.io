@@ -100,6 +100,8 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     const list = api.inputs();
     const results = api.results();
     const d = dyn();
+    // keep both columns' scroll across the rebuild
+    const prevScroll = [...vList.querySelectorAll<HTMLElement>('.band-two > div')].map(el => el.scrollTop);
     vList.innerHTML = `<div class="band-two"><div class="band-rows"></div><div class="band-side"><div class="band-sect"><span>all inputs</span><button class="norm-toggle">normalize</button></div><div class="band-tiles"></div><div class="band-hint">tap a row to edit · hold to lock · × removes</div></div></div>`;
     const rowsEl = vList.querySelector<HTMLElement>('.band-rows')!;
     const tilesEl = vList.querySelector<HTMLElement>('.band-tiles')!;
@@ -127,6 +129,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     add.disabled = list.length >= MAX_INPUTS;
     add.addEventListener('click', () => { api.addInput(); api.commit('Add input'); openEdit(api.inputs().length - 1); });
     rowsEl.appendChild(add);
+    [...vList.querySelectorAll<HTMLElement>('.band-two > div')].forEach((el, k) => { if (prevScroll[k]) el.scrollTop = prevScroll[k]; });
   }
   function attachRowGestures(row: HTMLElement, i: number): void {
     let x0 = 0, moved = false, timer = 0, id = -1;

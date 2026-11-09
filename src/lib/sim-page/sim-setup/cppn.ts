@@ -177,12 +177,11 @@ export async function setupCPPN(
   const randomizeInputsOnly = (): void => {
     mgr.history.endGesture();
     ctrl.setInputs(randomizeInputs(ctrl.config.inputs, lockedInputSlots(), genSettings()));
-    mgr.history.push('Randomize inputs');
-    mgr.rebuild();
+    commitInputs('Randomize inputs');
   };
 
   // ── Inputs page API (desktop page and phone band share it) ──
-  const commitInputs = (label: string): void => { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); band?.refresh(); };
+  function commitInputs(label: string): void { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); band?.refresh(); }
   const inputsApi: InputsApi = {
     inputs: () => ctrl.config.inputs,
     setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
@@ -303,9 +302,27 @@ export async function setupCPPN(
     if (lastPane() === 'band') openBand(); else setScrubOpen(true);
   }, { capture: true });
 
+  // A rebuild must never move a scroller: every `.fb-scroll` (the main list
+  // and the inputs page have one each) is snapshotted by the pane it sits in
+  // and restored after the rebuild, then once more after layout settles.
+  const paneOf = (el: HTMLElement): string => el.closest('.fb-inputs') ? 'inputs' : 'main';
+  function snapshotScroll(): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const el of panelContent.querySelectorAll<HTMLElement>('.fb-scroll')) m.set(paneOf(el), el.scrollTop);
+    if (!m.size) m.set('main', panelContent.scrollTop);
+    return m;
+  }
+  function restoreScroll(m: Map<string, number>): void {
+    const apply = () => {
+      const scrollers = panelContent.querySelectorAll<HTMLElement>('.fb-scroll');
+      if (!scrollers.length) { panelContent.scrollTop = m.get('main') ?? 0; return; }
+      for (const el of scrollers) { const t = m.get(paneOf(el)); if (t !== undefined) el.scrollTop = t; }
+    };
+    apply();
+    requestAnimationFrame(apply);
+  }
   function buildPanel(): void {
-    const scroller = () => panelContent.querySelector<HTMLElement>('.fb-scroll') ?? panelContent;
-    const scrollTop = scroller().scrollTop;
+    const saved = snapshotScroll();
     section?.dispose();
     desktop?.dispose(); desktop = null;
     panelContent.innerHTML = '';
@@ -329,7 +346,7 @@ export async function setupCPPN(
         mode: panelMode,
       });
     }
-    scroller().scrollTop = scrollTop;
+    restoreScroll(saved);
   }
   mgr.onRebuild(buildPanel);
   buildPanel();

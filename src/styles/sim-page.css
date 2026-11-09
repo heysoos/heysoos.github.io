@@ -279,7 +279,7 @@
   border-bottom: 1px solid var(--bg-surface-border);
 }
 .fb-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden !important; padding-right: 0.2rem; }
-.fb-scroll {
+.fb-scroll { overflow-anchor: none; /* rebuilds restore scrollTop exactly; anchoring would fight them */
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
   scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--bg-surface-border) transparent;
   padding-top: 4px;
