@@ -16,13 +16,21 @@ export type Ast =
 
 export interface ParseError { msg: string; pos: number }
 
+/** Thrown by parse/compile: an Error (so test matchers and stack traces work)
+ *  whose enumerable fields are exactly a ParseError. */
+export class ExprError extends Error implements ParseError {
+  msg: string;
+  pos: number;
+  constructor(msg: string, pos: number) { super(msg); this.msg = msg; this.pos = pos; }
+}
+
 type Tok =
   | { t: 'num'; v: number; pos: number }
   | { t: 'id'; v: string; pos: number }
   | { t: 'op'; v: string; pos: number }
   | { t: 'end'; v: ''; pos: number };
 
-function fail(msg: string, pos: number): never { throw { msg, pos } as ParseError; }
+function fail(msg: string, pos: number): never { throw new ExprError(msg, pos); }
 
 function tokenize(src: string): Tok[] {
   const out: Tok[] = [];
@@ -122,7 +130,7 @@ export function parse(src: string): Ast {
 export function tryParse(src: string): { ast: Ast } | { error: ParseError } {
   try { return { ast: parse(src) }; }
   catch (e) {
-    if (e && typeof e === 'object' && 'msg' in e && 'pos' in e) return { error: e as ParseError };
+    if (e instanceof ExprError) return { error: { msg: e.msg, pos: e.pos } };
     throw e;
   }
 }
