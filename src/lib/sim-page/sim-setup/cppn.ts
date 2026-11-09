@@ -214,12 +214,22 @@ export async function setupCPPN(
   let panelMode: PanelMode = 'main';
   // Phone: the band replaces the scrub card while inputs are being edited.
   let band: InputsBandHandle | null = null;
+  // Which pane ⚙ reopens: the card, or the inputs band if that was open last.
+  const lastPaneKey = 'cppn-last-pane';
+  const lastPane = (): 'card' | 'band' => (sessionStorage.getItem(lastPaneKey) === 'band' ? 'band' : 'card');
+  const setLastPane = (p: 'card' | 'band') => sessionStorage.setItem(lastPaneKey, p);
   const ensureBand = (): InputsBandHandle => band ??= createInputsBand(viewport, {
     ...inputsApi,
     back: () => {},
-    onBack: () => { setScrubOpen(true); },
-    onClose: () => { setScrubOpen(false); },
+    onBack: () => { setLastPane('card'); setScrubOpen(true); },
+    onClose: () => { setLastPane('band'); setScrubOpen(false); },
   });
+  const openBand = (): void => {
+    setLastPane('band');
+    if (scrub) { scrub.setVisible(false); viewport.classList.remove('scrub-open'); }
+    ensureBand().show();
+    setSettingsOpen(true);
+  };
   const inputThumbs = (): HTMLCanvasElement[] => {
     const d = inputsApi.dynamicVars!();
     return ctrl.config.inputs.slice(0, 6).map(src => makeThumb(src, 16, { normalize: ctrl.config.normalizeInputs, ...d }));
@@ -242,7 +252,7 @@ export async function setupCPPN(
           thumbs: inputThumbs,
           onOpen: () => {
             if (desktop) { desktop.setMode('inputs'); panelMode = 'inputs'; }
-            else if (scrub) { scrub.setVisible(false); viewport.classList.remove('scrub-open'); ensureBand().show(); }
+            else if (scrub) openBand();
           },
         } }) }
     : g);
@@ -278,6 +288,7 @@ export async function setupCPPN(
   // ⚙ opens the list and turns into × while it is open (sim-page.css phone rules).
   const settingsBtn = document.querySelector<HTMLElement>('[data-action="settings"]');
   function setScrubOpen(open: boolean): void {
+    if (open) setLastPane('card');
     if (open && band?.isVisible()) band.hide();
     scrub?.setVisible(open);
     sessionStorage.setItem(scrubKey, open ? 'true' : 'false');
@@ -287,7 +298,9 @@ export async function setupCPPN(
   settingsBtn?.addEventListener('click', (e) => {
     if (!scrub) return;
     e.stopImmediatePropagation();
-    setScrubOpen(!scrub.isVisible());
+    if (band?.isVisible()) { band.hide(); setLastPane('band'); setSettingsOpen(false); return; }   // × while the band is up
+    if (scrub.isVisible()) { setScrubOpen(false); return; }
+    if (lastPane() === 'band') openBand(); else setScrubOpen(true);
   }, { capture: true });
 
   function buildPanel(): void {

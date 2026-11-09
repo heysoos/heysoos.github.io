@@ -59,6 +59,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     </div>`;
   host.appendChild(band);
   const head = band.querySelector<HTMLElement>('.band-head')!;
+  const body = band.querySelector<HTMLElement>('.band-body')!;
   const vList = band.querySelector<HTMLElement>('.v-list')!;
   const vEdit = band.querySelector<HTMLElement>('.v-edit')!;
   const vGen = band.querySelector<HTMLElement>('.v-generator')!;
@@ -78,7 +79,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     requestAnimationFrame(markScrollers);
     if (v === 'generator') gen.refresh();
   }
-  viewBtns.forEach(b => b.addEventListener('click', () => setView(b.dataset.view as View)));
+  viewBtns.forEach(b => b.addEventListener('click', () => { const v = b.dataset.view as View; if (v !== view) { settle(v === 'generator' ? 'left' : 'right'); setView(v); } }));
   band.querySelector('.b-random')!.addEventListener('click', () => { api.randomizeInputs(); refresh(); });
   band.querySelector('.b-back')!.addEventListener('click', () => goBack());
 
@@ -335,6 +336,16 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       band.classList.add('swiping');
     }
     if (g0.axis === 'y') band.style.transform = `translateY(${Math.max(0, dy) * 0.8}px)`;
+    else {
+      // the content leans with the finger and the tab it is heading for lights up
+      const target = dx < 0 ? forwardView() : backView();
+      const k = target ? 1 : 0.3;   // nowhere to go: a stiff nudge only
+      body.style.transform = `translateX(${dx * 0.35 * k}px)`;
+      body.style.opacity = String(Math.max(0.45, 1 - Math.abs(dx) / 360));
+      const past = Math.abs(dx) > BACK_PX;
+      viewBtns.forEach(b => b.classList.toggle('target', past && !!target && b.dataset.view === (target === 'edit' ? 'list' : target)));
+      band.classList.toggle('to-card', past && dx > 0 && !target && view === 'list');
+    }
   }, { capture: true });
   const gEnd = (e: PointerEvent) => {
     if (!g0 || e.pointerId !== g0.id) return;
@@ -342,15 +353,33 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     const { axis } = g0;
     g0 = null;
     if (!axis) return;
-    band.classList.remove('swiping');
+    band.classList.remove('swiping', 'to-card');
     band.style.transform = '';
-    if (axis === 'x' && dx > BACK_PX) goBack();
-    else if (axis === 'x' && dx < -BACK_PX) goForward();
-    else if (axis === 'y' && dy > CLOSE_PX) closeBand('y');
+    viewBtns.forEach(b => b.classList.remove('target'));
+    if (axis === 'x') {
+      const go = dx > BACK_PX ? backView() : dx < -BACK_PX ? forwardView() : null;
+      if (go) { settle(dx < 0 ? 'left' : 'right'); setView(go); }
+      else if (dx > BACK_PX && view === 'list') { body.style.transform = ''; body.style.opacity = ''; goBack(); }
+      else { body.style.transition = 'transform 0.18s ease, opacity 0.18s ease'; body.style.transform = ''; body.style.opacity = ''; window.setTimeout(() => { body.style.transition = ''; }, 190); }
+    } else if (axis === 'y' && dy > CLOSE_PX) closeBand('y');
   };
-  function goForward(): void {
-    if (view === 'list' || view === 'edit') setView('generator');
+  /** The view a forward (left) swipe lands on, or null when there is none. */
+  function forwardView(): View | null { return view === 'list' || view === 'edit' ? 'generator' : null; }
+  /** The view a back (right) swipe lands on, or null when it leaves the band (list → card). */
+  function backView(): View | null { return view === 'generator' || view === 'edit' ? 'list' : null; }
+  /** After a tab swipe: the new view enters from the side the finger was heading. */
+  function settle(dir: 'left' | 'right'): void {
+    body.style.transition = 'none';
+    body.style.transform = `translateX(${dir === 'left' ? 28 : -28}px)`;
+    body.style.opacity = '0.4';
+    void body.offsetWidth;   // commit the start position before the transition
+    window.setTimeout(() => {
+      body.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+      body.style.transform = ''; body.style.opacity = '';
+      window.setTimeout(() => { body.style.transition = ''; }, 210);
+    }, 16);
   }
+  function goForward(): void { const v = forwardView(); if (v) setView(v); }
   function scrollTopOf(el: HTMLElement): number {
     let n: HTMLElement | null = el;
     while (n && n !== band) { if (n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== 'visible') return n.scrollTop; n = n.parentElement; }
