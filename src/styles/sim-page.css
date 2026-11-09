@@ -1316,7 +1316,7 @@
 .band-hint { font-size: 10px; color: var(--text-muted); padding: 6px 0 4px; }
 /* edit */
 .band-ed { display: grid; grid-template-columns: 1fr 92px; gap: 8px; align-items: start; }
-.band-field { background: var(--inset-bg, rgba(255,255,255,0.04)); border: 1px solid var(--accent); border-radius: 5px; padding: 7px 8px; font: 13px/1.35 ui-monospace, Menlo, monospace; min-height: 56px; word-break: break-all; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text-primary); outline: none; }
+.band-field { background: var(--inset-bg, rgba(255,255,255,0.04)); border: 1px solid var(--accent); border-radius: 5px; padding: 7px 8px; font: 13px/1.35 ui-monospace, Menlo, monospace; min-height: 56px; word-break: break-all; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text-primary); outline: none; caret-color: transparent; -webkit-user-select: text; user-select: text; }
 .band-field.bad { border-color: #e05a5a; box-shadow: none; }
 .band-field .caret { display: inline-block; width: 1.5px; height: 14px; background: var(--accent); vertical-align: -2px; margin: 0 0.5px; animation: band-blink 1s steps(1) infinite; }
 @keyframes band-blink { 50% { opacity: 0; } }

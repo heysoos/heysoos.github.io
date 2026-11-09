@@ -164,7 +164,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   let cur = -1, src = '', caret = 0, dirty = false;
   vEdit.innerHTML = `
     <div class="band-ed">
-      <div><div class="band-field" tabindex="0"></div><div class="band-sig"></div></div>
+      <div><div class="band-field" contenteditable="true" inputmode="none" spellcheck="false" autocapitalize="off" autocorrect="off"></div><div class="band-sig"></div></div>
       <div><canvas class="band-thumb" width="48" height="48"></canvas><div class="band-range"></div></div>
     </div>
     <div class="band-kp"></div>
@@ -179,6 +179,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     const b = document.createElement('button');
     b.textContent = k === 'ƒ' ? 'ƒ(…)' : k;
     b.className = VAR_RE.test(k) ? 'v' : /^[0-9.]$/.test(k) ? '' : k === 'ƒ' ? 'fn' : k === 'done' ? 'done' : /←|→|⌫/.test(k) ? 'dim' : 'op';
+    b.addEventListener('pointerdown', (e) => e.preventDefault()); // keep focus (and the hardware keyboard) in the field
     b.addEventListener('click', () => key(k));
     kp.appendChild(b);
   }
@@ -195,7 +196,8 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       const b = document.createElement('button');
       b.style.setProperty('--col', col);
       b.innerHTML = `${op.name}(<small>${esc(op.desc)}</small>`;
-      b.addEventListener('click', () => { implicitMul(); insert(op.name + '()'); caret--; drawer.hidden = true; renderField(); });
+      b.addEventListener('pointerdown', (e) => e.preventDefault());
+      b.addEventListener('click', () => { implicitMul(); insert(op.name + '()'); caret--; drawer.hidden = true; renderField(); field.focus(); });
       box.appendChild(b);
     }
     g.appendChild(box);
@@ -215,10 +217,37 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     }
   });
 
+  // A hardware keyboard edits the same model as the keypad: the field is
+  // contenteditable (so page-wide keys like P/R/H stay out and a Bluetooth or
+  // desktop keyboard reaches it) with inputmode=none (no OS keyboard on phones);
+  // the browser never edits the DOM itself.
+  field.addEventListener('beforeinput', (e) => e.preventDefault());
+  field.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const t = (e.clipboardData?.getData('text') ?? '').replace(/\s+/g, '');
+    if (t) { insert(t); renderField(); }
+  });
+  field.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) { if (e.key.toLowerCase() === 'v') return; e.preventDefault(); return; }
+    e.preventDefault(); e.stopPropagation();
+    switch (e.key) {
+      case 'Backspace': key('⌫'); return;
+      case 'Delete': if (caret < src.length) { src = src.slice(0, caret) + src.slice(caret + 1); renderField(); } return;
+      case 'ArrowLeft': key('←'); return;
+      case 'ArrowRight': key('→'); return;
+      case 'Home': caret = 0; renderField(); return;
+      case 'End': caret = src.length; renderField(); return;
+      case 'Enter': case 'Escape': key('done'); return;
+      case 'Tab': return;
+    }
+    if (e.key.length === 1 && e.key !== ' ') { insert(e.key); renderField(); }
+  });
+
   function openEdit(i: number): void {
     cur = i; src = api.inputs()[i] ?? ''; caret = src.length; dirty = false;
     setView('edit');
     renderField();
+    field.focus({ preventScroll: true });
   }
   function finishEdit(): void {
     if (cur >= 0 && dirty) { api.commit('Input'); dirty = false; }
