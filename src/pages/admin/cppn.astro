@@ -7,7 +7,11 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 
 <script>
   import { CPPNController } from '../../components/simulations/cppn/cppn-controller';
-  import { buildCPPNPanel } from '../../components/simulations/cppn/cppn-panel';
+  import { buildCPPNPanel, type CPPNPanelHandle } from '../../components/simulations/cppn/cppn-panel';
+  import { buildInputsPage, type InputsApi } from '../../components/simulations/cppn/cppn-inputs-panel';
+  import { loadGenSettings, saveGenSettings } from '../../components/simulations/cppn/cppn-expr/settings';
+  import { randomizeInputs } from '../../components/simulations/cppn/cppn-randomize';
+  import { generateExpression, canonical } from '../../components/simulations/cppn/cppn-expr/generator';
   import { CPPN_PRESETS } from '../../data/cppn-presets';
   import type { CPPNPreset } from '../../components/simulations/cppn/cppn-types';
 
@@ -48,9 +52,32 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
   const paramsContainer  = document.getElementById('tab-params')   as HTMLElement;
   const presetsContainer = document.getElementById('tab-presets')  as HTMLElement;
 
+  // Inputs page straight on the controller: no undo history, no locks.
+  let adminPanel: CPPNPanelHandle | null = null;
+  let genStored = loadGenSettings();
+  const genSettings = () => ({ ...genStored, normalize: ctrl.config.normalizeInputs });
+  const adminInputs: InputsApi = {
+    inputs: () => ctrl.config.inputs,
+    setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
+    addInput: () => { if (ctrl.config.inputs.length < 8) ctrl.setInputs([...ctrl.config.inputs, generateExpression(genSettings(), new Set(ctrl.config.inputs.map(canonical)))]); },
+    removeInput: (i) => { if (ctrl.config.inputs.length > 1) ctrl.setInputs(ctrl.config.inputs.filter((_, j) => j !== i)); },
+    results: () => ctrl.inputStatus,
+    normalize: () => ctrl.config.normalizeInputs,
+    setNormalize: (on) => ctrl.setNormalize(on),
+    isLocked: () => false,
+    setLocked: () => {},
+    genSettings,
+    setGenSettings: (s) => { genStored = { weights: { ...s.weights }, complexity: s.complexity, normalize: true }; saveGenSettings(genStored); },
+    randomizeInputs: () => ctrl.setInputs(randomizeInputs(ctrl.config.inputs, new Set(), genSettings())),
+    commit: () => adminPanel?.refresh(),
+    back: () => adminPanel?.setMode('main'),
+    dynamicVars: () => ({ t: 2 * Math.PI * ((ctrl.exprClock % 60) / 60), px: ctrl.pointer[0], py: ctrl.pointer[1] }),
+  };
+
   function buildAdminPanel(activeId?: string): void {
+    const mode = adminPanel?.mode() ?? 'main';
     paramsContainer.innerHTML = '';
-    buildCPPNPanel(paramsContainer, ctrl, {
+    adminPanel = buildCPPNPanel(paramsContainer, ctrl, {
       presets: adminPresets,
       activePresetId: activeId,
       onPresetLoad: async (preset) => {
@@ -59,6 +86,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         buildAdminPanel(preset.id);
         renderPresetList();
       },
+      inputsPage: (c) => buildInputsPage(c, adminInputs),
+      mode,
     });
   }
 

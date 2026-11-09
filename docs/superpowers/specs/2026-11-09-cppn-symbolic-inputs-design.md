@@ -1,7 +1,7 @@
 # CPPN symbolic inputs — design
 
 **Date:** 2026-11-09
-**Status:** reviewed; awaiting approval
+**Status:** implemented (feature/cppn-symbolic-inputs)
 **Mockups:** `.superpowers/brainstorm/606-1794196289/content/` — `cppn-inputs.html` (expression editor + generator), `cppn-panel-integration.html` (desktop panel), `cppn-phone-band-v2.html` (phone band)
 
 ## Intent

@@ -19,6 +19,7 @@ import { CPPN_GROUPS, configFromFlat, isArchKey, isWeightKey, toFlat, type CPPNF
 import { renderNetworkRows } from './cppn-network-rows';
 import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
 import { makeCustomSwatch } from '../../../lib/sim-page/custom-swatch';
+import { makeThumb } from './cppn-expr/thumb';
 
 export interface CPPNPanelOpts {
   /** Groups to render; defaults to CPPN_GROUPS with the layer stack attached. */
@@ -98,7 +99,14 @@ export function buildCPPNPanel(
   const set = opts.set ?? direct!.set;
   const params = opts.params ?? direct?.params;
   const { history, locks } = opts;
-  const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g => g.name === 'Network' ? { ...g, render: renderNetworkRows } : g);
+  // Default groups (admin): the `in` row opens the inputs page when one is provided.
+  const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g => g.name === 'Network'
+    ? { ...g, render: (c, a, rowClass) => renderNetworkRows(c, a, rowClass, ctrl && opts.inputsPage ? { inputsRow: {
+        count: () => ctrl.config.inputs.length,
+        thumbs: () => ctrl.config.inputs.slice(0, 6).map(src => makeThumb(src, 16, { normalize: ctrl.config.normalizeInputs })),
+        onOpen: () => setMode('inputs'),
+      } } : {}) }
+    : g);
 
   container.innerHTML = '';
   container.classList.add('fb-panel');   // column: fixed header, then the scrolling part

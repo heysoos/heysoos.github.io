@@ -335,6 +335,8 @@ export async function setupCPPN(
 
 const CHIP = '<span class="hg-chip">tanh ›</span>';
 const IX = '<span class="hg-ix">3</span>';
+const IN = '<span class="hg-ix">in</span>';
+const FN = '<span class="hg-chip">ƒ(…)</span>';
 function helpSections(touch: boolean): HelpSection[] {
   const canvas: HelpSection = touch
     ? { title: 'Canvas', rows: [
@@ -351,12 +353,26 @@ function helpSections(touch: boolean): HelpSection[] {
       ] };
   const params: HelpSection = { title: 'Parameters', rows: [
     ...(touch ? PARAM_ROWS_TOUCH : PARAM_ROWS_MOUSE),
+    { glyph: 'hp-lock', label: touch ? 'hold header' : 'alt + click header', effect: 'lock whole group' },
     { glyph: IX, label: 'drag', effect: 'reorder layer' },
     { glyph: CHIP, label: touch ? 'tap' : 'click', effect: 'next activation' },
     { glyph: CHIP, label: 'hold + slide', effect: 'scrub activations' },
   ] };
+  const inputs: HelpSection = { title: 'Inputs', rows: touch
+    ? [
+        { glyph: IN, label: 'tap in row', effect: 'edit input expressions' },
+        { glyph: FN, label: 'ƒ(…)', effect: 'function drawer' },
+        { glyph: 'hp-lr', label: 'swipe right / down', effect: 'back / close' },
+        { glyph: 'hp-lock', label: 'hold row', effect: 'lock input' },
+      ]
+    : [
+        { glyph: IN, label: 'click in row', effect: 'edit input expressions' },
+        { glyph: 'hp-key', label: 'type', effect: 'autocomplete · tab accepts' },
+        { glyph: 'hp-lock', label: 'alt + click row', effect: 'lock input' },
+      ] };
   const keys = KEY_ROWS.map(r => (r.label === 'P / R / H' ? { ...r, effect: 'pause / new seed / hide UI' } : r));
-  return touch ? [canvas, params] : [canvas, params, { title: 'Keys', rows: keys }];
+  keys.splice(1, 0, { glyph: 'hp-key', label: 'shift R', effect: 'randomize everything' });
+  return touch ? [canvas, params, inputs] : [canvas, params, inputs, { title: 'Keys', rows: keys }];
 }
 
 /** Swipe down (60px) or left (70px) on a card header closes the card; buttons and rows are left alone. */
