@@ -1,6 +1,19 @@
 ---
-// Umami analytics: cookie-free page views plus the custom events in
-// src/lib/analytics.ts. `data-domains` keeps localhost and previews out of the
-// numbers. Included by every layout that owns a <head>.
+// Analytics, included by every layout that owns a <head>.
+//  · Umami: cookie-free counts (page views + the custom events in
+//    src/lib/analytics.ts). `data-domains` keeps localhost and previews out.
+//  · Microsoft Clarity: session replays, heatmaps, rage/dead clicks, JS
+//    errors. Records automatically; sim pages tag each recording with the
+//    sim and layout (see trackSimSession) so replays can be filtered.
+//    Only loaded on the production hostname, like Umami.
 ---
 <script defer src="https://cloud.umami.is/script.js" data-website-id="e2ffdd1c-574a-481d-af3b-ae76c97b8379" data-domains="heysoos.github.io"></script>
+<script is:inline>
+  if (location.hostname === 'heysoos.github.io') {
+    (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "zax8ux9ozj");
+  }
+</script>

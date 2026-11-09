@@ -31,14 +31,21 @@ export function trackShaderError(message: string): void {
   track('shader-error', { message: message.split('\n')[0].slice(0, 200) });
 }
 
+/** Clarity custom tags: filter recordings by sim / layout / webgpu in the Clarity dashboard. */
+function clarityTag(key: string, value: string): void {
+  try { (window as unknown as { clarity?: (cmd: string, ...a: string[]) => void }).clarity?.('set', key, value); } catch { /* blocked */ }
+}
+
 /**
  * Per-sim engagement. `sim-open` on load (WebGPU availability, GPU vendor),
  * `sim-leave` on leaving with seconds, median fps, the render size and how
  * many times the visitor interacted (presets, dice, edits), so a 2 s bounce
  * reads differently from a 10 min session and a slow device shows as a cluster.
+ * Also tags the Clarity recording with sim / layout / webgpu.
  */
 export function trackSimSession(sim: string, webgpu: boolean, perf?: { tickCount(): number; canvas: HTMLCanvasElement }): { interact(kind: string): void } {
   currentSim = sim;
+  clarityTag('sim', sim); clarityTag('layout', layout()); clarityTag('webgpu', String(webgpu));
   const t0 = performance.now();
   let interactions = 0;
   track('sim-open', { webgpu, ...(gpuInfo ? { gpu: gpuInfo } : {}) });

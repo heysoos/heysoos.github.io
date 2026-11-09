@@ -47,11 +47,13 @@ const activeLinks = Object.entries(siteConfig.socialLinks)
         ))}
       </div>
     )}
-    <p>&copy; {new Date().getFullYear()} {siteConfig.name}</p>
+    <p>&copy; {new Date().getFullYear()} {siteConfig.name} <span class="footer-note">· anonymous visit stats and session replays via <a href="https://umami.is" rel="noopener">Umami</a> and <a href="https://clarity.microsoft.com" rel="noopener">Clarity</a>, no cookies, no personal data</span></p>
   </div>
 </footer>
 
 <style>
+  .footer-note { color: var(--text-muted); font-size: 0.8em; }
+  .footer-note a { color: inherit; text-decoration: underline dotted; }
   .footer {
     border-top: 1px solid var(--bg-surface-border);
     padding: 2rem 1.5rem;
