@@ -19,6 +19,10 @@ import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat, randomizeI
 import { loadGenSettings, saveGenSettings } from '../../../components/simulations/cppn/cppn-expr/settings';
 import type { GenSettings } from '../../../components/simulations/cppn/cppn-expr/generator';
 import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
+import { buildInputsPage, type InputsApi } from '../../../components/simulations/cppn/cppn-inputs-panel';
+import { makeThumb } from '../../../components/simulations/cppn/cppn-expr/thumb';
+import { generateExpression, canonical } from '../../../components/simulations/cppn/cppn-expr/generator';
+import type { PanelMode } from '../../../components/simulations/cppn/cppn-panel';
 import { CPPN_PRESETS } from '../../../data/cppn-presets';
 import { createPresetManager } from '../../presets/preset-manager';
 import { createParamLocks } from '../../presets/param-locks';
@@ -173,11 +177,41 @@ export async function setupCPPN(
     mgr.history.push('Randomize inputs');
     mgr.rebuild();
   };
-  void randomizeInputsOnly; void setGenSettings;   // wired into the inputs page (desktop) and band (phone)
+
+  // ── Inputs page API (desktop page and phone band share it) ──
+  const commitInputs = (label: string): void => { mgr.history.push(label); desktop?.refresh(); section?.refresh(); scrub?.refresh(); };
+  const inputsApi: InputsApi = {
+    inputs: () => ctrl.config.inputs,
+    setInput: (i, src) => { const list = [...ctrl.config.inputs]; list[i] = src; return ctrl.setInputs(list)[i]; },
+    addInput: () => {
+      if (ctrl.config.inputs.length >= 8) return;
+      const taken = new Set(ctrl.config.inputs.map(canonical));
+      ctrl.setInputs([...ctrl.config.inputs, generateExpression(genSettings(), taken)]);
+    },
+    removeInput: (i) => { if (ctrl.config.inputs.length <= 1) return; ctrl.setInputs(ctrl.config.inputs.filter((_, j) => j !== i)); },
+    results: () => ctrl.inputStatus,
+    normalize: () => ctrl.config.normalizeInputs,
+    setNormalize: (on) => ctrl.setNormalize(on),
+    isLocked: (i) => locks.isLocked(`input${i}`),
+    setLocked: (i, on) => locks.set(`input${i}`, on),
+    genSettings,
+    setGenSettings,
+    randomizeInputs: randomizeInputsOnly,
+    commit: commitInputs,
+    back: () => { desktop?.setMode('main'); panelMode = 'main'; },
+    dynamicVars: () => ({ t: 2 * Math.PI * ((ctrl.exprClock % 60) / 60), px: ctrl.pointer[0], py: ctrl.pointer[1] }),
+  };
+  let panelMode: PanelMode = 'main';
+  const inputThumbs = (): HTMLCanvasElement[] => {
+    const d = inputsApi.dynamicVars!();
+    return ctrl.config.inputs.slice(0, 6).map(src => makeThumb(src, 16, { normalize: ctrl.config.normalizeInputs, ...d }));
+  };
+  // px / py read the pointer over the canvas (world space, holds its last value).
+  ctrl.bindPointer(canvas);
 
   let section: PresetSectionHandle | null = null;
   let scrub: ScrubPanelHandle | null = null;
-  let desktop: { refresh(): void; dispose(): void } | null = null;
+  let desktop: { refresh(): void; dispose(): void; setMode(m: PanelMode): void } | null = null;
   const scrubKey = 'cppn-scrub-open';
   // showIf predicates and the budget line read the flat params; hand the
   // scrub list a live proxy so they always see the staged state.
@@ -185,7 +219,11 @@ export async function setupCPPN(
   const groups: ParamGroup<string>[] = CPPN_GROUPS.map(g => g.name === 'Network'
     ? { ...g,
         note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat(), ctrl.config.inputs.length).toLocaleString()} / ${budget().toLocaleString()} weights`,
-        render: renderNetworkRows }
+        render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass, { inputsRow: {
+          count: () => ctrl.config.inputs.length,
+          thumbs: inputThumbs,
+          onOpen: () => { if (desktop) { desktop.setMode('inputs'); panelMode = 'inputs'; } },
+        } }) }
     : g);
 
   function ensureScrub(): void {
@@ -249,6 +287,9 @@ export async function setupCPPN(
         buildPresets: (c) => { section = buildPresetSection(c, mgr, { showTitle: false }); },
         onRandomize: randomize,
         onClose: () => { panel.style.display = 'none'; },
+        groupLocks: true,
+        inputsPage: (c) => buildInputsPage(c, inputsApi),
+        mode: panelMode,
       });
     }
     scroller().scrollTop = scrollTop;

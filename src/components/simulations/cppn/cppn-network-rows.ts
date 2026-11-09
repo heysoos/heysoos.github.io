@@ -17,7 +17,17 @@ const SLOP = 8;
 const ACT_STEP_PX = 26;       // slide distance per activation step
 const stop = (e: Event) => e.stopPropagation();
 
-export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row'): { refresh(): void } {
+export interface InputsRowOpts {
+  /** The `in` row shows a filmstrip of the input thumbnails and opens the inputs page. */
+  inputsRow?: {
+    count(): number;
+    /** Up to six 16px canvases (the row shows `+N` for the rest). */
+    thumbs(): HTMLCanvasElement[];
+    onOpen(): void;
+  };
+}
+
+export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row', opts: InputsRowOpts = {}): { refresh(): void } {
   container.className += ' cppn-layers';
   const stack = document.createElement('div');
   const foot = document.createElement('div');
@@ -156,10 +166,34 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     chip.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  let inRow: HTMLElement | null = null;
+  function buildInRow(): HTMLElement {
+    const ir = opts.inputsRow;
+    if (!ir) return ioRow('in', 'x · y · r · z<sub>16</sub>');
+    const r = document.createElement('button');
+    r.className = 'cppn-layer io in';
+    r.title = 'Edit the input expressions';
+    r.innerHTML = `<span class="ix">in</span><span class="strip"></span><span class="go"></span>`;
+    r.addEventListener('click', (e) => { e.stopPropagation(); ir.onOpen(); });
+    return r;
+  }
+  function refreshInRow(): void {
+    const ir = opts.inputsRow;
+    if (!ir || !inRow) return;
+    const strip = inRow.querySelector<HTMLElement>('.strip')!;
+    strip.innerHTML = '';
+    const thumbs = ir.thumbs();
+    thumbs.slice(0, 6).forEach(c => strip.appendChild(c));
+    const n = ir.count();
+    if (n > 6) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${n - 6}`; strip.appendChild(m); }
+    inRow.querySelector<HTMLElement>('.go')!.textContent = `${n} input${n === 1 ? '' : 's'} · z16 ›`;
+  }
+
   function build(n: number): void {
     stack.innerHTML = '';
     rows = [];
-    stack.appendChild(ioRow('in', 'x · y · r · z<sub>16</sub>'));
+    inRow = buildInRow();
+    stack.appendChild(inRow);
     for (let i = 0; i < n; i++) {
       const spec = layerWidthSpec(i);
       const r = document.createElement('div');
@@ -181,6 +215,7 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
   function refresh(): void {
     const n = count();
     if (n !== built) build(n);
+    refreshInRow();
     rows.forEach((row, i) => {
       const spec = layerWidthSpec(i);
       const v = api.get(spec.key);
