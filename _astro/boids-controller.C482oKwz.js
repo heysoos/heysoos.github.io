@@ -1,4 +1,4 @@
-import{i as V,r as X}from"./prng.DNg0itDJ.js";import{c as k,a as I}from"./utils.DCtYZSmS.js";const D=`struct Particle {\r
+import{i as V,r as X}from"./prng.CnvGDmZk.js";import{c as k,a as I}from"./utils.DCtYZSmS.js";const D=`struct Particle {\r
   pos: vec2f,\r
   vel: vec2f,\r
 }\r
