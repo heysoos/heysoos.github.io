@@ -468,7 +468,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // A plain tap on the canvas (no drag) while the list is open closes it.
   let tapId = -1, tx = 0, ty = 0, tt = 0;
   host.addEventListener('pointerdown', (e) => {
-    if (!visible || cur || (e.target as HTMLElement).tagName !== 'CANVAS') return;
+    const t = e.target as HTMLElement;   // the sim canvas, not a thumbnail inside the card
+    if (!visible || cur || t.tagName !== 'CANVAS' || list.contains(t)) return;
     tapId = e.pointerId; tx = e.clientX; ty = e.clientY; tt = performance.now();
   });
   host.addEventListener('pointerup', (e) => {

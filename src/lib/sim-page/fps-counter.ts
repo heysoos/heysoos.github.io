@@ -3,6 +3,8 @@
 interface FpsTarget {
   maxFps: number;
   tickCount: number;
+  /** Backing-size multiplier when the sim lowers resolution to keep up (CPPN). */
+  renderScale?: number;
 }
 
 export function createFpsCounter(
@@ -19,7 +21,8 @@ export function createFpsCounter(
   const intervalId = setInterval(() => {
     const now   = performance.now();
     const ticks = ctrl.tickCount - lastTick;
-    fpsValueEl.textContent = `${Math.round(ticks * 1000 / (now - lastMs))} fps`;
+    const rs = ctrl.renderScale ?? 1;
+    fpsValueEl.textContent = `${Math.round(ticks * 1000 / (now - lastMs))} fps${rs < 0.995 ? ` · ${Math.round(rs * 100)}% res` : ''}`;
     lastTick = ctrl.tickCount;
     lastMs   = now;
   }, 500);

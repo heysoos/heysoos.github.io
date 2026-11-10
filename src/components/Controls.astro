@@ -117,11 +117,13 @@ const { simId } = Astro.props;
     -webkit-tap-highlight-color: transparent;
   }
   .ctrl-btn[hidden] { display: none; }
-  .ctrl-btn:disabled { opacity: 0.25; cursor: default; }
   /* undo / redo live here on phones only; the desktop panel header keeps its own */
   @media (min-width: 769px) { .ctrl-btn[data-action="undo"], .ctrl-btn[data-action="redo"] { display: none; } }
   .ctrl-btn.subtle { opacity: 0.4; }
-  .ctrl-btn:hover, .ctrl-btn:focus-visible, .ctrl-btn.active, .ctrl-btn.open { opacity: 1; }
+  .ctrl-btn:focus-visible, .ctrl-btn.active, .ctrl-btn.open { opacity: 1; }
+  /* hover only where it is real: on touch the last tapped button keeps :hover
+     until the next tap elsewhere, which held a disabled redo at full brightness */
+  @media (hover: hover) { .ctrl-btn:hover { opacity: 1; } }
   .ctrl-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .ctrl-btn.active, .ctrl-btn.open { color: var(--accent); }
 
@@ -172,6 +174,7 @@ const { simId } = Astro.props;
     .ctrl-btn:hover::after { opacity: 1; }
   }
 
+  /* after every opacity rule above and below: a disabled glyph is always dim */
   @media (max-width: 768px) {
     .controls {
       bottom: 0.5rem;
@@ -183,4 +186,5 @@ const { simId } = Astro.props;
     .ctrl-btn.subtle { opacity: 0.55; }
     .ctrl-icon { width: 19px; height: 19px; }
   }
+  .ctrl-btn:disabled, .ctrl-btn:disabled:hover { opacity: 0.25; cursor: default; }
 </style>

@@ -628,7 +628,6 @@ export class CPPNController {
     const dpr = window.devicePixelRatio || 1;
     let w = Math.floor(canvas.clientWidth  * dpr);
     let h = Math.floor(canvas.clientHeight * dpr);
-    if (this.renderScale < 1) { w = Math.floor(w * this.renderScale); h = Math.floor(h * this.renderScale); }
     if (this.maxResolution > 0) {
       const longest = Math.max(w, h);
       if (longest > this.maxResolution) {
@@ -637,6 +636,8 @@ export class CPPNController {
         h = Math.floor(h * scale);
       }
     }
+    // after the cap: on phones the cap already binds, so scaling before it did nothing
+    if (this.renderScale < 1) { w = Math.max(1, Math.floor(w * this.renderScale)); h = Math.max(1, Math.floor(h * this.renderScale)); }
     if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width  = w;
       canvas.height = h;

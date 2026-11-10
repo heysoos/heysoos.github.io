@@ -66,6 +66,7 @@ export const GROUP_LOCK_PREFIX = 'group:';
 const GROUP_MEMBERS: Record<string, string[]> = {
   Network: [...ARCH_KEYS, ...INPUT_LOCK_KEYS],
   Inputs: [...INPUT_LOCK_KEYS, 'scale', 'zScale'],
+  Expressions: INPUT_LOCK_KEYS,   // the Inputs button's lock: the expressions, not the scales
   Weights: WEIGHT_KEYS,
   Motion: MOTION_KEYS,
   View: ['scale'],   // a group before Inputs absorbed it; keeps old saved locks working

@@ -31,13 +31,13 @@ export interface InputsButtonOpts {
 
 /** The Inputs group's button into the inputs page: a filmstrip of the input
  *  thumbnails and a count. Long-press (phone) / alt-click (desktop) locks the
- *  whole Inputs group. */
+ *  expressions only (`group:Expressions`); the scales are locked on their own rows. */
 export function renderInputsButton(container: HTMLElement, api: CustomRowApi, ir: InputsButtonOpts): { refresh(): void } {
   const r = document.createElement('button');
   r.className = 'cppn-layer io in cppn-inputs-btn';
   r.title = 'Edit the input expressions';
   r.innerHTML = `<span class="strip"></span><span class="go"></span>`;
-  api.attachLongPress(r, 'group:Inputs');
+  api.attachLongPress(r, 'group:Expressions');
   let pressed = 0;
   r.addEventListener('pointerdown', () => { pressed = performance.now(); });
   r.addEventListener('click', (e) => {
@@ -56,7 +56,7 @@ export function renderInputsButton(container: HTMLElement, api: CustomRowApi, ir
     const n = ir.count();
     if (n > 6) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${n - 6}`; strip.appendChild(m); }
     r.querySelector<HTMLElement>('.go')!.textContent = `${n} input${n === 1 ? '' : 's'} ›`;
-    r.classList.toggle('locked', api.isLocked('group:Inputs'));
+    r.classList.toggle('locked', api.isLocked('group:Expressions'));
   }
   refresh();
   return { refresh };

@@ -52,9 +52,12 @@ export async function setupCPPN(
   const locks = createParamLocks('cppn');
   // Locks with `group:*` entries expanded to their members (Randomize and prepare use this; the UI shows raw keys).
   const effectiveLockedKeys = (): string[] => expandGroupLocks(locks.keys());
-  const lockedInputSlots = (): Set<number> => {
+  // `outer`: the card's Randomize also honours group locks (Network, Inputs,
+  // the Inputs button). The inputs page's own reroll honours only the
+  // per-row locks set inside it: an outer lock never blocks editing from inside.
+  const lockedInputSlots = (outer = true): Set<number> => {
     const out = new Set<number>();
-    for (const k of effectiveLockedKeys()) { const m = /^input(\d)$/.exec(k); if (m) out.add(+m[1]); }
+    for (const k of outer ? effectiveLockedKeys() : locks.keys()) { const m = /^input(\d)$/.exec(k); if (m) out.add(+m[1]); }
     return out;
   };
   // Generator taste (device setting) + the preset's normalize flag.
@@ -172,7 +175,8 @@ export async function setupCPPN(
     const lockedKeys = effectiveLockedKeys();
     const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), lockedKeys, budget(), ctrl.config.inputs.length);
     const config = configFromFlat(ctrl.config, f);
-    const inputsLocked = lockedKeys.includes(`${GROUP_LOCK_PREFIX}Network`) || lockedKeys.includes(`${GROUP_LOCK_PREFIX}Inputs`);
+    const inputsLocked = lockedKeys.includes(`${GROUP_LOCK_PREFIX}Network`) || lockedKeys.includes(`${GROUP_LOCK_PREFIX}Inputs`)
+      || lockedKeys.includes(`${GROUP_LOCK_PREFIX}Expressions`);
     if (!inputsLocked) {
       // a full roll normalizes (the default) unless that switch is locked; generate under the new setting
       if (!lockedKeys.includes('normalizeInputs')) config.normalizeInputs = true;
@@ -188,7 +192,7 @@ export async function setupCPPN(
   /** The inputs page's ⚄: fresh expressions for the unlocked slots only (a buffer write). */
   const randomizeInputsOnly = (): void => {
     mgr.history.endGesture();
-    ctrl.setInputs(randomizeInputs(ctrl.config.inputs, lockedInputSlots(), genSettings()));
+    ctrl.setInputs(randomizeInputs(ctrl.config.inputs, lockedInputSlots(false), genSettings()));
     commitInputs('Randomize inputs');
   };
 
