@@ -152,8 +152,9 @@ export class CPPNController {
   private gpuMs = 0;
   /** Backing-size multiplier the loop lowers when frames are slow. */
   renderScale = 1;
-  /** Let the loop trade resolution for frame time (heavy presets on phones). */
-  adaptiveResolution = true;
+  /** Let the loop trade resolution for frame time. Off: the user picks the
+   *  resolution; the image never goes soft on its own. */
+  adaptiveResolution = false;
   private lastScaleCheck = 0;
   maxFps    = Infinity;
   tickCount = 0;
