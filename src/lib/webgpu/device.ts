@@ -1,4 +1,14 @@
-import { setGpuInfo, trackShaderError } from '../analytics';
+import { setGpuInfo, track, trackShaderError } from '../analytics';
+
+/** Why the last initWebGPU returned null, for the sim-open analytics event:
+ *  insecure (not a secure context), no-api (browser has no WebGPU), no-adapter
+ *  (WebGPU exists but this GPU / driver is blocked), device-failed
+ *  (requestDevice threw), no-context (canvas refused a webgpu context). */
+export let webgpuFailure: { reason: string; message?: string } | null = null;
+const fail = (reason: string, e?: unknown): null => {
+  webgpuFailure = { reason, ...(e !== undefined ? { message: String((e as Error)?.message ?? e).slice(0, 200) } : {}) };
+  return null;
+};
 export interface WebGPUContext {
   device: GPUDevice;
   context: GPUCanvasContext;
@@ -15,13 +25,15 @@ function getSharedDevice(): Promise<GPUDevice | null> {
   if (!sharedDevice) {
     sharedDevice = (async () => {
       const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) return null;
+      if (!adapter) return fail('no-adapter');
       try { setGpuInfo((adapter as unknown as { info?: GPUAdapterInfo }).info ?? null); } catch { /* not exposed */ }
-      const device = await adapter.requestDevice();
+      let device: GPUDevice;
+      try { device = await adapter.requestDevice(); } catch (e) { return fail('device-failed', e); }
       // Validation errors (bad pipelines, shader compile failures) surface here.
       device.addEventListener('uncapturederror', (e) => trackShaderError(String((e as GPUUncapturedErrorEvent).error?.message ?? 'GPU error')));
       device.lost.then((info) => {
         console.warn('WebGPU device lost:', info.message);
+        if (info.reason !== 'destroyed') track('gpu-device-lost', { message: String(info.message ?? '').slice(0, 200) });
         sharedDevice = null;
       });
       return device;
@@ -33,13 +45,15 @@ function getSharedDevice(): Promise<GPUDevice | null> {
 
 export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUContext | null> {
   try {
-    if (!navigator.gpu) return null;
+    webgpuFailure = null;
+    if (!window.isSecureContext) return fail('insecure');
+    if (!navigator.gpu) return fail('no-api');
 
     const device = await getSharedDevice();
-    if (!device) return null;
+    if (!device) return webgpuFailure ? null : fail('no-adapter');
 
     const context = canvas.getContext('webgpu');
-    if (!context) return null;
+    if (!context) return fail('no-context');
 
     const format = navigator.gpu.getPreferredCanvasFormat();
     context.configure({ device, format, alphaMode: 'premultiplied' });
@@ -47,6 +61,6 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUConte
     return { device, context, format, canvas };
   } catch (e) {
     console.error('WebGPU init failed:', e);
-    return null;
+    return fail('device-failed', e);
   }
 }

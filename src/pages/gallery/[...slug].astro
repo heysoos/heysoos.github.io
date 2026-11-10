@@ -340,6 +340,7 @@ const underConstruction = project.data.underConstruction ?? false;
   import { attachBench } from "../../lib/sim-page/bench";
   import { setupSim } from "../../lib/sim-page/sim-setup/index";
   import { track, trackSimSession } from "../../lib/analytics";
+  import { webgpuFailure } from "../../lib/webgpu/device";
 
   const viewport      = document.getElementById("sim-viewport") as HTMLElement;
   const sim           = viewport.dataset.sim!;
@@ -476,9 +477,12 @@ const underConstruction = project.data.underConstruction ?? false;
       fallback.style.display = "flex";
       (fallback.querySelector("p") as HTMLElement).textContent = "Simulation coming soon.";
     } else {
+      let tracked = false;
       try {
         const ok = await controller.init(canvas);
-        const session = trackSimSession(sim, ok, ok ? { tickCount: () => (controller as unknown as { tickCount?: number }).tickCount ?? 0, canvas } : undefined);
+        const session = trackSimSession(sim, ok, ok ? { tickCount: () => (controller as unknown as { tickCount?: number }).tickCount ?? 0, canvas } : undefined,
+          ok ? null : (webgpuFailure ?? { reason: 'init-failed' }));
+        tracked = true;
         (window as unknown as { __simTrack?: (kind: string) => void }).__simTrack = session.interact;
         if (ok) {
           controller.start();
@@ -552,6 +556,7 @@ const underConstruction = project.data.underConstruction ?? false;
         }
       } catch (e) {
         console.error("Simulation failed to start:", e);
+        if (!tracked) trackSimSession(sim, false, undefined, { reason: 'init-failed', message: String((e as Error)?.message ?? e).slice(0, 200) });
         canvas.style.display = "none";
         fallback.style.display = "flex";
       }

@@ -37,18 +37,19 @@ function clarityTag(key: string, value: string): void {
 }
 
 /**
- * Per-sim engagement. `sim-open` on load (WebGPU availability, GPU vendor),
+ * Per-sim engagement. `sim-open` on load (WebGPU availability, GPU vendor,
+ * and when it failed a `reason` + `message`: see webgpuFailure in device.ts),
  * `sim-leave` on leaving with seconds, median fps, the render size and how
  * many times the visitor interacted (presets, dice, edits), so a 2 s bounce
  * reads differently from a 10 min session and a slow device shows as a cluster.
  * Also tags the Clarity recording with sim / layout / webgpu.
  */
-export function trackSimSession(sim: string, webgpu: boolean, perf?: { tickCount(): number; canvas: HTMLCanvasElement }): { interact(kind: string): void } {
+export function trackSimSession(sim: string, webgpu: boolean, perf?: { tickCount(): number; canvas: HTMLCanvasElement }, failure?: { reason: string; message?: string } | null): { interact(kind: string): void } {
   currentSim = sim;
   clarityTag('sim', sim); clarityTag('layout', layout()); clarityTag('webgpu', String(webgpu));
   const t0 = performance.now();
   let interactions = 0;
-  track('sim-open', { webgpu, ...(gpuInfo ? { gpu: gpuInfo } : {}) });
+  track('sim-open', { webgpu, ...(gpuInfo ? { gpu: gpuInfo } : {}), ...(!webgpu && failure ? failure : {}) });
 
   // fps: sample the controller's frame counter every 2 s, report the median
   const samples: number[] = [];
