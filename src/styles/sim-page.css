@@ -1238,7 +1238,9 @@
 .cppn-inputs-btn.cppn-layer.in:hover, .cppn-inputs-btn.cppn-layer.in:active { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .cppn-inputs-btn .strip canvas { width: 26px; height: 26px; border-radius: 4px; }
 .cppn-inputs-btn.cppn-layer.in .go { font-size: 0.78rem; color: var(--accent); font-weight: 500; letter-spacing: 0.02em; }
-.cppn-inputs-btn.locked { border-style: dashed; }
+.cppn-inputs-btn.cppn-layer.in.locked { border-width: 2px; padding: 5px 11px; background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.cppn-inputs-btn.locked .strip canvas { outline: 1px solid var(--accent); }
+.cppn-inputs-btn.locked .go::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--accent); -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; }
 /* inputs page */
 .fb-inputs .h-back { width: 26px; height: 26px; padding: 0; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
 .fb-inputs .h-title { font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-body); margin-left: 4px; }
