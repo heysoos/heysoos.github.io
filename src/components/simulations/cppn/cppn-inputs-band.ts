@@ -129,6 +129,9 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     });
     rowsEl.appendChild(add);
     [...vList.querySelectorAll<HTMLElement>('.band-two > div')].forEach((el, k) => { if (prevScroll[k]) el.scrollTop = prevScroll[k]; });
+    // mark now, not on the next timer tick: touch-action is read when the
+    // finger lands, so an unmarked list ignores the first drag
+    if (visible) markScrollers();
   }
   function attachRowGestures(row: HTMLElement, i: number): void {
     // A tap opens the editor from the click, not the pointerup: the touch's
