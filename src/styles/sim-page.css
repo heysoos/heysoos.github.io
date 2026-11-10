@@ -1,3 +1,6 @@
+/* Lock glyph: the control bar's monoline hp-lock, as a mask so ::after and tiny spans can wear it in currentColor / accent. */
+:root { --lock-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E"); --unlock-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 7.6-1.7'/%3E%3C/svg%3E"); }
+.lk, .lock-glyph { -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; }
 /* src/styles/sim-page.css
  * Shared layout styles for the sim viewport, floating params panel, shader
  * editor, and FPS display. Imported by both gallery/[...slug].astro and
@@ -191,14 +194,14 @@
 .scrub-chip .c-top { display: flex; align-items: center; gap: 4px; color: var(--text-primary); font-size: 0.72rem; }
 .scrub-chip .c-back { min-height: 0 !important; padding: 0 8px 2px 4px; border: none; background: transparent; color: var(--text-muted); font-size: 1.1rem; line-height: 1; cursor: pointer; }
 .scrub-chip .c-name { flex: 1; min-width: 0; }
-.scrub-chip .lk { display: none; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); }
+.scrub-chip .lk { display: none; width: 10px; height: 10px; background: var(--accent); }
 .scrub-chip.locked .lk { display: inline-block; }
 .scrub-chip.locked .c-name { color: var(--accent); }
 .scrub-chip .c-val { font-family: ui-monospace, Menlo, monospace; font-size: 1.3rem; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; margin: 2px 0 0 4px; }
 .scrub-chip .c-bar { height: 3px; margin: 6px 4px 0; background: var(--bg-surface-border); border-radius: 2px; overflow: hidden; }
 .scrub-chip .c-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
 .scrub-chip .c-range { display: flex; justify-content: space-between; margin: 3px 4px 0; font-family: ui-monospace, Menlo, monospace; font-size: 0.56rem; color: var(--text-muted); }
-.scrub-list .lk { display: none; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); }
+.scrub-list .lk { display: none; width: 10px; height: 10px; background: var(--accent); }
 .scrub-list .locked .lk { display: inline-block; }
 .scrub-list .locked .n { color: var(--accent); }
 .scrub-enum { padding: 3px 6px 5px; display: flex; flex-direction: column; gap: 3px; }
@@ -317,7 +320,7 @@
 .meter-row .n { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .meter-row .v { font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; cursor: text; outline: none; }
 .meter-row.dragging .v, .meter-row:hover .v { color: var(--accent); }
-.meter-row .lk { display: none; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); }
+.meter-row .lk { display: none; width: 10px; height: 10px; background: var(--accent); }
 .meter-row.locked .lk { display: inline-block; }
 .meter-row.locked .n { color: var(--accent); }
 .meter-row .v-edit {
@@ -993,18 +996,17 @@
   }
 
   .fps-display {
-    top: auto;
-    bottom: 0.5rem;
-    left: calc(0.5rem + 40px + 8px); /* right of the scroll button, under the list's bottom edge */
-    height: 40px; display: flex; align-items: center;
+    /* top-right corner: the bottom row belongs to the capsule (now with undo / redo) */
+    top: 0.5rem; bottom: auto; left: auto; right: 0.5rem;
+    height: 32px; display: flex; align-items: center;
   }
 
   .fps-display:hover .fps-popup { display: none; }
   .fps-display.open .fps-popup,
   .fps-display.open:hover .fps-popup { display: flex; }
   .fps-popup {
-    top: auto;
-    bottom: calc(100% + 8px);
+    top: calc(100% + 8px);
+    bottom: auto; left: auto; right: 0;
   }
 }
 
@@ -1127,6 +1129,15 @@
 .fb-head .h-random:hover, .scrub-head .h-random:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); }
 .fb-head .h-random .ico, .scrub-head .h-random .ico { flex: none; }
 .fb-head .h-presets { text-transform: none; font-variant-caps: all-small-caps; font-size: 0.72rem; }
+/* Phone card: Presets owns the first header row now that undo / redo moved to the capsule. */
+.scrub-head .h-presets {
+  display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 12px;
+  font-size: 0.8rem; font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 600;
+  color: var(--text-primary); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.scrub-list.presets-mode .scrub-head .h-presets { background: transparent; color: var(--accent); }
+.scrub-head.tabbed .h-presets { height: 28px; font-size: 0.68rem; padding: 0 4px; }
 .fb-head .h-close { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .sim-viewport.sim-busy .h-random .ico, .sim-viewport.sim-busy .h-random span { visibility: hidden; }
 
@@ -1147,7 +1158,7 @@
 .cppn-enum-row.stack { flex-direction: column; align-items: stretch; gap: 4px; }
 .cppn-enum-row.stack .look-segmented { display: flex; width: 100%; }
 .cppn-enum-row.stack .look-segmented button { flex: 1; padding: 5px 4px; text-align: center; }
-.cppn-enum-row.locked .n::before { content: ''; display: inline-block; width: 7px; height: 9px; border-radius: 2px; background: var(--accent); margin-right: 5px; vertical-align: -1px; }
+.cppn-enum-row.locked .n::before { content: ''; display: inline-block; width: 10px; height: 10px; background: var(--accent); -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; margin-right: 5px; vertical-align: -1px; }
 
 /* ── Control bar: dice spinner while a compile is in flight ── */
 .sim-viewport.sim-busy .ctrl-btn[data-action="randomize"] .ctrl-icon { visibility: hidden; }
@@ -1203,6 +1214,7 @@
 .fb-grp .fb-group:hover .lk-tag { opacity: 0.45; }
 .fb-grp.locked { border-left-color: var(--accent); background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 3.5%, transparent) 60%, transparent); }
 .fb-grp.locked .lk-tag { opacity: 1; }
+.fb-grp .lk-tag .lock-glyph { display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: -1px; background: currentColor; }
 .fb-grp.locked :is(.meter-row, .cppn-enum-row, .cppn-layer) { opacity: 0.78; }
 .fb-main[hidden], .fb-inputs[hidden] { display: none !important; }
 .panel-content.fb-panel:has(> .fb-main) { padding-top: 0; }
@@ -1240,8 +1252,8 @@
 .inputs-row.big .thumb { position: absolute; left: 2px; top: -4px; width: 128px; height: 128px; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
 .inputs-row .lock { position: absolute; left: 2px; top: 4px; width: 44px; height: 44px; border: none; background: none; cursor: pointer; color: transparent; font-size: 12px; padding: 0; pointer-events: none; }
 .inputs-row:hover .lock, .inputs-row.locked .lock { color: var(--accent); text-shadow: 0 0 4px #000; pointer-events: auto; }
-.inputs-row.locked .lock::after { content: '🔒'; }
-.inputs-row:not(.locked):hover .lock::after { content: '🔓'; }
+.inputs-row .lock::after { content: ''; display: inline-block; width: 13px; height: 13px; background: currentColor; -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; }
+.inputs-row:not(.locked):hover .lock::after { -webkit-mask-image: var(--unlock-glyph); mask-image: var(--unlock-glyph); }
 .inputs-row.locked .thumb { outline: 1px solid var(--accent); }
 .inputs-row .field { position: relative; min-width: 0; }
 .inputs-row .expr { width: 100%; min-height: 0 !important; background: var(--inset-bg, rgba(255,255,255,0.04)); border: 1px solid var(--bg-surface-border); border-radius: 5px; color: var(--text-primary); padding: 5px 8px; font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; outline: none; box-sizing: border-box; }
@@ -1280,7 +1292,7 @@
 @keyframes scrub-out { from { transform: none; opacity: 1; } to { transform: translateY(14px); opacity: 0; } }
 .scrub-list.opening { animation: scrub-in 0.18s ease-out; }
 .scrub-list.closing { animation: scrub-out 0.16s ease-in forwards; pointer-events: none; }
-.scrub-list h6.locked::after { content: ' 🔒'; font-size: 0.6rem; }
+.scrub-list h6.locked::after { content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px; background: var(--accent); -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; }
 .sim-cppn .inputs-band .band-head::before { background: var(--text-body); opacity: 0.6; width: 32px; margin-left: -16px; }
 .sim-cppn :is(.scrub-row, .scrub-enum, .scrub-scroll) { touch-action: pan-y pinch-zoom; }
 .inputs-band {
@@ -1306,7 +1318,10 @@
 .band-head { position: relative; flex: none; display: flex; align-items: center; gap: 6px; padding: 9px 8px 6px; border-bottom: 1px solid var(--bg-surface-border); }
 .band-head::before { content: ''; position: absolute; left: 50%; top: 3px; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: var(--text-muted); opacity: 0.45; }
 .band-head button { min-height: 0 !important; background: none; border: 1px solid var(--bg-surface-border); color: var(--text-body); border-radius: 6px; padding: 4px 9px; font-size: 0.72rem; line-height: 1.2; cursor: pointer; }
-.band-head .b-back { border-color: transparent; color: var(--text-muted); font-size: 1rem; padding: 2px 6px; }
+/* the back target is the whole left end of the header (44px wide, full header height plus a bleed below), not just the glyph */
+.band-head .b-back { position: relative; border-color: transparent; color: var(--text-body); font-size: 1.5rem; line-height: 1; width: 44px; height: 34px; margin: -6px 0 -4px -6px; padding: 0 0 3px; display: inline-flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.band-head .b-back::after { content: ''; position: absolute; inset: -8px -4px -10px -6px; }
+.band-head .b-back:active { color: var(--accent); }
 .band-head .b-title { font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-body); }
 .band-head .b-views button { border: none; border-radius: 0; font-size: 0.66rem; padding: 4px 8px; }
 .band-head .b-random { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -1323,7 +1338,7 @@
 .band-row .f .dim { color: var(--text-muted); }
 .band-row .m { font: 9px ui-monospace, Menlo, monospace; color: var(--text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .band-row .m .err { color: #e05a5a; }
-.band-row .lk { position: absolute; left: 0; top: 4px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); text-shadow: 0 0 4px #000; opacity: 0; pointer-events: none; }
+.band-row .lk { position: absolute; left: 11px; top: 15px; width: 13px; height: 13px; background: var(--accent); filter: drop-shadow(0 0 2px #000); opacity: 0; pointer-events: none; }
 .band-row.locked .lk { opacity: 1; }
 .band-row .swipe { position: absolute; right: 2px; top: 50%; width: 22px; height: 22px; margin-top: -11px; padding: 0; background: none; border: none; border-radius: 4px; color: var(--text-muted); font-size: 15px; line-height: 1; min-height: 0 !important; }
 .band-row .swipe:active { color: #e05a5a; }

@@ -5,6 +5,7 @@
 // wraps the selection) and generator (complexity · presets · two-level
 // histogram). Gestures: swipe left = next tab, swipe right = back, swipe
 // down or tap outside = close, long-press a row / tile = lock.
+import { termAt } from './cppn-expr/term-select';
 import type { InputsApi } from './cppn-inputs-panel';
 import { buildGeneratorBlock } from './cppn-generator-ui';
 import { OPS, VARS, VAR_DESC, GROUP_COLORS, opByName, type ExprGroup } from './cppn-expr/optable';
@@ -105,7 +106,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       const r = results[i];
       const row = document.createElement('div');
       row.className = 'band-row' + (api.isLocked(i) ? ' locked' : '');
-      row.innerHTML = `<canvas width="24" height="24"></canvas><div class="band-row-txt"><div class="f">${src ? esc(src) : '<span class="dim">empty</span>'}</div><div class="m">${r ? (r.ok ? `${r.range.lo.toFixed(2)} … ${r.range.hi.toFixed(2)}${api.normalize() ? ' → −1 … 1' : ''}` : `<span class="err">${esc(r.error.msg)}</span>`) : ''}</div></div><div class="lk">🔒</div><button class="swipe" aria-label="Remove input" title="Remove input">×</button>`;
+      row.innerHTML = `<canvas width="24" height="24"></canvas><div class="band-row-txt"><div class="f">${src ? esc(src) : '<span class="dim">empty</span>'}</div><div class="m">${r ? (r.ok ? `${r.range.lo.toFixed(2)} … ${r.range.hi.toFixed(2)}${api.normalize() ? ' → −1 … 1' : ''}` : `<span class="err">${esc(r.error.msg)}</span>`) : ''}</div></div><div class="lk"></div><button class="swipe" aria-label="Remove input" title="Remove input">×</button>`;
       paintThumb(row.querySelector('canvas')!, src, { normalize: api.normalize(), ...d });
       attachRowGestures(row, i);
       rowsEl.appendChild(row);
@@ -120,15 +121,23 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     add.className = 'band-add';
     add.textContent = '+ add input';
     add.disabled = list.length >= MAX_INPUTS;
-    add.addEventListener('click', () => { api.addInput(); api.commit('Add input'); openEdit(api.inputs().length - 1); });
+    add.addEventListener('click', () => {
+      // a fresh random expression, no editor: tap the row to change it
+      api.addInput(); api.commit('Add input');
+      const rowsNow = vList.querySelector<HTMLElement>('.band-rows');
+      if (rowsNow) rowsNow.scrollTop = rowsNow.scrollHeight;   // the new row (and + add) in view
+    });
     rowsEl.appendChild(add);
     [...vList.querySelectorAll<HTMLElement>('.band-two > div')].forEach((el, k) => { if (prevScroll[k]) el.scrollTop = prevScroll[k]; });
   }
   function attachRowGestures(row: HTMLElement, i: number): void {
-    let x0 = 0, y0 = 0, moved = false, timer = 0, id = -1;
+    // A tap opens the editor from the click, not the pointerup: the touch's
+    // compatibility mousedown comes after pointerup and would blur a field
+    // focused there, so the keyboard would never come up.
+    let x0 = 0, y0 = 0, moved = false, timer = 0, id = -1, tap = false;
     row.addEventListener('pointerdown', (e) => {
       if ((e.target as HTMLElement).closest('.swipe')) return;
-      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; moved = false;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; moved = false; tap = false;
       timer = window.setTimeout(() => { timer = 0; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS);
     });
     row.addEventListener('pointermove', (e) => {
@@ -139,19 +148,21 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     const end = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
       id = -1;
-      if (timer) { clearTimeout(timer); timer = 0; if (!moved) openEdit(i); }
+      if (timer) { clearTimeout(timer); timer = 0; tap = !moved; }
     };
     row.addEventListener('pointerup', end);
+    row.addEventListener('click', () => { if (tap) { tap = false; openEdit(i); } });
     row.addEventListener('pointercancel', (e) => { if (e.pointerId === id) { id = -1; clearTimeout(timer); timer = 0; } });
     row.querySelector('.swipe')!.addEventListener('click', (e) => { e.stopPropagation(); if (api.inputs().length <= 1) return; api.removeInput(i); api.commit('Remove input'); renderList(); });
     row.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   function attachTileGestures(tile: HTMLElement, i: number): void {
-    let timer = 0, fired = false, moved = false, x0 = 0, y0 = 0;
-    tile.addEventListener('pointerdown', (e) => { fired = false; moved = false; x0 = e.clientX; y0 = e.clientY; timer = window.setTimeout(() => { fired = true; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS); });
+    let timer = 0, fired = false, moved = false, x0 = 0, y0 = 0, tap = false;
+    tile.addEventListener('pointerdown', (e) => { fired = false; moved = false; tap = false; x0 = e.clientX; y0 = e.clientY; timer = window.setTimeout(() => { fired = true; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS); });
     tile.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > SLOP) { moved = true; clearTimeout(timer); } });
     tile.addEventListener('pointercancel', () => { moved = true; clearTimeout(timer); });
-    tile.addEventListener('pointerup', () => { clearTimeout(timer); if (!fired && !moved) openEdit(i); });
+    tile.addEventListener('pointerup', () => { clearTimeout(timer); tap = !fired && !moved; });
+    tile.addEventListener('click', () => { if (tap) { tap = false; openEdit(i); } });   // see attachRowGestures
     tile.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -167,7 +178,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     <div class="band-chips">
       <div class="band-vars"></div>
       <div class="band-fns"></div>
-      <div class="band-ed-actions"><span class="band-ed-hint">select text, then tap a function to wrap it</span><button class="done">done</button></div>
+      <div class="band-ed-actions"><span class="band-ed-hint">tap a function or bracket to select its term, then a function to wrap it</span><button class="done">done</button></div>
     </div>`;
   const field = vEdit.querySelector<HTMLTextAreaElement>('.band-field')!;
   const sigEl = vEdit.querySelector<HTMLElement>('.band-sig')!;
@@ -222,7 +233,19 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
   });
   // where the caret sits decides which signature to show
   field.addEventListener('selectionchange', () => renderStatus());
-  field.addEventListener('click', () => renderStatus());
+  field.addEventListener('click', () => { renderStatus(); window.setTimeout(selectTermOnTap, 0); });
+  // Tap-to-select: the first tap on a function name or a paren selects the
+  // whole term (to wrap it or delete it); a tap inside that selection is a
+  // plain caret again. The timeout lets the browser place its caret first.
+  let termSel: [number, number] | null = null;
+  function selectTermOnTap(): void {
+    const a = field.selectionStart, z = field.selectionEnd;
+    if (a !== z) { termSel = null; return; }   // the phone's own selection (double tap, long press)
+    if (termSel && a >= termSel[0] && a <= termSel[1]) { termSel = null; return; }
+    termSel = termAt(field.value, a);
+    if (termSel) { field.setSelectionRange(termSel[0], termSel[1]); renderStatus(); }
+  }
+  field.addEventListener('input', () => { termSel = null; });
   field.addEventListener('keyup', () => renderStatus());
 
   function openEdit(i: number): void {
@@ -232,6 +255,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     renderField();   // thumbnail, range and signature for the opened expression
     field.focus({ preventScroll: true });
     field.setSelectionRange(field.value.length, field.value.length);
+    termSel = null;
   }
   function finishEdit(): void {
     if (cur >= 0 && dirty) { api.commit('Input'); dirty = false; }

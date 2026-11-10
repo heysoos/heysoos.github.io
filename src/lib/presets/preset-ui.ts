@@ -1,8 +1,8 @@
 // src/lib/presets/preset-ui.ts
 // The shared "Presets" section at the top of a sim panel: built-in and custom
 // pills, undo/redo, Save / Save As / Rename / Duplicate / Delete / Export /
-// Import, an inline confirm bar (so three-way choices work and nothing uses
-// window.confirm), and a Recently-deleted list.
+// Import, a small confirm pop-up (so three-way choices work, nothing uses
+// window.confirm, and on a phone it is never buried under a long preset list), and a Recently-deleted list.
 
 import type { ParamRecord, BasePreset, CustomPreset } from './preset-schema';
 import type { PresetManager } from './preset-manager';
@@ -55,9 +55,19 @@ export function buildPresetSection<P extends ParamRecord>(
   header.className = 'preset-header';
   const pills = el('div', 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;');
   const toolbar = el('div', 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;padding-top:7px;border-top:1px solid var(--bg-surface-border);');
-  const bar = el('div', 'display:none;flex-direction:column;gap:4px;padding:5px 7px;border:1px solid var(--accent);border-radius:4px;');
   const trashWrap = el('div', 'display:none;flex-direction:column;gap:3px;');
-  root.append(header, pills, toolbar, bar, trashWrap);
+  root.append(header, pills, toolbar, trashWrap);
+  // The confirm / prompt pop-up floats over the page (or the fullscreen sim),
+  // outside the panel's scroller; a tap on the scrim cancels.
+  const popup = el('div', 'position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:28vh 16px 0;');
+  popup.className = 'preset-popup';
+  const scrim = el('div', 'position:absolute;inset:0;background:rgba(0,0,0,0.45);');
+  const bar = el('div', 'position:relative;display:flex;flex-direction:column;gap:10px;width:min(320px,100%);padding:12px 14px;'
+    + 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:8px;box-shadow:0 10px 32px rgba(0,0,0,0.6);');
+  bar.setAttribute('role', 'dialog');
+  popup.append(scrim, bar);
+  scrim.addEventListener('click', () => hideBar());
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); hideBar(); } };
 
   const fileInput = el('input', 'display:none;');
   fileInput.type = 'file';
@@ -65,13 +75,17 @@ export function buildPresetSection<P extends ParamRecord>(
   root.appendChild(fileInput);
 
   // ── Confirm / prompt bar ────────────────────────────────────────────
-  function hideBar(): void { bar.style.display = 'none'; bar.innerHTML = ''; }
+  function hideBar(): void { popup.remove(); bar.innerHTML = ''; document.removeEventListener('keydown', onKey, true); }
+  function openBar(message: string): void {
+    bar.innerHTML = '';
+    bar.appendChild(el('div', 'font-size:0.78rem;line-height:1.35;color:var(--text-primary);', message));
+    (document.fullscreenElement ?? document.body).appendChild(popup);
+    document.addEventListener('keydown', onKey, true);
+  }
 
   function showChoices(message: string, choices: Choice[]): void {
-    bar.innerHTML = '';
-    bar.style.display = 'flex';
-    bar.appendChild(el('div', 'font-size:0.68rem;color:var(--text-body);', message));
-    const row = el('div', 'display:flex;gap:4px;flex-wrap:wrap;');
+    openBar(message);
+    const row = el('div', 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;');
     for (const c of choices) {
       const css = c.style === 'accent' ? BTN_ACCENT : c.style === 'danger' ? BTN_DANGER : BTN;
       row.appendChild(button(c.label, css, () => { hideBar(); c.onPick(); }));
@@ -80,10 +94,8 @@ export function buildPresetSection<P extends ParamRecord>(
   }
 
   function showPrompt(message: string, initial: string, okLabel: string, onOk: (name: string) => void): void {
-    bar.innerHTML = '';
-    bar.style.display = 'flex';
-    bar.appendChild(el('div', 'font-size:0.68rem;color:var(--text-body);', message));
-    const row = el('div', 'display:flex;gap:4px;');
+    openBar(message);
+    const row = el('div', 'display:flex;gap:6px;');
     const input = el('input', INPUT);
     input.type = 'text';
     input.value = initial;

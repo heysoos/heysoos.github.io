@@ -49,6 +49,7 @@ export interface CPPNFlatParams extends Record<string, unknown> {
   bands: number;          // 1..4
   // Space
   scale: number;
+  zScale: number;          // latent vector multiplier (1 = presets from before it existed)
   // Inputs
   normalizeInputs: number;   // 0 | 1 — map each input channel to [-1, 1]
 }
@@ -58,7 +59,7 @@ export type FlatKey = keyof CPPNFlatParams & string;
 export const ARCH_KEYS: FlatKey[] = ['layers', ...Array.from({ length: MAX_LAYERS }, (_, i) => [`layer${i}Width`, `layer${i}Act`] as FlatKey[]).flat()];
 export const WEIGHT_KEYS: FlatKey[] = ['distType', 'sigma', 'a', 'glorotScale', 'sparsity', 'magnitude', 'seed'];
 export const isArchKey = (k: string): boolean => (ARCH_KEYS as string[]).includes(k);
-export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands'];
+export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands', 'zScale'];
 export const INPUT_LOCK_KEYS: string[] = Array.from({ length: 8 }, (_, i) => `input${i}`);
 /** Group locks are stored as `group:<Name>` so items added to a group later are covered. */
 export const GROUP_LOCK_PREFIX = 'group:';
@@ -92,6 +93,7 @@ export const DEFAULT_FLAT: CPPNFlatParams = {
   distType: 0, sigma: 1, a: 1, glorotScale: 1, sparsity: 0.8, magnitude: 2, seed: 1,
   animate: 1, speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4,
   scale: 1,
+  zScale: 1,
   normalizeInputs: 1,
 };
 
@@ -120,6 +122,7 @@ export function toFlat(config: CPPNConfig, seed: number, animate: boolean): CPPN
     animate: animate ? 1 : 0,
     speed: m.speed, spread: m.spread, depth: m.depth, falloff: m.falloff, bands: m.bands,
     scale: config.scale,
+    zScale: config.zScale ?? 1,
     normalizeInputs: config.normalizeInputs ? 1 : 0,
   };
   config.layers.slice(0, MAX_LAYERS).forEach((l, i) => {
@@ -154,6 +157,7 @@ export function configFromFlat(base: CPPNConfig, f: CPPNFlatParams): CPPNConfig 
     layers: layersFromFlat(f),
     distribution: distributionFromFlat(f),
     scale: f.scale,
+    zScale: f.zScale ?? 1,
     motion: {
       speed: f.speed, spread: f.spread, depth: f.depth, falloff: f.falloff,
       bands: Math.min(4, Math.max(1, Math.round(f.bands))),
@@ -192,7 +196,7 @@ export function prepareCPPNBody(body: CPPNBody, currentInputs: readonly string[]
   }
   // Weights saved in the 3-column layout move to the 8-column one.
   if (Array.isArray(out.weights) && out.weights.length > 0) {
-    const cfg = configFromFlat({ zDim: 16, layers: [], distribution: { type: 'normal' }, scale: 1, motion: { speed: 0, spread: 1, depth: 0, falloff: 1, bands: 1 }, inputs: out.inputs, normalizeInputs: false }, out.params);
+    const cfg = configFromFlat({ zDim: 16, layers: [], distribution: { type: 'normal' }, scale: 1, zScale: 1, motion: { speed: 0, spread: 1, depth: 0, falloff: 1, bands: 1 }, inputs: out.inputs, normalizeInputs: false }, out.params);
     if (out.weights.length === legacyWeightCount(cfg)) out.weights = Array.from(migrateWeightsFromXYR(out.weights, cfg));
   }
   for (const k of lockedKeys) {
@@ -236,6 +240,7 @@ export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
     num('depth', 'Depth', 0.02, 0.6, 0.01, { scale: 'log' }),
     num('falloff', 'Falloff', 0.3, 1, 0.05),
     num('bands', 'Bands', 1, 4, 1, { int: true }),
+    num('zScale', 'Z scale', 0, 3, 0.01),
   ] },
   { name: 'View', items: [
     num('scale', 'Coordinate scale', 0.1, 5, 0.05),

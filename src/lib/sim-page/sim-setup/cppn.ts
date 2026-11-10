@@ -173,7 +173,11 @@ export async function setupCPPN(
     const f = randomizeFlat(toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating), lockedKeys, budget(), ctrl.config.inputs.length);
     const config = configFromFlat(ctrl.config, f);
     const inputsLocked = lockedKeys.includes(`${GROUP_LOCK_PREFIX}Network`) || lockedKeys.includes(`${GROUP_LOCK_PREFIX}Inputs`);
-    if (!inputsLocked) config.inputs = randomizeInputs(ctrl.config.inputs, lockedInputSlots(), genSettings());
+    if (!inputsLocked) {
+      // a full roll normalizes (the default) unless that switch is locked; generate under the new setting
+      if (!lockedKeys.includes('normalizeInputs')) config.normalizeInputs = true;
+      config.inputs = randomizeInputs(ctrl.config.inputs, lockedInputSlots(), { ...genSettings(), normalize: config.normalizeInputs });
+    }
     ctrl.setAnimate(f.animate !== 0);
     void ctrl.setState(config, f.seed).then(() => {
       mgr.history.push('Randomize');
@@ -364,7 +368,7 @@ export async function setupCPPN(
   buildPanel();
   window.matchMedia('(max-width: 768px)').addEventListener('change', buildPanel);
 
-  const bar = wireControlBar(viewport, { randomize, help: helpSections });
+  const bar = wireControlBar(viewport, { randomize, help: helpSections , history: mgr.history });
   // ↺ (and R) = new seed, same architecture. Routed through setParam so the
   // Seed row shows it and it is one undo step.
   const resetBtn = document.querySelector<HTMLElement>('[data-action="reset"]');

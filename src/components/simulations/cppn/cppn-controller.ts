@@ -106,9 +106,10 @@ function defaultConfig(): CPPNConfig {
     ],
     distribution: { type: 'normal', sigma: 1.0 },
     scale: 1.0,
+    zScale: 1,
     motion: { ...DEFAULT_MOTION },
     inputs: [...DEFAULT_INPUTS],
-    normalizeInputs: false,
+    normalizeInputs: true,
   };
 }
 
@@ -599,10 +600,11 @@ export class CPPNController {
     const m = this.config.motion;
     const bands = Math.max(1, Math.min(4, Math.round(m.bands)));
     const dimsPerBand = Math.ceil(Z_DIM / bands);
+    const zs = this.config.zScale ?? 1;
     for (let d = 0; d < Z_DIM; d++) {
       const b   = Math.min(Math.floor(d / dimsPerBand), bands - 1);
       const amp = m.depth * Math.pow(m.falloff, b);
-      z[d] = amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]) + this.latentOffset[d];
+      z[d] = (amp * Math.sin(this.bandPhase[b] + this.dimOffsets[d]) + this.latentOffset[d]) * zs;
     }
     return z;
   }

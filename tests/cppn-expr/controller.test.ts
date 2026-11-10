@@ -26,7 +26,7 @@ test('removeInput drops the slot and shifts the later ones down', () => {
 });
 
 test('removeInputColumn shifts weight columns k+1..7 down and zeroes column 7', () => {
-  const cfg: CPPNConfig = { zDim: 16, layers: [{ width: 4, activation: 'tanh' }], distribution: { type: 'normal' }, scale: 1, motion: { speed: 0, spread: 1, depth: 0, falloff: 1, bands: 1 }, inputs: ['x', 'y', 'r'], normalizeInputs: false };
+  const cfg: CPPNConfig = { zDim: 16, layers: [{ width: 4, activation: 'tanh' }], distribution: { type: 'normal' }, scale: 1, zScale: 1, motion: { speed: 0, spread: 1, depth: 0, falloff: 1, bands: 1 }, inputs: ['x', 'y', 'r'], normalizeInputs: false };
   const L = computeWeightLayout(cfg);
   const w = new Float32Array(L.totalCount);
   for (let k = 0; k < 8; k++) for (let i = 0; i < 4; i++) w[L.wInOffset + k * 4 + i] = (k + 1) * 10 + i;

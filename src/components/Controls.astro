@@ -1,6 +1,6 @@
 ---
 // Sim page control bar: one quiet capsule of monoline glyphs in three
-// groups split by hairlines — ? | pause · reset · fullscreen | dice · ⚙.
+// groups split by hairlines — ? (undo · redo on phones) | pause · reset · fullscreen | dice · ⚙.
 // Hover (fine pointers) lifts a glyph and shows its label above the capsule
 // with an accent tick. The dice and ? are hidden until a sim's setup wires
 // them (lib/sim-page/control-bar.ts). Play/pause, fullscreen and ⚙/× swap
@@ -21,6 +21,8 @@ const { simId } = Astro.props;
   <symbol id="ci-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/></symbol>
   <symbol id="ci-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5"/><circle cx="12" cy="17" r=".7" fill="currentColor" stroke="none"/></symbol>
   <symbol id="ci-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="ci-undo" viewBox="0 0 24 24"><path d="M9 6 4.5 10.5 9 15"/><path d="M5 10.5h9.5a5 5 0 0 1 0 10H12"/></symbol>
+  <symbol id="ci-redo" viewBox="0 0 24 24"><path d="m15 6 4.5 4.5L15 15"/><path d="M19 10.5H9.5a5 5 0 0 0 0 10H12"/></symbol>
   <symbol id="ci-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="hp-point" viewBox="0 0 24 24"><path d="M10 11V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M13 11.5a1.5 1.5 0 0 1 3 .5v1.5M16 13a1.5 1.5 0 0 1 3 .5V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.6 15.8a1.4 1.4 0 0 1 2.2-1.7L10 17"/></symbol>
   <symbol id="hp-pinch" viewBox="0 0 24 24"><path d="M4 4l6 6M4 4v5M4 4h5M20 20l-6-6M20 20v-5M20 20h-5"/></symbol>
@@ -40,6 +42,12 @@ const { simId } = Astro.props;
   <div class="ctrl-group" hidden>
     <button class="ctrl-btn subtle" data-action="help" data-label="controls" aria-label="Controls" hidden>
       <svg class="ctrl-icon"><use href="#ci-help"/></svg>
+    </button>
+    <button class="ctrl-btn" data-action="undo" data-label="undo" aria-label="Undo" hidden>
+      <svg class="ctrl-icon"><use href="#ci-undo"/></svg>
+    </button>
+    <button class="ctrl-btn" data-action="redo" data-label="redo" aria-label="Redo" hidden>
+      <svg class="ctrl-icon"><use href="#ci-redo"/></svg>
     </button>
   </div>
   <div class="ctrl-group">
@@ -109,6 +117,9 @@ const { simId } = Astro.props;
     -webkit-tap-highlight-color: transparent;
   }
   .ctrl-btn[hidden] { display: none; }
+  .ctrl-btn:disabled { opacity: 0.25; cursor: default; }
+  /* undo / redo live here on phones only; the desktop panel header keeps its own */
+  @media (min-width: 769px) { .ctrl-btn[data-action="undo"], .ctrl-btn[data-action="redo"] { display: none; } }
   .ctrl-btn.subtle { opacity: 0.4; }
   .ctrl-btn:hover, .ctrl-btn:focus-visible, .ctrl-btn.active, .ctrl-btn.open { opacity: 1; }
   .ctrl-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }

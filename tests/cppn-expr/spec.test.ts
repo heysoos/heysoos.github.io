@@ -7,7 +7,7 @@ import { migrateWeights } from '../../scripts/migrate-cppn-weights.mjs';
 
 const cfg: CPPNConfig = {
   zDim: 16, layers: [{ width: 32, activation: 'tanh' }, { width: 8, activation: 'sin' }],
-  distribution: { type: 'normal', sigma: 1 }, scale: 1,
+  distribution: { type: 'normal', sigma: 1 }, scale: 1, zScale: 1,
   motion: { speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4 },
   inputs: ['x', 'y', 'r'], normalizeInputs: false,
 };

@@ -207,7 +207,8 @@ export function buildCPPNPanel(
     grp.appendChild(h);
     if (opts.groupLocks && locks) {
       const key = `group:${g.name}`;
-      const tag = el('span', '', '🔒 locked');
+      const tag = el('span', '');
+      tag.innerHTML = '<i class="lock-glyph"></i>locked';
       tag.className = 'lk-tag';
       h.appendChild(tag);
       h.title = 'alt + click: lock this whole group through Randomize and preset loads';

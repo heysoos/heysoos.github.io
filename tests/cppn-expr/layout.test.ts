@@ -6,7 +6,7 @@ import type { CPPNConfig, LayerConfig } from '../../src/components/simulations/c
 
 const cfgWith = (widths: number[]): CPPNConfig => ({
   zDim: 16, layers: widths.map(w => ({ width: w, activation: 'tanh' as const })),
-  distribution: { type: 'normal', sigma: 1 }, scale: 1,
+  distribution: { type: 'normal', sigma: 1 }, scale: 1, zScale: 1,
   motion: { speed: 0.05, spread: 1.3, depth: 0.2, falloff: 0.8, bands: 4 },
   inputs: ['x', 'y', 'r'], normalizeInputs: false,
 });

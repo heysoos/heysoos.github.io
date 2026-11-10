@@ -6,11 +6,14 @@
 // flips ⚙ to × while a phone scrub list is open.
 
 import { attachHelp, type HelpSection, type HelpRow } from './help-popover';
+import type { UndoHistory } from '../presets/undo-history';
 
 export interface ControlBarOpts {
   randomize?: () => void;
   /** Sections for the ? card; `touch` is true on coarse / no-hover devices. */
   help?: (touch: boolean) => HelpSection[];
+  /** Undo / redo glyphs next to ? (phone widths; the desktop panel header has its own). */
+  history?: UndoHistory;
 }
 export interface ControlBarHandle { dispose(): void }
 
@@ -35,11 +38,33 @@ export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): Control
   buildHelp();
   touchMq.addEventListener('change', buildHelp);
 
+  const undoBtn = document.querySelector<HTMLButtonElement>('[data-action="undo"]');
+  const redoBtn = document.querySelector<HTMLButtonElement>('[data-action="redo"]');
+  const { history } = opts;
+  const onUndo = () => history?.undo();
+  const onRedo = () => history?.redo();
+  const syncHistory = () => {
+    if (undoBtn) undoBtn.disabled = !history?.canUndo();
+    if (redoBtn) redoBtn.disabled = !history?.canRedo();
+  };
+  let unsubHistory: (() => void) | undefined;
+  if (history && undoBtn && redoBtn) {
+    undoBtn.hidden = redoBtn.hidden = false;
+    (undoBtn.parentElement as HTMLElement | null)?.removeAttribute('hidden');
+    undoBtn.addEventListener('click', onUndo);
+    redoBtn.addEventListener('click', onRedo);
+    unsubHistory = history.subscribe(syncHistory);
+    syncHistory();
+  }
+
   return {
     dispose() {
       dice?.removeEventListener('click', onDice);
       touchMq.removeEventListener('change', buildHelp);
       help?.dispose();
+      undoBtn?.removeEventListener('click', onUndo);
+      redoBtn?.removeEventListener('click', onRedo);
+      unsubHistory?.();
     },
   };
 }

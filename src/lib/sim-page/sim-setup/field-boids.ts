@@ -187,6 +187,7 @@ export async function setupFieldBoids(
   const bar = wireControlBar(viewport, {
     randomize: () => { randomizeKeepingLocks(ctrl, mgr.locks, mgr.history); mgr.rebuild(); },
     help: fieldBoidsHelp,
+    history: mgr.history,
   });
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);

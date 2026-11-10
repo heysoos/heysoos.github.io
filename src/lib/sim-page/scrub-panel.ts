@@ -7,7 +7,7 @@
 // or ‹ returns to the list. With the list closed the canvas is the sim's own
 // pointer force, and a plain tap on it closes the list. Dragging sideways on
 // a row scrubs that param in place (vertical still scrolls). Long-press a row (or
-// tap the chip's name) to lock it. The card header (undo/redo, Presets,
+// tap the chip's name) to lock it. The card header (Presets,
 // Randomize) stays put while the body scrolls; Presets swaps the body for
 // the shared preset section inside the same card.
 
@@ -15,7 +15,7 @@ import type { UndoHistory } from '../presets/undo-history';
 import type { ParamLocks } from '../presets/param-locks';
 import type { ParamGroup, ParamSpec, NumSpec, EnumSpec, CustomRowApi } from './param-spec';
 import { fmtParam as fmt, toSlider, fromSlider, sliderFrac } from './param-math';
-import { DICE_SVG, UNDO_SVG, REDO_SVG, EXPAND_SVG, SHRINK_SVG } from './icons';
+import { DICE_SVG, EXPAND_SVG, SHRINK_SVG } from './icons';
 import { makeCustomSwatch, type CustomSwatch } from './custom-swatch';
 
 export type ScrubTabSize = 'strip' | 'full';
@@ -116,7 +116,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   const tabStrip = tabs.length
     ? `<div class="scrub-tabs"><button data-tab="">Params</button>${tabs.map(t => `<button data-tab="${t.name}">${t.name}</button>`).join('')}</div><button class="h-size" aria-label="Expand" hidden>${EXPAND_SVG}</button>`
     : '';
-  head.innerHTML = `<button class="h-undo" aria-label="Undo">${UNDO_SVG}</button><button class="h-redo" aria-label="Redo">${REDO_SVG}</button>${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">${DICE_SVG}<span>Randomize</span></button>`;
+  // undo / redo live in the control capsule (control-bar.ts), so Presets gets the room
+  head.innerHTML = `${tabStrip}<button class="h-presets">Presets ›</button><button class="h-random">${DICE_SVG}<span>Randomize</span></button>`;
   head.classList.toggle('tabbed', tabs.length > 0);
   const tabBody = document.createElement('div');
   tabBody.className = 'scrub-tab-body';
@@ -139,16 +140,8 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     rebuildPresets();
     scroll.scrollTop = 0;
   }
-  const undoBtn = head.querySelector<HTMLButtonElement>('.h-undo')!;
-  const redoBtn = head.querySelector<HTMLButtonElement>('.h-redo')!;
-  undoBtn.addEventListener('click', () => history?.undo());
-  redoBtn.addEventListener('click', () => history?.redo());
   presetsBtn.addEventListener('click', () => setPresetsMode(!presetsMode));
   head.querySelector('.h-random')!.addEventListener('click', () => { opts.onRandomize?.(); refresh(); });
-  const refreshHistory = () => {
-    undoBtn.disabled = !history?.canUndo();
-    redoBtn.disabled = !history?.canRedo();
-  };
 
   // ── Tabs: Params (the list) or one of opts.tabs, at strip or full size ──
   const sk = opts.storageKey;
@@ -418,7 +411,6 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     hint.innerHTML = cur?.stepDrag
       ? '<b>◀ ▶</b> one step at a time · tap to finish'
       : '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
-    refreshHistory();
   }
 
   // ── Scrub gesture on the overlay (only receives events while armed) ──
@@ -487,7 +479,6 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   host.addEventListener('pointercancel', () => { tapId = -1; });
 
   const unsubLocks = locks?.subscribe(refresh);
-  const unsubHistory = history?.subscribe(refreshHistory);
   refresh();
 
   return {
@@ -506,6 +497,6 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       if (on) { list.classList.add('opening'); window.setTimeout(() => list.classList.remove('opening'), 200); }
     },
     setTab(name) { activeTab = tabs.some(t => t.name === name) ? name : ''; mountTab(); },
-    dispose() { unsubLocks?.(); unsubHistory?.(); disposePresets?.(); disposeTab?.(); list.remove(); chip.remove(); overlay.remove(); },
+    dispose() { unsubLocks?.(); disposePresets?.(); disposeTab?.(); list.remove(); chip.remove(); overlay.remove(); },
   };
 }

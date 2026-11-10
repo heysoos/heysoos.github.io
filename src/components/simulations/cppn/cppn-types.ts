@@ -40,6 +40,8 @@ export interface CPPNConfig {
   layers: LayerConfig[];   // hidden layers only; input/output are fixed
   distribution: WeightDistribution;
   scale: number;           // coordinate space scale
+  /** Multiplies the whole latent vector (motion + drag offset) before it reaches the network. */
+  zScale: number;
   motion: MotionLadder;
   /** Input expressions (1..8) over x, y, r, a, t, px, py; see cppn-expr/. */
   inputs: string[];
@@ -58,6 +60,7 @@ export interface LegacyCPPNConfig {
   layers: LayerConfig[];
   distribution: WeightDistribution;
   scale: number;
+  zScale?: number;
   numBands?: number;
   zBands?: ZBand[];
   motion?: MotionLadder;
@@ -99,6 +102,7 @@ export function normalizeConfig(raw: CPPNConfig | LegacyCPPNConfig): CPPNConfig 
     layers: c.layers.map(l => ({ ...l })),
     distribution: { ...c.distribution },
     scale: c.scale,
+    zScale: c.zScale ?? 1,   // presets from before the z scale existed ran at 1
     motion,
     inputs: c.inputs && c.inputs.length > 0 ? c.inputs.slice(0, 8) : [...DEFAULT_INPUTS],
     normalizeInputs: c.normalizeInputs ?? false,

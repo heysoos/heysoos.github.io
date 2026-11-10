@@ -220,7 +220,7 @@ export async function setupBoids(
     },
   );
 
-  const bar = wireControlBar(viewport, { randomize, help: boidsHelp });
+  const bar = wireControlBar(viewport, { randomize, help: boidsHelp , history: mgr.history });
   const detachKeys = attachUndoKeys(mgr.history);
   const unwireHandle = wireHandleHistory(panel, mgr.history);
   document.addEventListener('pagehide', unwireHandle, { once: true });
