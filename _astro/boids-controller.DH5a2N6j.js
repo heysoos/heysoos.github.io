@@ -1,4 +1,4 @@
-import{i as V,r as X}from"./prng.CnvGDmZk.js";import{c as k,a as I}from"./utils.DCtYZSmS.js";const D=`struct Particle {\r
+import{i as V,r as X}from"./prng.C1YClSbh.js";import{c as k,a as I}from"./utils.DCtYZSmS.js";const D=`struct Particle {\r
   pos: vec2f,\r
   vel: vec2f,\r
 }\r
@@ -538,61 +538,61 @@ fn scatterData(@builtin(global_invocation_id) id: vec3u) {\r
   if (index >= params.numParticles) { return; }\r
   sortedParticles[index] = particlesRead[sortedIndices[index]];\r
 }\r
-`,Y=`// Shared vertex shader for fullscreen quad passes.
-// Covers clip space using a 6-vertex triangle list (no vertex buffer needed).
-struct QuadOutput {
-  @builtin(position) position: vec4f,
-  @location(0) uv: vec2f,
-}
-
-@vertex
-fn quadVert(@builtin(vertex_index) vi: u32) -> QuadOutput {
-  var pos = array<vec2f, 6>(
-    vec2f(-1.0, -1.0), vec2f( 1.0, -1.0), vec2f(-1.0,  1.0),
-    vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),
-  );
-  // UV: (0,0) top-left → (1,1) bottom-right, flipped y for texture coordinates
-  var uv = array<vec2f, 6>(
-    vec2f(0.0, 1.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0),
-    vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(1.0, 0.0),
-  );
-  var out: QuadOutput;
-  out.position = vec4f(pos[vi], 0.0, 1.0);
-  out.uv = uv[vi];
-  return out;
-}
-
-// Fade pass: sample trail texture, decay toward bgColor.
-//   params.rgb = bgColor (the target color trails fade back to — page background)
-//   params.a   = decayFactor (multiplier per frame applied to (c - bgColor))
-@group(0) @binding(0) var fadeSampler: sampler;
-@group(0) @binding(1) var fadeTex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> params: vec4f;
-
-@fragment
-fn fadeFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let c     = textureSample(fadeTex, fadeSampler, uv);
-  let bg    = params.rgb;
-  let decay = params.a;
-  // Operate on the delta from bg so the asymptote is bg, not 0. Subtract half a
-  // quantization step in the direction of bg after decaying. Without this, small
-  // |delta| values round back to themselves in bgra8unorm storage and never reach
-  // bg. select() clamps any component that crossed bg this frame.
-  let delta  = c.rgb - bg;
-  let faded  = delta * decay;
-  let biased = faded - sign(faded) * vec3f(0.5 / 255.0);
-  let snapped = select(biased, vec3f(0.0), sign(biased) != sign(faded));
-  return vec4f(bg + snapped, 1.0);
-}
-
-// Blit pass: copy trail texture to swapchain unchanged.
-@group(0) @binding(0) var blitSampler: sampler;
-@group(0) @binding(1) var blitTex: texture_2d<f32>;
-
-@fragment
-fn blitFrag(@location(0) uv: vec2f) -> @location(0) vec4f {
-  return textureSample(blitTex, blitSampler, uv);
-}
+`,Y=`// Shared vertex shader for fullscreen quad passes.\r
+// Covers clip space using a 6-vertex triangle list (no vertex buffer needed).\r
+struct QuadOutput {\r
+  @builtin(position) position: vec4f,\r
+  @location(0) uv: vec2f,\r
+}\r
+\r
+@vertex\r
+fn quadVert(@builtin(vertex_index) vi: u32) -> QuadOutput {\r
+  var pos = array<vec2f, 6>(\r
+    vec2f(-1.0, -1.0), vec2f( 1.0, -1.0), vec2f(-1.0,  1.0),\r
+    vec2f(-1.0,  1.0), vec2f( 1.0, -1.0), vec2f( 1.0,  1.0),\r
+  );\r
+  // UV: (0,0) top-left → (1,1) bottom-right, flipped y for texture coordinates\r
+  var uv = array<vec2f, 6>(\r
+    vec2f(0.0, 1.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0),\r
+    vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(1.0, 0.0),\r
+  );\r
+  var out: QuadOutput;\r
+  out.position = vec4f(pos[vi], 0.0, 1.0);\r
+  out.uv = uv[vi];\r
+  return out;\r
+}\r
+\r
+// Fade pass: sample trail texture, decay toward bgColor.\r
+//   params.rgb = bgColor (the target color trails fade back to — page background)\r
+//   params.a   = decayFactor (multiplier per frame applied to (c - bgColor))\r
+@group(0) @binding(0) var fadeSampler: sampler;\r
+@group(0) @binding(1) var fadeTex: texture_2d<f32>;\r
+@group(0) @binding(2) var<uniform> params: vec4f;\r
+\r
+@fragment\r
+fn fadeFrag(@location(0) uv: vec2f) -> @location(0) vec4f {\r
+  let c     = textureSample(fadeTex, fadeSampler, uv);\r
+  let bg    = params.rgb;\r
+  let decay = params.a;\r
+  // Operate on the delta from bg so the asymptote is bg, not 0. Subtract half a\r
+  // quantization step in the direction of bg after decaying. Without this, small\r
+  // |delta| values round back to themselves in bgra8unorm storage and never reach\r
+  // bg. select() clamps any component that crossed bg this frame.\r
+  let delta  = c.rgb - bg;\r
+  let faded  = delta * decay;\r
+  let biased = faded - sign(faded) * vec3f(0.5 / 255.0);\r
+  let snapped = select(biased, vec3f(0.0), sign(biased) != sign(faded));\r
+  return vec4f(bg + snapped, 1.0);\r
+}\r
+\r
+// Blit pass: copy trail texture to swapchain unchanged.\r
+@group(0) @binding(0) var blitSampler: sampler;\r
+@group(0) @binding(1) var blitTex: texture_2d<f32>;\r
+\r
+@fragment\r
+fn blitFrag(@location(0) uv: vec2f) -> @location(0) vec4f {\r
+  return textureSample(blitTex, blitSampler, uv);\r
+}\r
 `;class N{fadePipeline;blitPipeline;sampler;decayBuffer;trailTextures=[];trailViews=[];fadeBindGroups=[];blitBindGroups=[];readIdx=0;writeIdx=1;format="bgra8unorm";init(e,r,t,i){this.format=r;const s=e.createShaderModule({code:Y});this.sampler=e.createSampler({magFilter:"linear",minFilter:"linear"}),this.decayBuffer=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),this.fadePipeline=e.createRenderPipeline({layout:"auto",vertex:{module:s,entryPoint:"quadVert"},fragment:{module:s,entryPoint:"fadeFrag",targets:[{format:this.format}]},primitive:{topology:"triangle-list"}}),this.blitPipeline=e.createRenderPipeline({layout:"auto",vertex:{module:s,entryPoint:"quadVert"},fragment:{module:s,entryPoint:"blitFrag",targets:[{format:r}]},primitive:{topology:"triangle-list"}}),this._createTextures(e,t,i)}_createTextures(e,r,t){this.trailTextures.forEach(s=>s.destroy());const i={size:[r,t],format:this.format,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING};this.trailTextures=[e.createTexture(i),e.createTexture(i)],this.trailViews=this.trailTextures.map(s=>s.createView()),this.fadeBindGroups=[0,1].map(s=>e.createBindGroup({layout:this.fadePipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.sampler},{binding:1,resource:this.trailViews[s]},{binding:2,resource:{buffer:this.decayBuffer}}]})),this.blitBindGroups=[0,1].map(s=>e.createBindGroup({layout:this.blitPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.sampler},{binding:1,resource:this.trailViews[s]}]})),this.readIdx=0,this.writeIdx=1}resize(e,r,t){this._createTextures(e,r,t)}primeBg(e,r){const t=e.createCommandEncoder();for(const i of this.trailViews)t.beginRenderPass({colorAttachments:[{view:i,loadOp:"clear",storeOp:"store",clearValue:r}]}).end();e.queue.submit([t.finish()])}render(e,r,t,i,s,o){if(!i){const d=e.createCommandEncoder();o(d,r.getCurrentTexture().createView(),"clear"),e.queue.submit([d.finish()]);return}const a=s;e.queue.writeBuffer(this.decayBuffer,0,new Float32Array([a.r,a.g,a.b,t]));const p=e.createCommandEncoder();{const d=p.beginRenderPass({colorAttachments:[{view:this.trailViews[this.writeIdx],loadOp:"clear",storeOp:"store",clearValue:s}]});d.setPipeline(this.fadePipeline),d.setBindGroup(0,this.fadeBindGroups[this.readIdx]),d.draw(6),d.end()}o(p,this.trailViews[this.writeIdx],"load");{const d=p.beginRenderPass({colorAttachments:[{view:r.getCurrentTexture().createView(),loadOp:"clear",storeOp:"store",clearValue:s}]});d.setPipeline(this.blitPipeline),d.setBindGroup(0,this.blitBindGroups[this.writeIdx]),d.draw(6),d.end()}e.queue.submit([p.finish()]),this.readIdx=this.writeIdx,this.writeIdx=1-this.writeIdx}destroy(){this.trailTextures.forEach(e=>e.destroy())}}const O={LuminanceAttract:0,GradientAttract:3,SDF:5},C={Paint:"paint",ErasePaint:"erase-paint",MaskImage:"mask-image",Blur:"blur"},W=`// src/lib/webgpu/image-editor/shaders/brush.wgsl\r
 \r
 struct BrushParams {\r
@@ -842,94 +842,94 @@ fn modeMain(@builtin(global_invocation_id) id: vec3u) {\r
 \r
   textureStore(outTex, vec2i(id.xy), vec4f(dir * 0.5 + 0.5, mag, mask));\r
 }\r
-`,E=`// src/lib/webgpu/image-editor/shaders/mode-sdf.wgsl
-//
-// Jump-flood SDF using separate read/write textures (ping-pong).
-// rgba32float is unfilterable (sampleType:'unfilterable-float') and can't be
-// used as texture_2d<f32> with auto-layout.  rgba16float is filterable and
-// supports both TEXTURE_BINDING (read via textureLoad) and STORAGE_BINDING
-// (write via textureStore) without any WebGPU extensions.
-
-struct SdfParams {
-  step:           u32,
-  threshold_bits: u32,
-  _pad0: u32, _pad1: u32,
-}
-
-@group(0) @binding(0) var<uniform> p:      SdfParams;
-@group(0) @binding(1) var          inTex:  texture_2d<f32>;                        // source luminance (read)
-@group(0) @binding(2) var          srcTex: texture_2d<f32>;                        // JFA read source  (ping or pong)
-@group(0) @binding(3) var          dstTex: texture_storage_2d<rgba16float, write>; // JFA write dest
-@group(0) @binding(4) var          outTex: texture_storage_2d<rgba8unorm,  write>; // final force-field output
-
-fn lum(c: vec4f) -> f32 { return dot(c.rgb, vec3f(0.299, 0.587, 0.114)); }
-
-// Pass 1: seed
-// Writes pixel coordinate (as seed) or sentinel into dstTex.
-// srcTex (binding 2) is not used — no entry in the auto bind-group layout.
-@compute @workgroup_size(8, 8)
-fn sdfSeed(@builtin(global_invocation_id) id: vec3u) {
-  let dims      = textureDimensions(inTex);
-  if (id.x >= dims.x || id.y >= dims.y) { return; }
-  let threshold = bitcast<f32>(p.threshold_bits);
-  let c         = textureLoad(inTex, vec2i(id.xy), 0);
-  if (lum(c) > threshold) {
-    textureStore(dstTex, vec2i(id.xy), vec4f(f32(id.x), f32(id.y), 1.0, 1.0));
-  } else {
-    textureStore(dstTex, vec2i(id.xy), vec4f(-1.0, -1.0, 0.0, 0.0));
-  }
-}
-
-// Pass 2 (repeated): jump-flood step.
-// Reads from srcTex, writes to dstTex.  Caller alternates ping/pong between invocations.
-// inTex (binding 1) and outTex (binding 4) are not used here.
-@compute @workgroup_size(8, 8)
-fn sdfJump(@builtin(global_invocation_id) id: vec3u) {
-  let dims     = textureDimensions(srcTex);
-  if (id.x >= dims.x || id.y >= dims.y) { return; }
-  let step     = i32(p.step);
-  let cur      = textureLoad(srcTex, vec2i(id.xy), 0);
-  var best     = cur;
-  var bestDist = 1e9;
-  if (cur.z > 0.5) {
-    let d = vec2f(id.xy) - cur.xy;
-    bestDist = dot(d, d);
-  }
-  for (var dy = -1; dy <= 1; dy++) {
-    for (var dx = -1; dx <= 1; dx++) {
-      if (dx == 0 && dy == 0) { continue; }
-      let nc = vec2i(i32(id.x) + dx * step, i32(id.y) + dy * step);
-      if (any(nc < vec2i(0)) || any(nc >= vec2i(dims))) { continue; }
-      let nb = textureLoad(srcTex, nc, 0);
-      if (nb.z < 0.5) { continue; }
-      let dv = vec2f(id.xy) - nb.xy;
-      let d2 = dot(dv, dv);
-      if (d2 < bestDist) { bestDist = d2; best = nb; }
-    }
-  }
-  textureStore(dstTex, vec2i(id.xy), best);
-}
-
-// Pass 3: finalize — convert nearest-seed coordinate to force vector.
-// dstTex (binding 3) is not used here.
-@compute @workgroup_size(8, 8)
-fn sdfFinalize(@builtin(global_invocation_id) id: vec3u) {
-  let dims = textureDimensions(outTex);
-  if (id.x >= dims.x || id.y >= dims.y) { return; }
-  let src  = textureLoad(inTex, vec2i(id.xy), 0);
-  let data = textureLoad(srcTex, vec2i(id.xy), 0);
-  var dir  = vec2f(0.0);
-  var mag  = 0.0;
-  if (data.z > 0.5) {
-    let toSeed = data.xy - vec2f(id.xy);
-    let dist   = length(toSeed);
-    if (dist > 0.5) {
-      dir = -toSeed / dist;
-      mag = clamp(1.0 / (1.0 + dist * 0.02), 0.0, 1.0);
-    }
-  }
-  textureStore(outTex, vec2i(id.xy), vec4f(dir * 0.5 + 0.5, mag, src.a));
-}
+`,E=`// src/lib/webgpu/image-editor/shaders/mode-sdf.wgsl\r
+//\r
+// Jump-flood SDF using separate read/write textures (ping-pong).\r
+// rgba32float is unfilterable (sampleType:'unfilterable-float') and can't be\r
+// used as texture_2d<f32> with auto-layout.  rgba16float is filterable and\r
+// supports both TEXTURE_BINDING (read via textureLoad) and STORAGE_BINDING\r
+// (write via textureStore) without any WebGPU extensions.\r
+\r
+struct SdfParams {\r
+  step:           u32,\r
+  threshold_bits: u32,\r
+  _pad0: u32, _pad1: u32,\r
+}\r
+\r
+@group(0) @binding(0) var<uniform> p:      SdfParams;\r
+@group(0) @binding(1) var          inTex:  texture_2d<f32>;                        // source luminance (read)\r
+@group(0) @binding(2) var          srcTex: texture_2d<f32>;                        // JFA read source  (ping or pong)\r
+@group(0) @binding(3) var          dstTex: texture_storage_2d<rgba16float, write>; // JFA write dest\r
+@group(0) @binding(4) var          outTex: texture_storage_2d<rgba8unorm,  write>; // final force-field output\r
+\r
+fn lum(c: vec4f) -> f32 { return dot(c.rgb, vec3f(0.299, 0.587, 0.114)); }\r
+\r
+// Pass 1: seed\r
+// Writes pixel coordinate (as seed) or sentinel into dstTex.\r
+// srcTex (binding 2) is not used — no entry in the auto bind-group layout.\r
+@compute @workgroup_size(8, 8)\r
+fn sdfSeed(@builtin(global_invocation_id) id: vec3u) {\r
+  let dims      = textureDimensions(inTex);\r
+  if (id.x >= dims.x || id.y >= dims.y) { return; }\r
+  let threshold = bitcast<f32>(p.threshold_bits);\r
+  let c         = textureLoad(inTex, vec2i(id.xy), 0);\r
+  if (lum(c) > threshold) {\r
+    textureStore(dstTex, vec2i(id.xy), vec4f(f32(id.x), f32(id.y), 1.0, 1.0));\r
+  } else {\r
+    textureStore(dstTex, vec2i(id.xy), vec4f(-1.0, -1.0, 0.0, 0.0));\r
+  }\r
+}\r
+\r
+// Pass 2 (repeated): jump-flood step.\r
+// Reads from srcTex, writes to dstTex.  Caller alternates ping/pong between invocations.\r
+// inTex (binding 1) and outTex (binding 4) are not used here.\r
+@compute @workgroup_size(8, 8)\r
+fn sdfJump(@builtin(global_invocation_id) id: vec3u) {\r
+  let dims     = textureDimensions(srcTex);\r
+  if (id.x >= dims.x || id.y >= dims.y) { return; }\r
+  let step     = i32(p.step);\r
+  let cur      = textureLoad(srcTex, vec2i(id.xy), 0);\r
+  var best     = cur;\r
+  var bestDist = 1e9;\r
+  if (cur.z > 0.5) {\r
+    let d = vec2f(id.xy) - cur.xy;\r
+    bestDist = dot(d, d);\r
+  }\r
+  for (var dy = -1; dy <= 1; dy++) {\r
+    for (var dx = -1; dx <= 1; dx++) {\r
+      if (dx == 0 && dy == 0) { continue; }\r
+      let nc = vec2i(i32(id.x) + dx * step, i32(id.y) + dy * step);\r
+      if (any(nc < vec2i(0)) || any(nc >= vec2i(dims))) { continue; }\r
+      let nb = textureLoad(srcTex, nc, 0);\r
+      if (nb.z < 0.5) { continue; }\r
+      let dv = vec2f(id.xy) - nb.xy;\r
+      let d2 = dot(dv, dv);\r
+      if (d2 < bestDist) { bestDist = d2; best = nb; }\r
+    }\r
+  }\r
+  textureStore(dstTex, vec2i(id.xy), best);\r
+}\r
+\r
+// Pass 3: finalize — convert nearest-seed coordinate to force vector.\r
+// dstTex (binding 3) is not used here.\r
+@compute @workgroup_size(8, 8)\r
+fn sdfFinalize(@builtin(global_invocation_id) id: vec3u) {\r
+  let dims = textureDimensions(outTex);\r
+  if (id.x >= dims.x || id.y >= dims.y) { return; }\r
+  let src  = textureLoad(inTex, vec2i(id.xy), 0);\r
+  let data = textureLoad(srcTex, vec2i(id.xy), 0);\r
+  var dir  = vec2f(0.0);\r
+  var mag  = 0.0;\r
+  if (data.z > 0.5) {\r
+    let toSeed = data.xy - vec2f(id.xy);\r
+    let dist   = length(toSeed);\r
+    if (dist > 0.5) {\r
+      dir = -toSeed / dist;\r
+      mag = clamp(1.0 / (1.0 + dist * 0.02), 0.0, 1.0);\r
+    }\r
+  }\r
+  textureStore(outTex, vec2i(id.xy), vec4f(dir * 0.5 + 0.5, mag, src.a));\r
+}\r
 `,M=GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.COPY_SRC,F=GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_SRC|GPUTextureUsage.COPY_DST,A=GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_SRC|GPUTextureUsage.COPY_DST|GPUTextureUsage.STORAGE_BINDING;class K{device;brush;sampler;sourceTexture;imageMaskTexture;paintCanvasTexture;compositedTexture;blurTempTexture;processedTexture;sdfPingTexture;sdfPongTexture;compositePipeline;blurPipeline;modeLuminancePipeline;modeGradientPipeline;modeThresholdPipeline;sdfSeedPipeline;sdfJumpPipeline;sdfFinalizePipeline;transformUniform;blurUniformH;blurUniformV;modeUniform;sdfUniform;_compositeBG=null;_blurBGH=null;_blurBGV=null;_modeBG=null;_cachedModePipeline=null;_bgsDirty=!0;width=1;height=1;imageWidth=1;imageHeight=1;hasPaint=!1;hasImage=!1;_flipX=!1;transform={offsetX:0,offsetY:0,scaleX:1,scaleY:1};params={mode:O.LuminanceAttract,blurRadius:0,threshold:.5,invert:!1};thumbnailContext=null;previewContext=null;blitPipeline=null;init(e){this.device=e,this.brush=new H,this.brush.init(e),this.sampler=e.createSampler({magFilter:"linear",minFilter:"linear",addressModeU:"clamp-to-edge",addressModeV:"clamp-to-edge"}),this.transformUniform=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),this.blurUniformH=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),this.blurUniformV=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),this.modeUniform=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}),this.sdfUniform=e.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});const r=(t,i)=>e.createComputePipeline({layout:"auto",compute:{module:e.createShaderModule({code:t}),entryPoint:i}});this.compositePipeline=r(Z,"compositeMain"),this.blurPipeline=r(z,"blurMain"),this.modeLuminancePipeline=r(J,"modeMain"),this.modeGradientPipeline=r(j,"modeMain"),this.modeThresholdPipeline=r(Q,"modeMain"),this.sdfSeedPipeline=r(E,"sdfSeed"),this.sdfJumpPipeline=r(E,"sdfJump"),this.sdfFinalizePipeline=r(E,"sdfFinalize"),this._allocateTextures(1,1),this._clearMaskToOnes(),this._triggerReprocess()}_allocateTextures(e,r){const t=this.device,i=(o,a="rgba8unorm")=>t.createTexture({size:[e,r,1],format:a,usage:o});this.sourceTexture||(this.sourceTexture=t.createTexture({size:[1,1,1],format:"rgba8unorm",usage:M})),this.imageMaskTexture?.destroy(),this.paintCanvasTexture?.destroy(),this.compositedTexture?.destroy(),this.blurTempTexture?.destroy(),this.processedTexture?.destroy(),this.sdfPingTexture?.destroy(),this.sdfPongTexture?.destroy(),this.imageMaskTexture=i(A),this.paintCanvasTexture=i(A),this.compositedTexture=i(F),this.blurTempTexture=i(F),this.processedTexture=i(F);const s=GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.TEXTURE_BINDING;this.sdfPingTexture=i(s,"rgba16float"),this.sdfPongTexture=i(s,"rgba16float"),this.width=e,this.height=r,this._bgsDirty=!0,this._modeBG=null}_clearMaskToOnes(){const e=this.device.createCommandEncoder();e.beginRenderPass({colorAttachments:[{view:this.imageMaskTexture.createView(),loadOp:"clear",clearValue:{r:1,g:1,b:1,a:1},storeOp:"store"}]}).end(),this.device.queue.submit([e.finish()])}loadImage(e){const{device:r}=this;this.imageWidth=e.width,this.imageHeight=e.height,this.hasImage=!0,this.sourceTexture.destroy(),this.sourceTexture=r.createTexture({size:[e.width,e.height,1],format:"rgba8unorm",usage:M|GPUTextureUsage.RENDER_ATTACHMENT}),r.queue.copyExternalImageToTexture({source:e},{texture:this.sourceTexture},[e.width,e.height]),this._bgsDirty=!0,this._applyContainTransform(),this._triggerReprocess()}clearImage(){this.hasImage=!1,this._flipX=!1,this.sourceTexture.destroy(),this.sourceTexture=this.device.createTexture({size:[1,1,1],format:"rgba8unorm",usage:M}),this._bgsDirty=!0,this._clearMaskToOnes(),this.transform={offsetX:0,offsetY:0,scaleX:this.width,scaleY:this.height},this._triggerReprocess()}resetPaint(){const e=this.device.createCommandEncoder();e.beginRenderPass({colorAttachments:[{view:this.paintCanvasTexture.createView(),loadOp:"clear",clearValue:{r:0,g:0,b:0,a:0},storeOp:"store"}]}).end(),this.device.queue.submit([e.finish()]),this.hasPaint=!1,this._triggerReprocess()}setTransform(e){this.transform=e,this._triggerReprocess()}setMode(e){this.params.mode=e,this._triggerReprocess()}setBlurRadius(e){this.params.blurRadius=e,this._triggerReprocess()}setThreshold(e){this.params.threshold=e,this._triggerReprocess()}setInvert(e){this.params.invert=e,this._triggerReprocess()}brushStroke(e){const r=e.mode===C.MaskImage?this.imageMaskTexture:this.paintCanvasTexture;this.brush.stroke(e,r,this.blurTempTexture),e.mode!==C.MaskImage&&(this.hasPaint=!0),this._triggerReprocess()}resize(e,r){e===this.width&&r===this.height||(this._allocateTextures(e,r),this._clearMaskToOnes(),this.hasImage&&this._applyContainTransform(),this._triggerReprocess())}getOutputTexture(){return this.processedTexture}getCompositedTexture(){return this.compositedTexture}getOutputSampler(){return this.sampler}get canvasWidth(){return this.width}get canvasHeight(){return this.height}writeVideoFrame(e,r=!1){if(e instanceof HTMLVideoElement&&e.readyState<2)return;const{device:t}=this,i=e instanceof HTMLVideoElement?e.videoWidth:e.width,s=e instanceof HTMLVideoElement?e.videoHeight:e.height;if(!(i===0||s===0)){(!this.hasImage||this.imageWidth!==i||this.imageHeight!==s)&&(this.sourceTexture.destroy(),this.sourceTexture=t.createTexture({size:[i,s,1],format:"rgba8unorm",usage:M|GPUTextureUsage.RENDER_ATTACHMENT}),this.imageWidth=i,this.imageHeight=s,this.hasImage=!0,this._bgsDirty=!0,this._applyContainTransform()),this._flipX=r;try{t.queue.copyExternalImageToTexture({source:e,flipY:!1},{texture:this.sourceTexture},[i,s])}catch(o){console.warn("[ImageProcessor] copyExternalImageToTexture failed, frame skipped:",o);return}this._triggerReprocess()}}setThumbnailContext(e){this.thumbnailContext=e;const r=navigator.gpu.getPreferredCanvasFormat();e.configure({device:this.device,format:r,alphaMode:"premultiplied"}),this._buildBlitPipeline(r),this.renderThumbnail()}renderThumbnail(){this._blitToContext(this.thumbnailContext,this.processedTexture)}setPreviewContext(e){this.previewContext=e;const r=navigator.gpu.getPreferredCanvasFormat();e.configure({device:this.device,format:r,alphaMode:"premultiplied"}),this.blitPipeline||this._buildBlitPipeline(r)}clearPreviewContext(){this.previewContext=null}renderPreview(e){const r=e?this.processedTexture:this.compositedTexture;this._blitToContext(this.previewContext,r)}_blitToContext(e,r){if(!e||!this.blitPipeline)return;const t=e.getCurrentTexture(),i=this.device.createBindGroup({layout:this.blitPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:this.sampler},{binding:1,resource:r.createView()}]}),s=this.device.createCommandEncoder(),o=s.beginRenderPass({colorAttachments:[{view:t.createView(),loadOp:"clear",clearValue:{r:0,g:0,b:0,a:1},storeOp:"store"}]});o.setPipeline(this.blitPipeline),o.setBindGroup(0,i),o.draw(6),o.end(),this.device.queue.submit([s.finish()])}_buildBlitPipeline(e){const t=this.device.createShaderModule({code:`
       @group(0) @binding(0) var s: sampler;
       @group(0) @binding(1) var t: texture_2d<f32>;
