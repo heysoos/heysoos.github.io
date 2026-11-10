@@ -20,6 +20,7 @@ const POINTER_OFFSET = INPUTS_OFFSET + 4;
 const NORM_OFFSET   = POINTER_OFFSET + 4;  // 4 × vec4f: (mid, half) pairs, two inputs per vec4
 
 /** The expression clock wraps every 60 s: t = 2π · (clock mod 60) / 60. */
+const PIPELINE_CACHE = 6;   // built pipelines kept per page (one per recent layer-width combination)
 export const EXPR_PERIOD_S = 60;
 
 export type InputCompileResult =
@@ -129,8 +130,12 @@ export class CPPNController {
   readonly pointer: [number, number] = [0, 0];
   private layout!:        WeightLayout;
   private compiledArch   = ''; // architecture key the current pipeline was built for
-  private compileChain: Promise<void> = Promise.resolve();
-  private compilesInFlight = 0;
+  /** Built pipelines by architecture key (LRU): scrubbing back to a width is a bind, not a compile. */
+  private pipelines = new Map<string, GPURenderPipeline>();
+  /** Compiles in flight by key; a stale one finishes (WebGPU cannot cancel) but never blocks the newest. */
+  private compiling = new Map<string, Promise<GPURenderPipeline>>();
+  private busy = false;
+  private get compilesInFlight(): number { return this.compiling.size; }
   /** Fires with true when a shader compile starts and false when the queue drains (for a spinner). */
   onBusy: ((busy: boolean) => void) | null = null;
   private running   = false;
@@ -217,40 +222,57 @@ export class CPPNController {
   private _ensurePipeline(): Promise<void> {
     if (!this.gpu) return Promise.resolve();
     const key = this.archKey();
-    if (this.pipeline && key === this.compiledArch && this.compilesInFlight === 0) return Promise.resolve();
-    // Serialize compiles so a scrub that changes the architecture several
-    // times in a row builds pipelines in order and binds the last one.
-    this.compilesInFlight++;
-    if (this.compilesInFlight === 1) this.onBusy?.(true);
-    const run = this.compileChain.then(() => this._compileFor(key));
-    this.compileChain = run.catch(() => {});
-    return run.finally(() => {
-      this.compilesInFlight--;
-      if (this.compilesInFlight === 0) this.onBusy?.(false);
-    });
+    if (this.pipeline && key === this.compiledArch) { this._setBusy(); return Promise.resolve(); }
+    const cached = this.pipelines.get(key);
+    if (cached) { this._bindPipeline(key, cached); this._setBusy(); return Promise.resolve(); }
+    // No queue: the newest architecture compiles at once, alongside any stale
+    // compile still in flight, and only the one matching archKey() is bound.
+    let job = this.compiling.get(key);
+    if (!job) {
+      job = this._compile(key);
+      this.compiling.set(key, job);
+      const done = () => { this.compiling.delete(key); this._setBusy(); };
+      job.then(done, done);
+    }
+    this._setBusy();
+    return job.then(pipeline => { if (key === this.archKey()) this._bindPipeline(key, pipeline); this._setBusy(); });
   }
 
-  private async _compileFor(key: string): Promise<void> {
-    if (!this.gpu || key === this.compiledArch) return;
-    if (key !== this.archKey()) return;   // superseded while queued
-    const { device, format } = this.gpu;
-    const code   = generateShader(this.config, this.layout);
-    const module = device.createShaderModule({ code });
-    const info   = await module.getCompilationInfo();
-    const errs   = info.messages.filter(m => m.type === 'error');
-    if (errs.length) {
-      trackShaderError('CPPN: ' + errs[0].message);
-      throw new Error('CPPN shader error: ' + errs.map(e => e.message).join(', '));
-    }
-    const pipeline = await device.createRenderPipelineAsync({
-      layout: 'auto',
-      vertex:   { module, entryPoint: 'vertexMain' },
-      fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
-    });
-    if (key !== this.archKey()) return;   // a newer architecture arrived meanwhile
+  /** Busy = the current architecture is not bound yet and is compiling. */
+  private _setBusy(): void {
+    const b = this.compiledArch !== this.archKey() && this.compiling.has(this.archKey());
+    if (b !== this.busy) { this.busy = b; this.onBusy?.(b); }
+  }
+
+  private _bindPipeline(key: string, pipeline: GPURenderPipeline): void {
     this.pipeline = pipeline;
     this.compiledArch = key;
     this._rebuildBindGroup();
+  }
+
+  private async _compile(key: string): Promise<GPURenderPipeline> {
+    const { device, format } = this.gpu!;
+    const code   = generateShader(this.config, this.layout);   // sync: the config this key was taken from
+    const module = device.createShaderModule({ code });
+    let pipeline: GPURenderPipeline;
+    try {
+      pipeline = await device.createRenderPipelineAsync({
+        layout: 'auto',
+        vertex:   { module, entryPoint: 'vertexMain' },
+        fragment: { module, entryPoint: 'fragmentMain', targets: [{ format }] },
+      });
+    } catch (e) {
+      // only now pay for the compilation messages, to report the real error
+      const info = await module.getCompilationInfo();
+      const errs = info.messages.filter(m => m.type === 'error');
+      const msg  = errs.length ? errs.map(m => m.message).join(', ') : String(e);
+      trackShaderError('CPPN: ' + (errs[0]?.message ?? msg));
+      throw new Error('CPPN shader error: ' + msg);
+    }
+    this.pipelines.delete(key);
+    this.pipelines.set(key, pipeline);
+    while (this.pipelines.size > PIPELINE_CACHE) this.pipelines.delete(this.pipelines.keys().next().value!);
+    return pipeline;
   }
 
   private _rebuildBindGroup(): void {
