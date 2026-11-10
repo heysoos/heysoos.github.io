@@ -211,11 +211,11 @@ struct Params {
   z          : array<f32, ${Z_DIM}>,
   acts0      : vec4<u32>,
   acts1      : vec4<u32>,
-  view       : vec4f,          // world centre x, y, zoom, unused
+  view       : vec4f,          // world centre x, y (high f32), zoom, centre x low bits
   numInputs  : u32,
   exprTime   : f32,            // wrapped expression clock, 0..2π
   normFlag   : u32,
-  _pad       : u32,
+  viewLoY    : f32,            // centre y low bits (hi + lo ≈ an f64 centre)
   pointer    : vec4f,          // pointer x, y in world space
   norm       : array<vec4f, 4>, // per input (mid, half), two inputs per vec4
 }
@@ -253,8 +253,10 @@ fn fragmentMain(@builtin(position) fragPos: vec4f) -> @location(0) vec4f {
   // View: the screen maps to a window of the coordinate plane centred on
   // view.xy with half-extent (aspect·scale, scale) / zoom, so zooming
   // samples the function at a new scale instead of magnifying pixels.
-  let cx     = params.view.x + (uv.x * 2.0 - 1.0) * aspect * params.scale / params.view.z;
-  let cy     = params.view.y + (uv.y * 2.0 - 1.0) * params.scale / params.view.z;
+  // The low bits join the small screen offset before the big centre, so the
+  // view pans smoothly at any zoom (cx itself is still one f32 per pixel).
+  let cx     = params.view.x + (params.view.w + (uv.x * 2.0 - 1.0) * aspect * params.scale / params.view.z);
+  let cy     = params.view.y + (params.viewLoY + (uv.y * 2.0 - 1.0) * params.scale / params.view.z);
   let cr     = sqrt(cx * cx + cy * cy);
   let ca     = atan2(cy, cx);
   // Expression inputs: one bytecode program per slot, unused slots read 0.

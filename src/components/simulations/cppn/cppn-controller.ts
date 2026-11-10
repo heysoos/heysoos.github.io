@@ -15,12 +15,12 @@ export const PARAMS_FLOATS = 4 + Z_DIM + 8 + 4 + 4 + 4 + 16;
 const PARAMS_BYTES  = PARAMS_FLOATS * 4;
 const ACTS_OFFSET   = 4 + Z_DIM;
 const VIEW_OFFSET   = ACTS_OFFSET + 8;
-const INPUTS_OFFSET = VIEW_OFFSET + 4;     // numInputs (u32), exprTime, normFlag (u32), pad
+const INPUTS_OFFSET = VIEW_OFFSET + 4;     // numInputs (u32), exprTime, normFlag (u32), view centre y low bits
 const POINTER_OFFSET = INPUTS_OFFSET + 4;
 const NORM_OFFSET   = POINTER_OFFSET + 4;  // 4 × vec4f: (mid, half) pairs, two inputs per vec4
+const PIPELINE_CACHE = 6;   // built pipelines kept per page (one per recent layer-width combination)
 
 /** The expression clock wraps every 60 s: t = 2π · (clock mod 60) / 60. */
-const PIPELINE_CACHE = 6;   // built pipelines kept per page (one per recent layer-width combination)
 export const EXPR_PERIOD_S = 60;
 
 export type InputCompileResult =
@@ -701,9 +701,15 @@ export class CPPNController {
     params.set(z, 4);
     const acts = new Uint32Array(params.buffer, ACTS_OFFSET * 4, 8);
     this.config.layers.slice(0, 8).forEach((l, i) => { acts[i] = Math.max(0, ACTIVATION_IDS.indexOf(l.activation)); });
-    params[VIEW_OFFSET] = this.viewCx;
-    params[VIEW_OFFSET + 1] = this.viewCy;
+    // The centre goes up as hi + lo f32 pairs (x: view.x + view.w, y: view.y + viewLoY):
+    // a single f32 centre snaps by one ulp at a time, which deep in a zoom
+    // shifts the whole image by several pixels at once while panning.
+    const hx = Math.fround(this.viewCx), hy = Math.fround(this.viewCy);
+    params[VIEW_OFFSET] = hx;
+    params[VIEW_OFFSET + 1] = hy;
     params[VIEW_OFFSET + 2] = this.viewZoom;
+    params[VIEW_OFFSET + 3] = this.viewCx - hx;
+    params[INPUTS_OFFSET + 3] = this.viewCy - hy;
     const u32 = new Uint32Array(params.buffer, INPUTS_OFFSET * 4, 4);
     u32[0] = this.config.inputs.length;
     params[INPUTS_OFFSET + 1] = 2 * Math.PI * ((this.exprClock % EXPR_PERIOD_S) / EXPR_PERIOD_S);

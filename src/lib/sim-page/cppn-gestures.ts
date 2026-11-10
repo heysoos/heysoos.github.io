@@ -26,6 +26,10 @@ type Pt = { x: number; y: number; type: string; pan: boolean };
 export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement, ctrl: CPPNController): CPPNGesturesHandle {
   const pointers = new Map<number, Pt>();
   let gesture: { mx: number; my: number; d: number } | null = null;
+  // Set once two fingers are down, cleared when the last one lifts: the finger
+  // left behind after a pinch never scrubs the latent (its drift, a few px,
+  // would move z, and deep in a zoom that reads as a sudden jump of the view).
+  let pinched = false;
   let spaceDown = false;
 
   // Screen NDC: x right, y down, −1..1 over the canvas rect (matches fragPos).
@@ -113,7 +117,7 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, pan });
     try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     const t = touches();
-    if (t.length >= 2) gesture = gestureFrom(t[0], t[1]);
+    if (t.length >= 2) { gesture = gestureFrom(t[0], t[1]); pinched = true; }
     ctrl.holdMotion(true);
     if (pan || e.button === 1) e.preventDefault();
   };
@@ -133,7 +137,7 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     const r = canvas.getBoundingClientRect();
     const dsx = ((e.clientX - px) / r.width) * 2, dsy = ((e.clientY - py) / r.height) * 2;
     if (p.pan) { ctrl.panBy(dsx, dsy); return; }
-    if (pointers.size === 1) {                           // latent scrub
+    if (pointers.size === 1 && !pinched) {               // latent scrub
       ctrl.nudgeLatent((dsx / 2) * LATENT_PER_WIDTH, (-dsy / 2) * LATENT_PER_WIDTH);
     }
   };
@@ -141,7 +145,7 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     if (!pointers.delete(e.pointerId)) return;
     const t = touches();
     gesture = t.length >= 2 ? gestureFrom(t[0], t[1]) : null;
-    if (pointers.size === 0) ctrl.holdMotion(false);
+    if (pointers.size === 0) { ctrl.holdMotion(false); pinched = false; }
   };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
