@@ -301,6 +301,7 @@ export class CPPNController {
       this._rebuildBindGroup();
     }
     device.queue.writeBuffer(this.weightBuffer, 0, packed);
+    this.gpuDataVersion++;
   }
 
   // ── Architecture — recompute layout, rerandomize, recompile ──
@@ -411,6 +412,7 @@ export class CPPNController {
     const buf = new Float32Array(MAX_INPUTS * MAX_OPS * 4);
     this.programs.forEach((p, i) => { if (p) buf.set(p.ops, i * MAX_OPS * 4); });
     this.gpu.device.queue.writeBuffer(this.progBuffer, 0, buf);
+    this.gpuDataVersion++;
   }
 
   /**
@@ -650,8 +652,13 @@ export class CPPNController {
     this.lastTick = now;
     if (this.animate && !this.motionHeld && !this.paused) this.advanceMotion(dt);
     if (!this.paused) this.exprClock += dt;   // expression time (t), pauses with ⏸
-    this._draw((now - this.startTime) / 1000);
-    this.tickCount++;
+    // Draw only when the frame would differ: the canvas keeps showing the last
+    // one. Everything the image depends on is in the uniforms or a buffer upload.
+    const params = this._packParams((now - this.startTime) / 1000);
+    if (this._frameChanged(params)) {
+      this._submit(params);
+      this.tickCount++;   // frames actually drawn: the fps readout drops to 0 when idle
+    }
     if (Number.isFinite(this.maxFps)) {
       // Capped mode: wait for the GPU so the cap measures real frame time.
       this.usingRaf = false;
@@ -687,10 +694,38 @@ export class CPPNController {
       this.bandPhase[b] = (2 * Math.PI * m.speed * Math.pow(m.spread, b) * time) % (2 * Math.PI);
     }
     this._draw(time);
+    this.invalidate();   // the loop's next frame must not be skipped as "unchanged"
   }
 
-  private _draw(t: number): void {
-    const { device, context, canvas } = this.gpu!;
+  private _draw(t: number): void { this._submit(this._packParams(t)); }
+
+  /** Bumped on every weight / program upload; part of the "did anything change" check. */
+  private gpuDataVersion = 0;
+  private lastFrame: Float32Array | null = null;
+  private lastFrameKey = '';
+  private lastBindGroup: GPUBindGroup | null = null;
+
+  private _frameChanged(params: Float32Array): boolean {
+    // the expression clock and pointer matter only to inputs that read them
+    const usesT = this.config.inputs.some(src => /\bt\b/.test(src));
+    const usesP = this.config.inputs.some(src => /\b(px|py)\b/.test(src));
+    const cmp = params.slice();
+    cmp[2] = 0;                                              // wall time: not read by the shader
+    if (!usesT) cmp[INPUTS_OFFSET + 1] = 0;
+    if (!usesP) { cmp[POINTER_OFFSET] = 0; cmp[POINTER_OFFSET + 1] = 0; }
+    const key = `${this.gpuDataVersion}`;
+    const same = this.lastFrame !== null && key === this.lastFrameKey && this.bindGroup === this.lastBindGroup
+      && cmp.length === this.lastFrame.length && cmp.every((v, i) => Object.is(v, this.lastFrame![i]));
+    if (same) return false;
+    this.lastFrame = cmp; this.lastFrameKey = key; this.lastBindGroup = this.bindGroup;
+    return true;
+  }
+
+  /** Force the next tick to draw (e.g. the canvas was cleared from outside). */
+  invalidate(): void { this.lastFrame = null; }
+
+  private _packParams(t: number): Float32Array {
+    const { canvas } = this.gpu!;
     const z = this.computeZ();
 
     const params = new Float32Array(PARAMS_FLOATS);
@@ -717,6 +752,11 @@ export class CPPNController {
     params[POINTER_OFFSET] = this.pointer[0];
     params[POINTER_OFFSET + 1] = this.pointer[1];
     params.set(this.norms, NORM_OFFSET);
+    return params;
+  }
+
+  private _submit(params: Float32Array): void {
+    const { device, context } = this.gpu!;
     device.queue.writeBuffer(this.paramsBuffer, 0, params);
 
     const encoder = device.createCommandEncoder();
