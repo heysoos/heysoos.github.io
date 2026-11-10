@@ -85,8 +85,10 @@ export function createUndoHistory<S>(opts: UndoHistoryOpts<S>): UndoHistory {
 
   async function applyEntry(entry: Entry<S>, target: S): Promise<void> {
     current = target;
-    await opts.applySnapshot(target);
+    // the stacks already moved: tell listeners now (button states), not only
+    // after an async apply that may stall behind a compile or be superseded
     notify();
+    try { await opts.applySnapshot(target); } finally { notify(); }
     void entry;
   }
 

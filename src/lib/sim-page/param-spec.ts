@@ -12,6 +12,8 @@ export interface NumSpec<K extends string = string> {
   max: number;
   step: number;
   scale?: 'linear' | 'log';
+  /** See NumRange.knee (param-math.ts). */
+  knee?: readonly [number, number];
   /** Integer-valued param: the setter rounds. */
   int?: boolean;
   /** Drag moves the value by `step` per this many px instead of mapping

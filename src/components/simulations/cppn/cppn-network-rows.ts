@@ -1,5 +1,5 @@
 // src/components/simulations/cppn/cppn-network-rows.ts
-// The phone card's layer stack: an "in" row, one row per hidden layer
+// The phone card's layer stack: an "in" label row, one row per hidden layer
 // (index · width meter + number · activation chip), an "out" row, and
 // − / + layer buttons.
 //   · drag a row sideways            → scrub its width (recompiles when settled)
@@ -18,13 +18,48 @@ const ACT_STEP_PX = 26;       // slide distance per activation step
 const stop = (e: Event) => e.stopPropagation();
 
 export interface InputsRowOpts {
-  /** The `in` row shows a filmstrip of the input thumbnails and opens the inputs page. */
-  inputsRow?: {
-    count(): number;
-    /** Up to six 16px canvases (the row shows `+N` for the rest). */
-    thumbs(): HTMLCanvasElement[];
-    onOpen(): void;
-  };
+  /** Text of the stack's `in` row (HTML). */
+  inLabel?: () => string;
+}
+
+export interface InputsButtonOpts {
+  count(): number;
+  /** Up to six small canvases (the button shows `+N` for the rest). */
+  thumbs(): HTMLCanvasElement[];
+  onOpen(): void;
+}
+
+/** The Inputs group's button into the inputs page: a filmstrip of the input
+ *  thumbnails and a count. Long-press (phone) / alt-click (desktop) locks the
+ *  whole Inputs group. */
+export function renderInputsButton(container: HTMLElement, api: CustomRowApi, ir: InputsButtonOpts): { refresh(): void } {
+  const r = document.createElement('button');
+  r.className = 'cppn-layer io in cppn-inputs-btn';
+  r.title = 'Edit the input expressions';
+  r.innerHTML = `<span class="strip"></span><span class="go"></span>`;
+  api.attachLongPress(r, 'group:Inputs');
+  let pressed = 0;
+  r.addEventListener('pointerdown', () => { pressed = performance.now(); });
+  r.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.altKey) return;   // attachLongPress already toggled the lock on alt-click (desktop)
+    const held = pressed && performance.now() - pressed > 400;   // the long-press already fired
+    pressed = 0;
+    if (held) return;
+    ir.onOpen();
+  });
+  container.appendChild(r);
+  function refresh(): void {
+    const strip = r.querySelector<HTMLElement>('.strip')!;
+    strip.innerHTML = '';
+    ir.thumbs().slice(0, 6).forEach(c => strip.appendChild(c));
+    const n = ir.count();
+    if (n > 6) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${n - 6}`; strip.appendChild(m); }
+    r.querySelector<HTMLElement>('.go')!.textContent = `${n} input${n === 1 ? '' : 's'} ›`;
+    r.classList.toggle('locked', api.isLocked('group:Inputs'));
+  }
+  refresh();
+  return { refresh };
 }
 
 export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row', opts: InputsRowOpts = {}): { refresh(): void } {
@@ -166,45 +201,19 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     chip.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  // The `in` row is a plain label here; the inputs themselves (thumbnails,
+  // the button into the inputs page) live in the Inputs group above.
   let inRow: HTMLElement | null = null;
-  function buildInRow(): HTMLElement {
-    const ir = opts.inputsRow;
-    if (!ir) return ioRow('in', 'x · y · r · z<sub>16</sub>');
-    const r = document.createElement('button');
-    r.className = 'cppn-layer io in';
-    r.title = 'Edit the input expressions';
-    r.innerHTML = `<span class="ix">in</span><span class="strip"></span><span class="go"></span>`;
-    // Long-press (phone) / alt-click (desktop) locks every input expression (`group:Inputs`).
-    api.attachLongPress(r, 'group:Inputs');
-    let pressed = 0;
-    r.addEventListener('pointerdown', () => { pressed = performance.now(); });
-    r.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (e.altKey) return;   // attachLongPress already toggled the lock on alt-click (desktop)
-      const held = pressed && performance.now() - pressed > 400;   // the long-press already fired
-      pressed = 0;
-      if (held) return;
-      ir.onOpen();
-    });
-    return r;
-  }
+  const inText = () => opts.inLabel?.() ?? 'x · y · r · z<sub>16</sub>';
   function refreshInRow(): void {
-    const ir = opts.inputsRow;
-    if (!ir || !inRow) return;
-    const strip = inRow.querySelector<HTMLElement>('.strip')!;
-    strip.innerHTML = '';
-    const thumbs = ir.thumbs();
-    thumbs.slice(0, 6).forEach(c => strip.appendChild(c));
-    const n = ir.count();
-    if (n > 6) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${n - 6}`; strip.appendChild(m); }
-    inRow.querySelector<HTMLElement>('.go')!.textContent = `${n} input${n === 1 ? '' : 's'} · z16 ›`;
-    inRow.classList.toggle('locked', api.isLocked('group:Inputs'));
+    const w = inRow?.querySelector<HTMLElement>('.w');
+    if (w) w.innerHTML = inText();
   }
 
   function build(n: number): void {
     stack.innerHTML = '';
     rows = [];
-    inRow = buildInRow();
+    inRow = ioRow('in', inText());
     stack.appendChild(inRow);
     for (let i = 0; i < n; i++) {
       const spec = layerWidthSpec(i);

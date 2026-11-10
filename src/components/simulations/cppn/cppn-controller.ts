@@ -114,6 +114,11 @@ function defaultConfig(): CPPNConfig {
 }
 
 // ── Controller ────────────────────────────────────────────────────
+/** GPU frame time above which the loop keeps only one frame in flight. */
+const SLOW_FRAME_MS = 20;
+/** Floor for the adaptive backing-size multiplier. */
+const MIN_RENDER_SCALE = 0.5;
+
 export class CPPNController {
   private gpu:           WebGPUContext | null = null;
   private pipeline:      GPURenderPipeline | null = null;
@@ -143,6 +148,13 @@ export class CPPNController {
   private paused    = false;   // ⏸: motion frozen, frames still drawn (zoom/pan/edits stay live)
   private animId    = 0;
   private usingRaf  = true;
+  /** Smoothed submit → GPU-done time of drawn frames, ms. */
+  private gpuMs = 0;
+  /** Backing-size multiplier the loop lowers when frames are slow. */
+  renderScale = 1;
+  /** Let the loop trade resolution for frame time (heavy presets on phones). */
+  adaptiveResolution = true;
+  private lastScaleCheck = 0;
   maxFps    = Infinity;
   tickCount = 0;
   private animate   = true;
@@ -616,6 +628,7 @@ export class CPPNController {
     const dpr = window.devicePixelRatio || 1;
     let w = Math.floor(canvas.clientWidth  * dpr);
     let h = Math.floor(canvas.clientHeight * dpr);
+    if (this.renderScale < 1) { w = Math.floor(w * this.renderScale); h = Math.floor(h * this.renderScale); }
     if (this.maxResolution > 0) {
       const longest = Math.max(w, h);
       if (longest > this.maxResolution) {
@@ -657,9 +670,17 @@ export class CPPNController {
     // Draw only when the frame would differ: the canvas keeps showing the last
     // one. Everything the image depends on is in the uniforms or a buffer upload.
     const params = this._packParams((now - this.startTime) / 1000);
+    let drew = false;
     if (this._frameChanged(params)) {
       this._submit(params);
       this.tickCount++;   // frames actually drawn: the fps readout drops to 0 when idle
+      drew = true;
+      const sent = performance.now();
+      void device.queue.onSubmittedWorkDone().then(() => {
+        const ms = performance.now() - sent;
+        this.gpuMs = this.gpuMs ? this.gpuMs * 0.8 + ms * 0.2 : ms;
+      });
+      this._adaptScale(now);
     }
     if (Number.isFinite(this.maxFps)) {
       // Capped mode: wait for the GPU so the cap measures real frame time.
@@ -669,13 +690,40 @@ export class CPPNController {
         const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
         this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
       });
+    } else if (drew && this.gpuMs > SLOW_FRAME_MS) {
+      // Slow shader: one frame in flight at a time. Queuing a new heavy frame
+      // every rAF keeps the GPU saturated, and the page's own compositing
+      // (panel, scrolling, the capsule) waits behind it — the UI then runs at
+      // the shader's frame rate. Waiting for the GPU before the next rAF
+      // leaves it gaps to composite the UI in.
+      this.usingRaf = false;
+      void device.queue.onSubmittedWorkDone().then(() => {
+        if (!this.running) return;
+        this.usingRaf = true;
+        this.animId = requestAnimationFrame(this.tick);
+      });
     } else {
-      // Unlimited: let the browser pipeline CPU and GPU work. Waiting on a
+      // Fast shader: let the browser pipeline CPU and GPU work. Waiting on a
       // GPU fence here quantised the frame rate to vsync divisors.
       this.usingRaf = true;
       this.animId = requestAnimationFrame(this.tick);
     }
   };
+
+  /** Lower the backing resolution while frames take longer than ~30 fps
+   *  allows, raise it back when they are cheap again. Stepped and spaced out
+   *  (a resize reallocates the swapchain), with a gap between the two
+   *  thresholds so it does not oscillate. */
+  private _adaptScale(now: number): void {
+    if (now - this.lastScaleCheck < 600) return;
+    this.lastScaleCheck = now;
+    if (!this.adaptiveResolution) { this.renderScale = 1; return; }
+    if (this.gpuMs > 30 && this.renderScale > MIN_RENDER_SCALE) {
+      this.renderScale = Math.max(MIN_RENDER_SCALE, this.renderScale * 0.8);
+    } else if (this.gpuMs < 12 && this.renderScale < 1) {
+      this.renderScale = Math.min(1, this.renderScale * 1.15);
+    }
+  }
 
   /**
    * Reproducible still for /admin/og: an exact backing size, per-dimension

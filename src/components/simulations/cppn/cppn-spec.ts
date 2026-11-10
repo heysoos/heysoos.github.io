@@ -59,16 +59,16 @@ export type FlatKey = keyof CPPNFlatParams & string;
 export const ARCH_KEYS: FlatKey[] = ['layers', ...Array.from({ length: MAX_LAYERS }, (_, i) => [`layer${i}Width`, `layer${i}Act`] as FlatKey[]).flat()];
 export const WEIGHT_KEYS: FlatKey[] = ['distType', 'sigma', 'a', 'glorotScale', 'sparsity', 'magnitude', 'seed'];
 export const isArchKey = (k: string): boolean => (ARCH_KEYS as string[]).includes(k);
-export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands', 'zScale'];
+export const MOTION_KEYS: FlatKey[] = ['animate', 'speed', 'spread', 'depth', 'falloff', 'bands'];
 export const INPUT_LOCK_KEYS: string[] = Array.from({ length: 8 }, (_, i) => `input${i}`);
 /** Group locks are stored as `group:<Name>` so items added to a group later are covered. */
 export const GROUP_LOCK_PREFIX = 'group:';
 const GROUP_MEMBERS: Record<string, string[]> = {
   Network: [...ARCH_KEYS, ...INPUT_LOCK_KEYS],
-  Inputs: INPUT_LOCK_KEYS,
+  Inputs: [...INPUT_LOCK_KEYS, 'scale', 'zScale'],
   Weights: WEIGHT_KEYS,
   Motion: MOTION_KEYS,
-  View: ['scale'],
+  View: ['scale'],   // a group before Inputs absorbed it; keeps old saved locks working
 };
 /** Lock keys with every `group:*` entry expanded to its member keys (the group key itself is kept). */
 export function expandGroupLocks(keys: readonly string[]): string[] {
@@ -221,6 +221,12 @@ export const layerWidthSpec = (i: number): NumSpec<FlatKey> =>
   num(`layer${i}Width` as FlatKey, `Layer ${i + 1} width`, MIN_WIDTH, MAX_WIDTH, 1, { scale: 'log', int: true });
 
 export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
+  // What the network is fed: the expressions (a custom button into the
+  // inputs page, attached by the sim setup) and the two scales on them.
+  { name: 'Inputs', items: [
+    num('scale', 'Coordinate scale', 0.1, 20, 0.01, { knee: [1, 3] }),
+    num('zScale', 'Z scale', 0, 10, 0.01, { knee: [1, 3] }),
+  ] },
   // The Network group is a custom block (cppn-network-rows.ts): one row per
   // layer. The sim setup attaches it so it can carry the budget note.
   { name: 'Network', items: [] },
@@ -240,9 +246,5 @@ export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
     num('depth', 'Depth', 0.02, 0.6, 0.01, { scale: 'log' }),
     num('falloff', 'Falloff', 0.3, 1, 0.05),
     num('bands', 'Bands', 1, 4, 1, { int: true }),
-    num('zScale', 'Z scale', 0, 3, 0.01),
-  ] },
-  { name: 'View', items: [
-    num('scale', 'Coordinate scale', 0.1, 5, 0.05),
   ] },
 ];

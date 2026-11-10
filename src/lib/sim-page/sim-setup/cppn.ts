@@ -19,7 +19,7 @@ import {
 import { BUDGET_DESKTOP, BUDGET_PHONE, flatParamCount, randomizeFlat, randomizeInputs } from '../../../components/simulations/cppn/cppn-randomize';
 import { loadGenSettings, saveGenSettings } from '../../../components/simulations/cppn/cppn-expr/settings';
 import type { GenSettings } from '../../../components/simulations/cppn/cppn-expr/generator';
-import { renderNetworkRows } from '../../../components/simulations/cppn/cppn-network-rows';
+import { renderNetworkRows, renderInputsButton } from '../../../components/simulations/cppn/cppn-network-rows';
 import { buildInputsPage, type InputsApi } from '../../../components/simulations/cppn/cppn-inputs-panel';
 import { createInputsBand, type InputsBandHandle } from '../../../components/simulations/cppn/cppn-inputs-band';
 import { makeThumb } from '../../../components/simulations/cppn/cppn-expr/thumb';
@@ -262,14 +262,19 @@ export async function setupCPPN(
   const groups: ParamGroup<string>[] = CPPN_GROUPS.map(g => g.name === 'Network'
     ? { ...g,
         note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat(), ctrl.config.inputs.length).toLocaleString()} / ${budget().toLocaleString()} weights`,
-        render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass, { inputsRow: {
+        render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass, {
+          inLabel: () => `${ctrl.config.inputs.length} input${ctrl.config.inputs.length === 1 ? '' : 's'} · z<sub>16</sub>`,
+        }) }
+    : g.name === 'Inputs'
+    ? { ...g,
+        render: (c, api) => renderInputsButton(c, api, {
           count: () => ctrl.config.inputs.length,
           thumbs: inputThumbs,
           onOpen: () => {
             if (desktop) { desktop.setMode('inputs'); panelMode = 'inputs'; }
             else if (scrub) openBand();
           },
-        } }) }
+        }) }
     : g);
 
   function ensureScrub(): void {

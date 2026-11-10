@@ -16,7 +16,7 @@ import type { ParamLocks } from '../../../lib/presets/param-locks';
 import { createMeterRow, attachMeterDrag, type MeterRowHandle } from '../../../lib/sim-page/meter-row';
 import { pillStyle } from '../boids/panel/panel-styles';
 import { CPPN_GROUPS, configFromFlat, isArchKey, isWeightKey, toFlat, type CPPNFlatParams, type FlatKey } from './cppn-spec';
-import { renderNetworkRows } from './cppn-network-rows';
+import { renderNetworkRows, renderInputsButton } from './cppn-network-rows';
 import { DICE_SVG, UNDO_SVG, REDO_SVG } from '../../../lib/sim-page/icons';
 import { makeCustomSwatch } from '../../../lib/sim-page/custom-swatch';
 import { makeThumb } from './cppn-expr/thumb';
@@ -100,12 +100,13 @@ export function buildCPPNPanel(
   const params = opts.params ?? direct?.params;
   const { history, locks } = opts;
   // Default groups (admin): the `in` row opens the inputs page when one is provided.
-  const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g => g.name === 'Network'
-    ? { ...g, render: (c, a, rowClass) => renderNetworkRows(c, a, rowClass, ctrl && opts.inputsPage ? { inputsRow: {
+  const groups: ParamGroup<string>[] = opts.groups ?? CPPN_GROUPS.map(g =>
+    g.name === 'Network' ? { ...g, render: (c, a, rowClass) => renderNetworkRows(c, a, rowClass) }
+    : g.name === 'Inputs' && ctrl && opts.inputsPage ? { ...g, render: (c, a) => renderInputsButton(c, a, {
         count: () => ctrl.config.inputs.length,
         thumbs: () => ctrl.config.inputs.slice(0, 6).map(src => makeThumb(src, 16, { normalize: ctrl.config.normalizeInputs })),
         onOpen: () => setMode('inputs'),
-      } } : {}) }
+      }) }
     : g);
 
   container.innerHTML = '';
@@ -175,7 +176,7 @@ export function buildCPPNPanel(
     get, set, commit,
     attachRowDrag: (row, spec: NumSpec) => {
       const drag = attachMeterDrag(row, {
-        label: spec.label, min: spec.min, max: spec.max, step: spec.step, scale: spec.scale, int: spec.int, stepDrag: spec.stepDrag,
+        label: spec.label, min: spec.min, max: spec.max, step: spec.step, scale: spec.scale, knee: spec.knee, int: spec.int, stepDrag: spec.stepDrag,
         get: () => get(spec.key), set: (v) => set(spec.key, v), history, refresh,
       });
       row.addEventListener('click', (e) => { if (drag.suppressClick()) e.stopImmediatePropagation(); }, { capture: true });
