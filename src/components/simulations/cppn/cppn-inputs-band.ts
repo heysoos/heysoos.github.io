@@ -125,15 +125,16 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     [...vList.querySelectorAll<HTMLElement>('.band-two > div')].forEach((el, k) => { if (prevScroll[k]) el.scrollTop = prevScroll[k]; });
   }
   function attachRowGestures(row: HTMLElement, i: number): void {
-    let x0 = 0, moved = false, timer = 0, id = -1;
+    let x0 = 0, y0 = 0, moved = false, timer = 0, id = -1;
     row.addEventListener('pointerdown', (e) => {
       if ((e.target as HTMLElement).closest('.swipe')) return;
-      id = e.pointerId; x0 = e.clientX; moved = false;
+      id = e.pointerId; x0 = e.clientX; y0 = e.clientY; moved = false;
       timer = window.setTimeout(() => { timer = 0; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS);
     });
     row.addEventListener('pointermove', (e) => {
       if (e.pointerId !== id) return;
-      if (Math.abs(e.clientX - x0) > SLOP) { moved = true; if (timer) { clearTimeout(timer); timer = 0; } }
+      // any drag (a scroll as much as a swipe) means this was not a tap
+      if (Math.hypot(e.clientX - x0, e.clientY - y0) > SLOP) { moved = true; if (timer) { clearTimeout(timer); timer = 0; } }
     });
     const end = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
@@ -146,11 +147,11 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     row.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   function attachTileGestures(tile: HTMLElement, i: number): void {
-    let timer = 0, fired = false;
-    tile.addEventListener('pointerdown', () => { fired = false; timer = window.setTimeout(() => { fired = true; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS); });
-    const cancel = () => clearTimeout(timer);
-    tile.addEventListener('pointermove', cancel); tile.addEventListener('pointercancel', cancel);
-    tile.addEventListener('pointerup', () => { clearTimeout(timer); if (!fired) openEdit(i); });
+    let timer = 0, fired = false, moved = false, x0 = 0, y0 = 0;
+    tile.addEventListener('pointerdown', (e) => { fired = false; moved = false; x0 = e.clientX; y0 = e.clientY; timer = window.setTimeout(() => { fired = true; api.setLocked(i, !api.isLocked(i)); vibrate(); renderList(); }, LONG_PRESS_MS); });
+    tile.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > SLOP) { moved = true; clearTimeout(timer); } });
+    tile.addEventListener('pointercancel', () => { moved = true; clearTimeout(timer); });
+    tile.addEventListener('pointerup', () => { clearTimeout(timer); if (!fired && !moved) openEdit(i); });
     tile.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 

@@ -9,7 +9,8 @@
 // scrub compiles once when the finger settles, and the viewport carries
 // .sim-busy while a compile is in flight (spinner on ⚄, "compiling" by the
 // fps readout).
-import type { CPPNController } from '../../../components/simulations/cppn/cppn-controller';
+import { generateWeights, type CPPNController } from '../../../components/simulations/cppn/cppn-controller';
+import { computeWeightLayout } from '../../../components/simulations/cppn/cppn-codegen';
 import { buildCPPNPanel } from '../../../components/simulations/cppn/cppn-panel';
 import {
   CPPN_GROUPS, DEFAULT_FLAT, GROUP_LOCK_PREFIX, configFromFlat, expandGroupLocks, isArchKey, isWeightKey, presetToBody, prepareCPPNBody, toFlat,
@@ -83,6 +84,13 @@ export async function setupCPPN(
       const b = prepareCPPNBody(body as CPPNBody, ctrl.config.inputs, effectiveLockedKeys());
       const current = toFlat(ctrl.config, ctrl.seed, ctrl.isAnimating);
       for (const k of effectiveLockedKeys()) if (k in current) (b.params as Record<string, unknown>)[k] = current[k as FlatKey];
+      // A locked layer width / count leaves the preset's exact weights the wrong
+      // size; the controller then regenerates them from the seed. Do the same
+      // here, or the dirty check compares against weights that were never applied
+      // and that preset asks "save or discard?" forever.
+      const cfg = { ...configFromFlat(ctrl.config, b.params), inputs: b.inputs ?? ctrl.config.inputs };
+      const layout = computeWeightLayout(cfg);
+      if (!b.weights || b.weights.length !== layout.totalCount) b.weights = Array.from(generateWeights(layout, cfg, b.params.seed >>> 0));
       return b;
     },
     locks,

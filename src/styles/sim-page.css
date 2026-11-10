@@ -1269,8 +1269,10 @@
 
 /* ── CPPN phone inputs band (300px at rest, 440px while editing; over the canvas, never full screen) ── */
 .sim-cppn .scrub-list { touch-action: pan-y pinch-zoom; }
-/* The band owns its touches (swipe left/down = close, right = back); only a list that actually overflows pans. */
-.sim-cppn .inputs-band, .inputs-band .band-row, .inputs-band .band-two > div, .inputs-band .band-drawer { touch-action: none; }
+/* The band owns its touches (swipe left/down = close, right = back); only a list that actually overflows pans.
+   Rows stay `auto` so they inherit their scroller's pan-y: a `none` on the row would block scrolling from
+   anywhere but the gaps, and the release would then read as a tap. */
+.sim-cppn .inputs-band, .inputs-band .band-two > div, .inputs-band .band-drawer { touch-action: none; }
 .inputs-band .can-scroll { touch-action: pan-y; }
 /* Scrub card open/close: a fast slide, no drag gesture (tap the canvas or × to close). */
 @keyframes scrub-in { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
