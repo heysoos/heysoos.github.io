@@ -266,9 +266,7 @@ export async function setupCPPN(
   const groups: ParamGroup<string>[] = CPPN_GROUPS.map(g => g.name === 'Network'
     ? { ...g,
         note: () => `${Math.round(flat().layers)} layers · ${flatParamCount(flat(), ctrl.config.inputs.length).toLocaleString()} / ${budget().toLocaleString()} weights`,
-        render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass, {
-          inLabel: () => `${ctrl.config.inputs.length} input${ctrl.config.inputs.length === 1 ? '' : 's'} · z<sub>16</sub>`,
-        }) }
+        render: (c, api, rowClass) => renderNetworkRows(c, api, rowClass) }
     : g.name === 'Inputs'
     ? { ...g,
         render: (c, api) => renderInputsButton(c, api, {

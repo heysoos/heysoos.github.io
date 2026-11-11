@@ -259,6 +259,16 @@
 .scrub-guide .g-v::after { content: '▼ fine −'; position: absolute; bottom: 5rem; left: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 0.6rem; color: var(--text-muted); white-space: nowrap; }
 .scrub-guide .g-ticks { position: absolute; left: var(--x); top: var(--y); }
 .scrub-guide .g-ticks i { position: absolute; width: 1px; background: var(--accent); opacity: 0.55; }
+.scrub-guide .g-vticks { position: absolute; left: var(--x); top: var(--y); }
+.scrub-guide .g-vticks i { position: absolute; height: 1px; background: var(--accent); opacity: 0.55; }
+.scrub-guide :is(.g-ticks, .g-vticks) small { position: absolute; font-family: ui-monospace, Menlo, monospace; font-size: 0.55rem; color: var(--text-muted); white-space: nowrap; }
+.scrub-guide .g-ticks small { top: -7px; }
+.scrub-guide .g-vticks small { left: 6px; }
+/* the locked axis is lit, the other dims */
+.scrub-guide :is(.g-h, .g-v, .g-ticks, .g-vticks) { transition: opacity 0.15s; }
+.scrub-guide.ax-v :is(.g-h, .g-ticks) { opacity: 0.18; }
+.scrub-guide.ax-v .g-v { opacity: 0.75; }
+.scrub-guide.ax-h :is(.g-v, .g-vticks) { opacity: 0.12; }
 .scrub-guide .g-read {
   position: absolute; left: var(--x); top: var(--y); transform: translate(-50%, calc(-100% - 60px));
   min-width: 100px; padding: 7px 12px 8px; border-radius: 9px;
@@ -1033,6 +1043,16 @@
   border-right: 1px solid color-mix(in srgb, var(--text-muted) 25%, transparent); border-radius: 6px 0 0 6px;
 }
 .cppn-layer .w { flex: 1; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+/* the width meter fills only the width cell; the chip sits beside it, so the meter is never under it */
+.cppn-layer:not(.io) { background: none !important; box-shadow: none; }
+.cppn-layer:not(.io) .w {
+  align-self: stretch; padding: 0 8px; border-radius: 0 6px 6px 0; justify-content: space-between;
+  background:
+    linear-gradient(90deg, transparent calc(var(--f) * 100% - 1px), var(--edge) calc(var(--f) * 100% - 1px), var(--edge) calc(var(--f) * 100%), transparent calc(var(--f) * 100%)),
+    linear-gradient(90deg, var(--meter) calc(var(--f) * 100%), transparent 0),
+    var(--inset-bg);
+}
+.cppn-layer.on .w { box-shadow: inset 0 0 0 1px var(--accent); }
 .cppn-layer .w b { font-weight: 500; color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; }
 .cppn-layer.io { background: var(--row-hover); border-radius: 6px; color: var(--text-muted); font-size: 0.62rem; cursor: default; }
 .cppn-layer .lk { display: none !important; }

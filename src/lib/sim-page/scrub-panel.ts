@@ -68,6 +68,11 @@ const stepFrom = (spec: NumSpec, from: number, steps: number): number =>
   Math.min(spec.max, Math.max(spec.min, from + Math.round(steps) * spec.step));
 const ROW_PX = 240;         // same, for a drag that starts on a list row
 const FINE_RATIO = 0.08;    // vertical travel is this fraction as sensitive
+const FINE_PX = COARSE_PX / FINE_RATIO;   // vertical travel for the full range
+const FINE_STEP_PX = 28;    // vertical fine always moves at least one step per this many px
+const AXIS_PX = 10;         // travel before a canvas drag picks its axis
+const SWITCH_PX = 40;       // off-axis travel (net of on-axis drift) that switches the axis
+const H_TICK_PX = COARSE_PX / 10;         // a horizontal tick = 10% of the range
 const LONG_PRESS_MS = 450;
 const PRESS_SLOP = 8;
 
@@ -91,7 +96,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   overlay.className = 'scrub-overlay';
   overlay.innerHTML = `
     <div class="scrub-guide">
-      <div class="g-h"></div><div class="g-v"></div><div class="g-ticks"></div>
+      <div class="g-h"></div><div class="g-v"></div><div class="g-ticks"></div><div class="g-vticks"></div>
       <div class="g-read"><small></small><span class="g-val"></span><div class="g-bar"><i></i></div></div>
     </div>
     <div class="scrub-hint"></div>`;
@@ -101,9 +106,17 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   const readVal = guide.querySelector<HTMLElement>('.g-val')!;
   const readBar = guide.querySelector<HTMLElement>('.g-bar i')!;
   const ticks = guide.querySelector<HTMLElement>('.g-ticks')!;
+  const vticks = guide.querySelector<HTMLElement>('.g-vticks')!;
   const hint = overlay.querySelector<HTMLElement>('.scrub-hint')!;
-  ticks.innerHTML = Array.from({ length: 11 }, (_, i) =>
-    `<i style="left:${(i - 5) * 22}px;height:${i === 5 ? 12 : 7}px;top:${i === 5 ? -6 : -3}px"></i>`).join('');
+  /** Tick rulers through the finger: spacing = the px one unit (label) takes on that axis. */
+  const drawTicks = (hPx: number, hLabel: string, vPx: number, vLabel: string) => {
+    ticks.innerHTML = Array.from({ length: 11 }, (_, i) =>
+      `<i style="left:${(i - 5) * hPx}px;height:${i === 5 ? 12 : 7}px;top:${i === 5 ? -6 : -3}px"></i>`).join('')
+      + `<small style="left:${5 * hPx + 6}px">${hLabel}</small>`;
+    vticks.innerHTML = Array.from({ length: 9 }, (_, i) =>
+      `<i style="top:${(i - 4) * vPx}px;width:${i === 4 ? 12 : 7}px;left:${i === 4 ? -6 : -3}px"></i>`).join('')
+      + `<small style="top:${4 * vPx + 2}px">${vLabel}</small>`;   // below: the readout sits above
+  };
 
   let cur: NumSpec | null = null;
   let visible = true;
@@ -410,12 +423,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     for (const { g, el } of groupHeads) el.classList.toggle('locked', locks?.isLocked(`group:${g.name}`) ?? false);
     for (const b of customBlocks) b.refresh();
     hint.innerHTML = cur?.stepDrag
-      ? '<b>◀ ▶</b> one step at a time · tap to finish'
+      ? '<b>◀ ▶ ▲ ▼</b> one step at a time · tap to finish'
       : '<b>◀ ▶</b> coarse · <b>▲ ▼</b> fine · tap to finish';
   }
 
   // ── Scrub gesture on the overlay (only receives events while armed) ──
+  // The drag locks to one axis (◀ ▶ coarse, ▲ ▼ fine) once it has moved AXIS_PX; sideways
+  // wobble during a fine drag is absorbed, and only a deliberate SWITCH_PX of off-axis travel
+  // switches axis (re-anchored at the current value, so nothing jumps).
   let dragId = -1, sx = 0, sy = 0, ss = 0, sv = 0, moved = false;
+  let axis: 'h' | 'v' | null = null, lx = 0, ly = 0, off = 0;
   const place = (e: PointerEvent) => {
     const r = host.getBoundingClientRect();
     guide.style.setProperty('--x', `${e.clientX - r.left}px`);
@@ -427,11 +444,45 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     readVal.textContent = fmt(cur, v);
     readBar.style.transform = `scaleX(${frac(cur, v)})`;
   };
-  overlay.addEventListener('pointerdown', (e) => {
-    if (!cur || dragId !== -1) return;
-    dragId = e.pointerId; sx = e.clientX; sy = e.clientY; moved = false;
+  const sRange = (spec: NumSpec) => toSlider(spec, spec.max) - toSlider(spec, spec.min);
+  const clampS = (spec: NumSpec, s: number) => Math.min(toSlider(spec, spec.max), Math.max(toSlider(spec, spec.min), s));
+  /** Vertical px a one-step change takes at `v` with the continuous fine rate. */
+  const finePxPerStep = (spec: NumSpec, v: number): number => {
+    const up = Math.min(spec.max, v + spec.step), dn = Math.max(spec.min, v - spec.step);
+    const a = up > v ? v : dn, b = up > v ? up : v;
+    const dS = Math.abs(toSlider(spec, b) - toSlider(spec, a));
+    return dS > 0 ? (dS / sRange(spec)) * FINE_PX : Infinity;
+  };
+  /** Rulers for the current anchor: horizontal 10% per tick; vertical 1% (or one step, if the
+   *  step is coarser than the fine rate can reach in FINE_STEP_PX). */
+  const anchorTicks = () => {
+    if (!cur) return;
+    if (cur.stepDrag) { drawTicks(cur.stepDrag, '1 step', cur.stepDrag, '1 step'); return; }
+    const stepped = finePxPerStep(cur, sv) > FINE_STEP_PX;
+    drawTicks(H_TICK_PX, '10%', stepped ? FINE_STEP_PX : FINE_PX / 100, stepped ? '1 step' : '1%');
+  };
+  const anchor = (x: number, y: number) => {
+    if (!cur) return;
+    sx = x; sy = y; off = 0;
     sv = get(cur.key as string);
     ss = toSlider(cur, sv);
+    anchorTicks();
+  };
+  /** Value for a drag of d px along the locked axis, from the anchor. */
+  const valueAt = (spec: NumSpec, ax: 'h' | 'v', d: number): number => {
+    if (spec.stepDrag) return stepFrom(spec, sv, d / spec.stepDrag);
+    if (ax === 'h') return fromSlider(spec, clampS(spec, ss + (d / COARSE_PX) * sRange(spec)));
+    // Fine: the continuous rate, but never slower than one step per FINE_STEP_PX
+    // (a 1..8 int would otherwise need ~390 px per step and feel dead).
+    const cont = fromSlider(spec, clampS(spec, ss + (d / FINE_PX) * sRange(spec)));
+    const step = stepFrom(spec, sv, d / FINE_STEP_PX);
+    return Math.abs(step - sv) > Math.abs(cont - sv) ? step : cont;
+  };
+  overlay.addEventListener('pointerdown', (e) => {
+    if (!cur || dragId !== -1) return;
+    dragId = e.pointerId; moved = false; axis = null;
+    lx = e.clientX; ly = e.clientY;
+    anchor(e.clientX, e.clientY);
     try { overlay.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     history?.beginGesture(cur.label);
     place(e); showRead(get(cur.key as string));
@@ -440,14 +491,24 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   overlay.addEventListener('pointermove', (e) => {
     if (e.pointerId !== dragId || !cur) return;
     e.preventDefault();
-    const range = toSlider(cur, cur.max) - toSlider(cur, cur.min);
-    const dx = e.clientX - sx, dy = -(e.clientY - sy);
-    if (!moved && Math.abs(dx) < PRESS_SLOP && Math.abs(dy) < PRESS_SLOP) return;
-    if (!moved) { moved = true; guide.classList.add('show'); }
-    // Stepwise params: one step per stepDrag px, sideways or up; the range mapping would skip millions.
-    const v = cur.stepDrag
-      ? stepFrom(cur, sv, (Math.abs(dx) >= Math.abs(dy) ? dx : dy) / cur.stepDrag)
-      : fromSlider(cur, Math.min(toSlider(cur, cur.max), Math.max(toSlider(cur, cur.min), ss + (dx / COARSE_PX) * range + (dy / COARSE_PX) * range * FINE_RATIO)));
+    const x = e.clientX, y = e.clientY;
+    if (!axis) {
+      const dx = x - sx, dy = y - sy;
+      if (Math.abs(dx) < AXIS_PX && Math.abs(dy) < AXIS_PX) return;
+      axis = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      if (!moved) { moved = true; guide.classList.add('show'); }
+    } else {
+      const ddx = x - lx, ddy = y - ly;
+      const on = axis === 'h' ? ddx : ddy, o = axis === 'h' ? ddy : ddx;
+      // Off-axis-dominant motion builds up; on-axis motion wears it back down (drift).
+      if (Math.abs(o) > Math.abs(on)) off += o;
+      else off -= Math.sign(off) * Math.min(Math.abs(off), Math.abs(on));
+      if (Math.abs(off) > SWITCH_PX) { axis = axis === 'h' ? 'v' : 'h'; anchor(x, y); }
+    }
+    lx = x; ly = y;
+    guide.classList.toggle('ax-h', axis === 'h');
+    guide.classList.toggle('ax-v', axis === 'v');
+    const v = valueAt(cur, axis, axis === 'h' ? x - sx : -(y - sy));
     set(cur.key as string, v);
     history?.touch();
     place(e); showRead(v); refresh();

@@ -1,6 +1,6 @@
 // src/components/simulations/cppn/cppn-network-rows.ts
-// The phone card's layer stack: an "in" label row, one row per hidden layer
-// (index · width meter + number · activation chip), an "out" row, and
+// The layer stack: one row per hidden layer (index · width meter + number,
+// then the activation chip beside it, never over the meter), an "out" row, and
 // − / + layer buttons.
 //   · drag a row sideways            → scrub its width (recompiles when settled)
 //   · drag the index cell up / down  → move the layer (its lock moves with it)
@@ -17,11 +17,6 @@ const HOLD_MS = 320;          // chip hold before sliding scrubs activations
 const SLOP = 8;
 const ACT_STEP_PX = 26;       // slide distance per activation step
 const stop = (e: Event) => e.stopPropagation();
-
-export interface InputsRowOpts {
-  /** Text of the stack's `in` row (HTML). */
-  inLabel?: () => string;
-}
 
 export interface InputsButtonOpts {
   count(): number;
@@ -63,7 +58,7 @@ export function renderInputsButton(container: HTMLElement, api: CustomRowApi, ir
   return { refresh };
 }
 
-export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row', opts: InputsRowOpts = {}): { refresh(): void } {
+export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, rowClass = 'scrub-row'): { refresh(): void } {
   container.className += ' cppn-layers';
   const stack = document.createElement('div');
   const foot = document.createElement('div');
@@ -202,20 +197,9 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
     chip.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  // The `in` row is a plain label here; the inputs themselves (thumbnails,
-  // the button into the inputs page) live in the Inputs group above.
-  let inRow: HTMLElement | null = null;
-  const inText = () => opts.inLabel?.() ?? 'x · y · r · z<sub>16</sub>';
-  function refreshInRow(): void {
-    const w = inRow?.querySelector<HTMLElement>('.w');
-    if (w) w.innerHTML = inText();
-  }
-
   function build(n: number): void {
     stack.innerHTML = '';
     rows = [];
-    inRow = ioRow('in', inText());
-    stack.appendChild(inRow);
     for (let i = 0; i < n; i++) {
       const spec = layerWidthSpec(i);
       const r = document.createElement('div');
@@ -243,7 +227,6 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
   function refresh(): void {
     const n = count();
     if (n !== built) build(n);
-    refreshInRow();
     rows.forEach((row, i) => {
       const spec = layerWidthSpec(i);
       const v = api.get(spec.key);
