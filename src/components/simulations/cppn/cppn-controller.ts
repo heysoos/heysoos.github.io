@@ -114,8 +114,8 @@ function defaultConfig(): CPPNConfig {
 }
 
 // ── Controller ────────────────────────────────────────────────────
-/** GPU frame time above which the loop keeps only one frame in flight. */
-const SLOW_FRAME_MS = 20;
+/** Frames the loop lets the GPU queue before it waits for the oldest. */
+const MAX_IN_FLIGHT = 2;
 /** Floor for the adaptive backing-size multiplier. */
 const MIN_RENDER_SCALE = 0.5;
 
@@ -150,6 +150,10 @@ export class CPPNController {
   private usingRaf  = true;
   /** Smoothed submit → GPU-done time of drawn frames, ms. */
   private gpuMs = 0;
+  /** Drawn frames the GPU has not finished yet (see MAX_IN_FLIGHT). */
+  private inFlight: Promise<void>[] = [];
+  /** Bumped by stop(): a GPU-wait from before a stop/start must not start a second loop. */
+  private loopGen = 0;
   /** Backing-size multiplier the loop lowers when frames are slow. */
   renderScale = 1;
   /** Let the loop trade resolution for frame time. Off: the user picks the
@@ -590,6 +594,7 @@ export class CPPNController {
 
   stop(): void {
     this.running = false;
+    this.loopGen++;
     if (this.usingRaf) cancelAnimationFrame(this.animId);
     else clearTimeout(this.animId);
   }
@@ -672,41 +677,43 @@ export class CPPNController {
     // Draw only when the frame would differ: the canvas keeps showing the last
     // one. Everything the image depends on is in the uniforms or a buffer upload.
     const params = this._packParams((now - this.startTime) / 1000);
-    let drew = false;
     if (this._frameChanged(params)) {
       this._submit(params);
       this.tickCount++;   // frames actually drawn: the fps readout drops to 0 when idle
-      drew = true;
       const sent = performance.now();
-      void device.queue.onSubmittedWorkDone().then(() => {
+      const done: Promise<void> = device.queue.onSubmittedWorkDone().then(() => {
         const ms = performance.now() - sent;
         this.gpuMs = this.gpuMs ? this.gpuMs * 0.8 + ms * 0.2 : ms;
+        this.inFlight.splice(this.inFlight.indexOf(done), 1);
       });
+      this.inFlight.push(done);
       this._adaptScale(now);
     }
     if (Number.isFinite(this.maxFps)) {
       // Capped mode: wait for the GPU so the cap measures real frame time.
       this.usingRaf = false;
+      const gen = this.loopGen;
       void device.queue.onSubmittedWorkDone().then(() => {
-        if (!this.running) return;
+        if (!this.running || gen !== this.loopGen) return;
         const remaining = Math.max(0, 1000 / this.maxFps - (performance.now() - frameStart));
         this.animId = window.setTimeout(this.tick, remaining) as unknown as number;
       });
-    } else if (drew && this.gpuMs > SLOW_FRAME_MS) {
-      // Slow shader: one frame in flight at a time. Queuing a new heavy frame
-      // every rAF keeps the GPU saturated, and the page's own compositing
-      // (panel, scrolling, the capsule) waits behind it — the UI then runs at
-      // the shader's frame rate. Waiting for the GPU before the next rAF
-      // leaves it gaps to composite the UI in.
+    } else if (this.inFlight.length >= MAX_IN_FLIGHT) {
+      // GPU backed up (a heavy shader on a phone): wait for the oldest frame,
+      // then draw again straight away. Unbounded queuing made the page's own
+      // compositing (panel, scrolling, the capsule) wait behind the shader;
+      // waiting for an idle GPU and then the next rAF (the old one-in-flight
+      // pacing) kept the UI smooth but cost 15-25% fps. Timed on an emulated
+      // slow GPU: same fps as no pacing, rAF gaps stay at one vsync.
       this.usingRaf = false;
-      void device.queue.onSubmittedWorkDone().then(() => {
-        if (!this.running) return;
-        this.usingRaf = true;
-        this.animId = requestAnimationFrame(this.tick);
+      const gen = this.loopGen;
+      void this.inFlight[0].then(() => {
+        if (!this.running || gen !== this.loopGen) return;
+        this.animId = window.setTimeout(this.tick, 0) as unknown as number;
       });
     } else {
-      // Fast shader: let the browser pipeline CPU and GPU work. Waiting on a
-      // GPU fence here quantised the frame rate to vsync divisors.
+      // GPU keeping up: plain rAF. Waiting on a GPU fence here quantised the
+      // frame rate to vsync divisors.
       this.usingRaf = true;
       this.animId = requestAnimationFrame(this.tick);
     }
