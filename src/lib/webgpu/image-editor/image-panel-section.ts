@@ -217,7 +217,7 @@ export function buildImagePanelSection(
   webcamArea.appendChild(mirrorRow);
 
   const webcamErrorMsg = document.createElement('div');
-  webcamErrorMsg.style.cssText = 'font-size:0.62rem;color:#e05060;margin-bottom:4px;display:none;word-break:break-word;';
+  webcamErrorMsg.style.cssText = 'font-size:0.62rem;color:var(--danger);margin-bottom:4px;display:none;word-break:break-word;';
   webcamArea.appendChild(webcamErrorMsg);
   section.appendChild(webcamArea);
 

@@ -488,7 +488,7 @@ function buildTotalTab(
       liveVal.textContent     = modulatedVal.toFixed(3);
       baseValEl.textContent   = `base ${baseVal.toFixed(3)}`;
       deltaEl.textContent     = (delta >= 0 ? '+' : '') + delta.toFixed(3);
-      deltaEl.style.color     = delta >= 0 ? '#80d060' : '#e05060';
+      deltaEl.style.color     = delta >= 0 ? '#80d060' : 'var(--danger)';
       rangeCurLbl.textContent = modulatedVal.toFixed(3);
 
       mappings.forEach((m, i) => {
@@ -554,7 +554,7 @@ export function buildAudioTab(
   ].join('');
 
   const errorMsg = document.createElement('div');
-  errorMsg.style.cssText = 'font-size:0.62rem;color:#e05060;margin-top:4px;display:none;word-break:break-word;';
+  errorMsg.style.cssText = 'font-size:0.62rem;color:var(--danger);margin-top:4px;display:none;word-break:break-word;';
 
   function updateStatus(): void {
     if (reactor.status === 'active') {
@@ -564,7 +564,7 @@ export function buildAudioTab(
       sysBtn.style.cssText = pillStyle(reactor.activeSourceKind === 'system');
       errorMsg.style.display = 'none';
     } else if (reactor.status === 'error') {
-      statusDot.style.background = '#e05060';
+      statusDot.style.background = 'var(--danger)';
       statusDot.style.boxShadow  = 'none';
       errorMsg.textContent = reactor.lastError;
       errorMsg.style.display = 'block';
@@ -1103,7 +1103,7 @@ export function buildAudioTab(
         xSpan.textContent = '×';
         xSpan.title = 'Remove mapping';
         xSpan.style.cssText = 'font-size:0.8rem;line-height:1;opacity:0.4;padding:0 2px;border-radius:2px;flex-shrink:0;';
-        xSpan.addEventListener('mouseenter', () => { xSpan.style.opacity = '1'; xSpan.style.color = '#e05060'; });
+        xSpan.addEventListener('mouseenter', () => { xSpan.style.opacity = '1'; xSpan.style.color = 'var(--danger)'; });
         xSpan.addEventListener('mouseleave', () => { xSpan.style.opacity = '0.4'; xSpan.style.color = ''; });
         xSpan.addEventListener('click', (e) => {
           e.stopPropagation();

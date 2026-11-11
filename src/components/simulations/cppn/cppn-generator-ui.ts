@@ -4,6 +4,7 @@
 // legend. Weights snap to 0.05; below 0.04 a bar is 0 (never). Complexity
 // never changes weights: the histogram alone decides what appears.
 import { createMeterRow } from '../../../lib/sim-page/meter-row';
+import { themeVar } from '../../../lib/sim-page/theme-color';
 import { GROUP_COLORS } from './cppn-expr/optable';
 import { GEN_ITEMS, GEN_GROUP, GEN_PRESETS, type GenItem, type GenGroup, type GenSettings, type Weights } from './cppn-expr/generator';
 
@@ -83,6 +84,7 @@ export function drawHistogram(canvas: HTMLCanvasElement, opts: HistogramOpts): H
     ctx.clearRect(0, 0, W, H);
     const groupMode = !!opts.groups && open === null;
     const mono = '10px ui-monospace, Menlo, Consolas, monospace';
+    const ink = themeVar('--text-primary', '#e8e0d0', canvas), paper = themeVar('--bg-primary', '#0a0806', canvas);
     // Group bands with names (full mode)
     if (!groupMode && !open) {
       for (const g of GEN_GROUP_ORDER) {
@@ -105,24 +107,27 @@ export function drawHistogram(canvas: HTMLCanvasElement, opts: HistogramOpts): H
       ctx.globalAlpha = 1;
       // label
       ctx.font = groupMode ? '11px ui-sans-serif, system-ui' : mono;
-      ctx.fillStyle = v === 0 ? 'rgba(201,190,180,0.4)' : '#c9beb4';
+      ctx.fillStyle = ink; ctx.globalAlpha = v === 0 ? 0.4 : 0.85;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const name = groupMode ? (s.key as string) : (ABBR[s.key as GenItem] ?? (s.key as string));
       const ly = bot + 4 + (stagger && i % 2 === 1 ? 13 : 0);
       ctx.fillText(name, s.x + s.w / 2, ly);
+      ctx.globalAlpha = 1;
       if (groupMode) {
         // value inside the bar when there is room, else above it
         ctx.font = mono; ctx.textBaseline = 'bottom';
         const txt = v.toFixed(2);
-        if (h > 16) { ctx.fillStyle = 'rgba(12,10,8,0.85)'; ctx.fillText(txt, s.x + s.w / 2, bot - 3); }
-        else { ctx.fillStyle = '#c9beb4'; ctx.fillText(txt, s.x + s.w / 2, bot - h - 2); }
+        if (h > 16) { ctx.fillStyle = paper; ctx.globalAlpha = 0.85; ctx.fillText(txt, s.x + s.w / 2, bot - 3); }
+        else { ctx.fillStyle = ink; ctx.globalAlpha = 0.85; ctx.fillText(txt, s.x + s.w / 2, bot - h - 2); }
+        ctx.globalAlpha = 1;
       }
     });
-    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(PAD, bot, W - 2 * PAD, 1);
+    ctx.fillStyle = ink; ctx.globalAlpha = 0.12; ctx.fillRect(PAD, bot, W - 2 * PAD, 1); ctx.globalAlpha = 1;
     if (stagger) {
       // tick from the staggered labels up to their bars so the pairing is unambiguous
-      ctx.strokeStyle = 'rgba(201,190,180,0.25)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = ink; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
       slots.forEach((s, i) => { if (i % 2 === 1) { ctx.beginPath(); ctx.moveTo(s.x + s.w / 2, bot + 2); ctx.lineTo(s.x + s.w / 2, bot + 15); ctx.stroke(); } });
+      ctx.globalAlpha = 1;
     }
   }
 

@@ -1,6 +1,8 @@
 ---
 // Sim page control bar: one quiet capsule of monoline glyphs in three
-// groups split by hairlines — ? (undo · redo on phones) | pause · reset · fullscreen | dice · ⚙.
+// groups split by hairlines — ? (undo · redo on phones) | pause · reset · fullscreen | ⚙.
+// Reroll sits just outside the capsule, on its left: two real 3D dice (CSS
+// cubes) in the theme accent, no box; a click rolls them (control-bar.ts).
 // Hover (fine pointers) lifts a glyph and shows its label above the capsule
 // with an accent tick. The dice and ? are hidden until a sim's setup wires
 // them (lib/sim-page/control-bar.ts). Play/pause, fullscreen and ⚙/× swap
@@ -10,6 +12,9 @@ interface Props {
   simId: string;
 }
 const { simId } = Astro.props;
+// Die faces in cube order front, back, right, left, top, bottom; pips on a 3×3 grid.
+const FACES = [1, 6, 2, 5, 3, 4];
+const PIPS: Record<number, number[]> = { 1: [4], 2: [2, 6], 3: [2, 4, 6], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 ---
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -63,10 +68,20 @@ const { simId } = Astro.props;
       <svg class="ctrl-icon when-fs"><use href="#ci-full-exit"/></svg>
     </button>
   </div>
+  <button class="ctrl-btn reroll" data-action="randomize" data-label="reroll" aria-label="Reroll parameters" hidden>
+    <span class="dice-pair" aria-hidden="true">
+      {[0, 1].map(d => (
+        <span class={`die-wrap d${d}`}>
+          <span class="die">
+            {FACES.map((n, i) => (
+              <span class={`f f${i}`}>{Array.from({ length: 9 }, (_, k) => <i class={PIPS[n].includes(k) ? 'p' : ''}></i>)}</span>
+            ))}
+          </span>
+        </span>
+      ))}
+    </span>
+  </button>
   <div class="ctrl-group">
-    <button class="ctrl-btn" data-action="randomize" data-label="randomize" aria-label="Randomize" hidden>
-      <svg class="ctrl-icon"><use href="#ci-dice"/></svg>
-    </button>
     <button class="ctrl-btn" data-action="settings" data-label="parameters" aria-label="Parameters">
       <svg class="ctrl-icon when-closed"><use href="#ci-sliders"/></svg>
       <svg class="ctrl-icon when-open"><use href="#ci-close"/></svg>
@@ -84,8 +99,8 @@ const { simId } = Astro.props;
     height: 36px;
     padding: 0 4px;
     border-radius: 999px;
-    background: rgba(8, 6, 4, 0.42);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--bg-primary) 42%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     z-index: 10;
@@ -98,7 +113,7 @@ const { simId } = Astro.props;
     padding: 0 4px;
   }
   .ctrl-group[hidden] { display: none; }
-  .ctrl-group + .ctrl-group { border-left: 1px solid rgba(255, 255, 255, 0.1); }
+  .ctrl-group + .ctrl-group { border-left: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent); }
 
   .ctrl-btn {
     position: relative;
@@ -180,11 +195,54 @@ const { simId } = Astro.props;
       bottom: 0.5rem;
       right: 0.5rem;
       height: 40px;
-      background: rgba(8, 6, 4, 0.5);
+      background: color-mix(in srgb, var(--bg-primary) 50%, transparent);
     }
     .ctrl-btn { width: 36px; height: 36px; opacity: 0.8; }
     .ctrl-btn.subtle { opacity: 0.55; }
     .ctrl-icon { width: 19px; height: 19px; }
   }
   .ctrl-btn:disabled, .ctrl-btn:disabled:hover { opacity: 0.25; cursor: default; }
+
+  /* ── Reroll: two 3D dice left of the capsule. Colours are theme tokens only
+     (accent edges and pips, faces mixed from the page background), so a new
+     theme recolours it. `--q` turns (multiples of 90°) sit inside the fixed
+     tilt, so a roll lands on new faces in the same pose. ── */
+  .ctrl-btn.reroll {
+    --s: 15px;
+    position: absolute; right: calc(100% + 6px); top: 50%; translate: 0 -50%;
+    width: auto; height: 40px; padding: 0 4px; border-radius: 8px; opacity: 1;
+  }
+  .ctrl-btn.reroll[hidden] { display: none; }
+  .dice-pair { display: flex; align-items: center; gap: calc(var(--s) * 0.45); pointer-events: none; }
+  .die-wrap { width: var(--s); height: var(--s); perspective: calc(var(--s) * 7); }
+  .die-wrap.d0 { translate: 0 2px; }
+  .die-wrap.d1 { translate: 0 -4px; }
+  .die {
+    --qx: 0deg; --qy: 0deg;
+    position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d;
+    transition: transform 0.8s cubic-bezier(0.2, 0.85, 0.25, 1);
+  }
+  .d0 .die { transform: rotateX(-24deg) rotateY(-32deg) rotateX(var(--qx)) rotateY(var(--qy)); }
+  .d1 .die { transform: rotateZ(8deg) rotateX(-20deg) rotateY(38deg) rotateX(var(--qx)) rotateY(var(--qy)); transition-duration: 0.95s; }
+  .die .f {
+    position: absolute; inset: 0; box-sizing: border-box; display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: calc(var(--s) * 0.13);
+    border: max(1px, calc(var(--s) / 13)) solid var(--accent); border-radius: calc(var(--s) * 0.24);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
+    backface-visibility: hidden;
+  }
+  /* the two faces turned away from the light are a shade darker */
+  .die .f2, .die .f3 { background: color-mix(in srgb, var(--accent) 6%, color-mix(in srgb, var(--bg-primary) 80%, #000)); }
+  .die .f5 { background: color-mix(in srgb, var(--accent) 4%, color-mix(in srgb, var(--bg-primary) 65%, #000)); }
+  .die .f i { border-radius: 50%; margin: calc(var(--s) * 0.03); }
+  .die .f i.p { background: var(--accent); }
+  .die .f0 { transform: translateZ(calc(var(--s) / 2)); }
+  .die .f1 { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+  .die .f2 { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+  .die .f3 { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+  .die .f4 { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+  .die .f5 { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+  @media (hover: hover) { .ctrl-btn.reroll:hover .die-wrap { filter: brightness(1.25); } }
+  @media (prefers-reduced-motion: reduce) { .die { transition: none; } }
+  @media (max-width: 768px) { .ctrl-btn.reroll { --s: 17px; height: 44px; right: calc(100% + 4px); } }
 </style>

@@ -15,7 +15,7 @@ export function pillStyle(active: boolean): string {
 export const STYLES = {
   sectionLabel: 'font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:5px;',
   sourceSection: 'padding:8px 8px 6px;border-bottom:1px solid var(--bg-surface-border);',
-  errorMsg:      'font-size:0.62rem;color:#e05060;margin-top:4px;display:none;word-break:break-word;',
+  errorMsg:      'font-size:0.62rem;color:var(--danger);margin-top:4px;display:none;word-break:break-word;',
   statusDot:     'width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:auto;background:var(--text-muted);transition:background 0.2s;',
   drawerRow:     'border-bottom:1px solid var(--bg-surface-border);',
   drawerHeader:  'display:flex;align-items:center;cursor:pointer;padding:5px 8px;gap:6px;font-size:0.68rem;color:var(--text-body);user-select:none;',

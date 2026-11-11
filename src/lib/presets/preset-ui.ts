@@ -11,7 +11,7 @@ import { pillStyle } from '../../components/simulations/boids/panel/panel-styles
 
 const BTN = 'padding:3px 8px;border-radius:4px;border:1px solid var(--bg-surface-border);background:transparent;color:var(--text-body);font-size:0.66rem;cursor:pointer;white-space:nowrap;line-height:1.3;';
 const BTN_ACCENT = BTN + 'border-color:var(--accent);color:var(--accent);';
-const BTN_DANGER = BTN + 'border-color:#e05060;color:#e05060;';
+const BTN_DANGER = BTN + 'border-color:var(--danger);color:var(--danger);';
 const BTN_ICON = 'background:none;border:1px solid var(--bg-surface-border);border-radius:4px;color:var(--text-body);cursor:pointer;font-size:0.8rem;line-height:1;padding:2px 7px;';
 const INPUT = 'flex:1;min-width:0;background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:3px 6px;color:var(--text-body);font-size:0.72rem;';
 const MUTED = 'font-size:0.62rem;color:var(--text-muted);';
@@ -102,7 +102,7 @@ export function buildPresetSection<P extends ParamRecord>(
     input.placeholder = 'preset name';
     const commit = () => {
       const name = input.value.trim();
-      if (!name) { input.style.borderColor = '#e05060'; return; }
+      if (!name) { input.style.borderColor = 'var(--danger)'; return; }
       hideBar();
       onOk(name);
     };
@@ -233,7 +233,7 @@ export function buildPresetSection<P extends ParamRecord>(
         () => mgr.locks.clear(), `Locked: ${lockedKeys.join(', ')}. Click to unlock all.`);
       header.appendChild(chip);
     }
-    if (!mgr.store.storageOk) header.appendChild(el('span', MUTED + 'color:#e05060;', 'storage blocked — custom presets are session-only'));
+    if (!mgr.store.storageOk) header.appendChild(el('span', MUTED + 'color:var(--danger);', 'storage blocked — custom presets are session-only'));
     const spacer = el('span', 'flex:1;');
     header.appendChild(spacer);
     const undoBtn = button('↶', BTN_ICON, () => mgr.history.undo(), mgr.history.undoLabel() ? `Undo ${mgr.history.undoLabel()}` : 'Nothing to undo');

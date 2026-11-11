@@ -85,8 +85,8 @@ export function buildAdminPresetsTab(
     } catch (err) {
       if (writeBtn) {
         writeBtn.textContent = '✗ Error';
-        writeBtn.style.borderColor = '#e05060';
-        writeBtn.style.color = '#e05060';
+        writeBtn.style.borderColor = 'var(--danger)';
+        writeBtn.style.color = 'var(--danger)';
         setTimeout(() => {
           const cur = body?.querySelector<HTMLButtonElement>('#admin-write-to-disk') ?? null;
           if (cur) styleWriteBtn(cur, isDirty);

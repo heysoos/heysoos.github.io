@@ -1,5 +1,6 @@
 // src/lib/webgpu/image-editor/image-editor-overlay.ts
 
+import { themeVar } from '../../sim-page/theme-color';
 import type { ImageProcessor } from './image-processor';
 import { BrushMode } from './image-editor-types';
 import type { BrushOptions, ImageTransform } from './image-editor-types';
@@ -129,8 +130,8 @@ export function openImageEditorOverlay(
     b.style.cssText = [
       'flex:1;padding:3px 0;border-radius:3px;font-family:inherit;font-size:0.62rem;cursor:pointer',
       active
-        ? 'background:#1e2818;border:1px solid #40c0a0;color:#80e0c8'
-        : 'background:#1a1610;border:1px solid #2a2418;color:#7a6a50',
+        ? 'background:var(--accent-subtle);border:1px solid var(--accent);color:var(--accent-glow)'
+        : 'background:var(--bg-surface);border:1px solid var(--bg-surface-border);color:var(--text-muted)',
     ].join(';');
     return b;
   };
@@ -176,9 +177,9 @@ export function openImageEditorOverlay(
     currentMode = mode;
     modeBtns.forEach((btn, m) => {
       const active = m === mode;
-      btn.style.background  = active ? '#1e2818' : '#1a1610';
-      btn.style.borderColor = active ? '#40c0a0' : '#2a2418';
-      btn.style.color       = active ? '#80e0c8' : '#7a6a50';
+      btn.style.background  = active ? 'var(--accent-subtle)' : 'var(--bg-surface)';
+      btn.style.borderColor = active ? 'var(--accent)' : 'var(--bg-surface-border)';
+      btn.style.color       = active ? 'var(--accent-glow)' : 'var(--text-muted)';
     });
     const maskBtn = modeBtns.get(BrushMode.MaskImage)!;
     maskBtn.disabled      = !processor.hasImage;
@@ -202,9 +203,9 @@ export function openImageEditorOverlay(
     currentForceMode = i;
     forceModeBtns.forEach((b, idx) => {
       const active = idx === i;
-      b.style.background  = active ? '#1e2818' : '#1a1610';
-      b.style.borderColor = active ? '#40c0a0' : '#2a2418';
-      b.style.color       = active ? '#80e0c8' : '#7a6a50';
+      b.style.background  = active ? 'var(--accent-subtle)' : 'var(--bg-surface)';
+      b.style.borderColor = active ? 'var(--accent)' : 'var(--bg-surface-border)';
+      b.style.color       = active ? 'var(--accent-glow)' : 'var(--text-muted)';
     });
     processor.setMode(i as import('./image-editor-types').ProcessingMode);
     opts.onSetForceMode?.(i);
@@ -284,9 +285,9 @@ export function openImageEditorOverlay(
   forceToggleBtn.style.width = '100%';
   forceToggleBtn.addEventListener('click', () => {
     showForce = !showForce;
-    forceToggleBtn.style.background  = showForce ? '#1e2818' : '#1a1610';
-    forceToggleBtn.style.borderColor = showForce ? '#40c0a0' : '#2a2418';
-    forceToggleBtn.style.color       = showForce ? '#80e0c8' : '#7a6a50';
+    forceToggleBtn.style.background  = showForce ? 'var(--accent-subtle)' : 'var(--bg-surface)';
+    forceToggleBtn.style.borderColor = showForce ? 'var(--accent)' : 'var(--bg-surface-border)';
+    forceToggleBtn.style.color       = showForce ? 'var(--accent-glow)' : 'var(--text-muted)';
     renderPreview();
   });
   sidebar.appendChild(forceToggleBtn);
@@ -329,9 +330,11 @@ export function openImageEditorOverlay(
 
     if (processor.hasImage) {
       const ctf = tfToCanvas(processor.transform);
-      ctx.strokeStyle = 'rgba(224,160,64,0.6)';
+      ctx.strokeStyle = themeVar('--accent', '#e0a040', editorCanvas);
+      ctx.globalAlpha = 0.6;
       ctx.lineWidth   = cssToTex();  // 1 CSS pixel width
       ctx.strokeRect(ctf.offsetX, ctf.offsetY, ctf.scaleX, ctf.scaleY);
+      ctx.globalAlpha = 1;
       drawHandles(ctx, ctf);
     }
   }
@@ -345,7 +348,7 @@ export function openImageEditorOverlay(
 
   function drawHandles(ctx: CanvasRenderingContext2D, ctf: ImageTransform) {
     const s = HANDLE_PX * cssToTex();
-    ctx.fillStyle = '#e0c060';
+    ctx.fillStyle = themeVar('--accent-glow', '#e0c060', editorCanvas);
     handles.forEach(({ ax, ay }) => {
       ctx.fillRect(ctf.offsetX + ax * ctf.scaleX - s / 2, ctf.offsetY + ay * ctf.scaleY - s / 2, s, s);
     });

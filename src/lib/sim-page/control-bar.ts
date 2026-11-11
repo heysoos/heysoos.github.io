@@ -23,7 +23,15 @@ const interact = (kind: string): void => (window as unknown as { __simTrack?: (k
 export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): ControlBarHandle {
   const dice = document.querySelector<HTMLElement>('[data-action="randomize"]');
   const helpBtn = document.querySelector<HTMLElement>('[data-action="help"]');
-  const onDice = () => { interact('randomize'); opts.randomize?.(); };
+  // Each roll adds a full spin plus whole quarter turns inside the die's tilt: new faces, same pose.
+  const roll = () => dice?.querySelectorAll<HTMLElement>('.die').forEach((d, i) => {
+    const q = () => 90 * Math.floor(Math.random() * 4);
+    const qx = (parseFloat(d.style.getPropertyValue('--qx')) || 0) + (i ? -360 : 360) + q();
+    const qy = (parseFloat(d.style.getPropertyValue('--qy')) || 0) + 360 + q();
+    d.style.setProperty('--qx', `${qx}deg`);
+    d.style.setProperty('--qy', `${qy}deg`);
+  });
+  const onDice = () => { interact('randomize'); roll(); opts.randomize?.(); };
   if (dice && opts.randomize) { dice.hidden = false; dice.addEventListener('click', onDice); }
 
   const touchMq = window.matchMedia('(hover: none), (pointer: coarse)');

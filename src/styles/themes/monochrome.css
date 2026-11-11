@@ -21,6 +21,8 @@
   --accent: #fff;
   --accent-glow: rgba(255, 255, 255, 0.5);
   --accent-subtle: rgba(255, 255, 255, 0.05);
+  --danger: #d06060;
+  --warn: #c09060;
   --hero-gradient-start: #141414;
   --hero-gradient-end: #0a0a0a;
   --viz-canvas-bg: #050505;
