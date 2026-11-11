@@ -11,7 +11,7 @@ import { buildGeneratorBlock } from './cppn-generator-ui';
 import { OPS, VARS, VAR_DESC, GROUP_COLORS, opByName, type ExprGroup } from './cppn-expr/optable';
 import { paintThumb } from './cppn-expr/thumb';
 import { MAX_INPUTS } from './cppn-expr/compile';
-import { DICE_SVG } from '../../../lib/sim-page/icons';
+import { DICE_SVG, BACK_TO_DEFAULT_SVG } from '../../../lib/sim-page/icons';
 
 export interface InputsBandApi extends InputsApi {
   /** ‹ from the list / edge swipe from the list: leave inputs mode (the scrub card returns). */
@@ -44,7 +44,7 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       <button class="b-back" aria-label="Back">‹</button><span class="b-title">Inputs</span>
       <span class="look-segmented b-views"><button data-view="list" class="on">list</button><button data-view="generator">generator</button></span>
       <span style="flex:1"></span>
-      <button class="b-random" title="Fresh expressions for every unlocked input">${DICE_SVG}<span>inputs</span></button>
+      <button class="b-random" title="Fresh expressions for every unlocked input">${DICE_SVG}<span class="b-random-label">inputs</span></button>
     </div>
     <div class="band-body">
       <div class="band-view v-list"></div>
@@ -68,13 +68,26 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
     view = v;
     vList.hidden = v !== 'list'; vEdit.hidden = v !== 'edit'; vGen.hidden = v !== 'generator';
     band.classList.toggle('edit', v === 'edit');
+    rollLabel.textContent = v === 'edit' ? 'expression' : 'inputs';
+    rollBtn.title = v === 'edit' ? 'Fresh expression for this input' : 'Fresh expressions for every unlocked input';
     viewBtns.forEach(b => b.classList.toggle('on', b.dataset.view === (v === 'edit' ? 'list' : v)));
     if (v === 'list') renderList();
     requestAnimationFrame(markScrollers);
     if (v === 'generator') gen.refresh();
   }
   viewBtns.forEach(b => b.addEventListener('click', () => { const v = b.dataset.view as View; if (v !== view) { settle(v === 'generator' ? 'left' : 'right'); setView(v); } }));
-  band.querySelector('.b-random')!.addEventListener('click', () => { api.randomizeInputs(); refresh(); });
+  // ⚄ rolls every unlocked input from the list, only the open expression from the editor.
+  const rollBtn = band.querySelector<HTMLButtonElement>('.b-random')!;
+  const rollLabel = rollBtn.querySelector<HTMLElement>('.b-random-label')!;
+  rollBtn.addEventListener('click', () => {
+    if (view === 'edit' && cur >= 0) {
+      if (dirty) { api.commit('Input'); dirty = false; }
+      api.randomizeInput(cur);
+      renderField();
+      return;
+    }
+    api.randomizeInputs(); refresh();
+  });
   band.querySelector('.b-back')!.addEventListener('click', () => goBack());
 
   function goBack(): void {
@@ -127,7 +140,17 @@ export function createInputsBand(host: HTMLElement, api: InputsBandApi): InputsB
       const rowsNow = vList.querySelector<HTMLElement>('.band-rows');
       if (rowsNow) rowsNow.scrollTop = rowsNow.scrollHeight;   // the new row (and + add) in view
     });
-    rowsEl.appendChild(add);
+    // + add input · ◇ x y r (back to the default inputs) share one line
+    const reset = document.createElement('button');
+    reset.className = 'band-add inputs-reset';
+    reset.title = 'Back to the default inputs x, y, r';
+    reset.innerHTML = `${BACK_TO_DEFAULT_SVG}<span>x, y, r</span>`;
+    reset.disabled = api.isDefaultInputs();
+    reset.addEventListener('click', () => { api.resetInputs(); renderList(); });
+    const foot = document.createElement('div');
+    foot.className = 'band-foot';
+    foot.append(add, reset);
+    rowsEl.appendChild(foot);
     [...vList.querySelectorAll<HTMLElement>('.band-two > div')].forEach((el, k) => { if (prevScroll[k]) el.scrollTop = prevScroll[k]; });
     // mark now, not on the next timer tick: touch-action is read when the
     // finger lands, so an unmarked list ignores the first drag

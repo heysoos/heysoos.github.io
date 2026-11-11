@@ -20,3 +20,8 @@ export const UNDO_SVG =
 export const REDO_SVG =
   '<svg class="ico" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="m10 4 3.5 3.5L10 11"/><path d="M13 7.5H6.5a3.5 3.5 0 0 0 0 7H8"/></svg>';
+
+// Reset glyphs: the mark's own outline opens at a corner and ends in an arrowhead
+// (bookmark = back to the loaded preset, diamond = back to the default). Unsized: style the svg.
+export const BACK_TO_PRESET_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h7v16l-5-4-5 4V7.5"/><path d="M4.5 10 7 7.5 9.5 10"/></svg>';
+export const BACK_TO_DEFAULT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 9-9 9-9-9 5-5"/><path d="M4.3 7H8v3.7"/></svg>';

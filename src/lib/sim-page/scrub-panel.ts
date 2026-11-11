@@ -55,8 +55,7 @@ export interface ScrubPanelOpts {
 
 // Chip reset glyphs: the mark's own outline opens at a corner and ends in an
 // arrowhead, so the shape loops back (bookmark = loaded preset, diamond = default).
-const BACK_TO_PRESET_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h7v16l-5-4-5 4V7.5"/><path d="M4.5 10 7 7.5 9.5 10"/></svg>';
-const BACK_TO_DEFAULT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 9-9 9-9-9 5-5"/><path d="M4.3 7H8v3.7"/></svg>';
+import { BACK_TO_PRESET_SVG, BACK_TO_DEFAULT_SVG } from './icons';
 
 export interface ScrubPanelHandle {
   refresh(): void;

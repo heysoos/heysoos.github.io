@@ -24,6 +24,7 @@ import { buildInputsPage, type InputsApi } from '../../../components/simulations
 import { createInputsBand, type InputsBandHandle } from '../../../components/simulations/cppn/cppn-inputs-band';
 import { makeThumb } from '../../../components/simulations/cppn/cppn-expr/thumb';
 import { generateExpression, canonical } from '../../../components/simulations/cppn/cppn-expr/generator';
+import { DEFAULT_INPUTS } from '../../../components/simulations/cppn/cppn-types';
 import type { PanelMode } from '../../../components/simulations/cppn/cppn-panel';
 import { CPPN_PRESETS } from '../../../data/cppn-presets';
 import { createPresetManager } from '../../presets/preset-manager';
@@ -226,6 +227,23 @@ export async function setupCPPN(
     genSettings,
     setGenSettings,
     randomizeInputs: randomizeInputsOnly,
+    randomizeInput: (i) => {
+      mgr.history.endGesture();
+      const list = ctrl.config.inputs;
+      if (i < 0 || i >= list.length) return;
+      const taken = new Set(list.filter((_, j) => j !== i).map(canonical));
+      const next = [...list];
+      next[i] = generateExpression(genSettings(), taken);
+      ctrl.setInputs(next);
+      commitInputs('Randomize expression');
+    },
+    resetInputs: () => {
+      mgr.history.endGesture();
+      for (let j = 0; j < 8; j++) locks.set(`input${j}`, false);
+      ctrl.setInputs([...DEFAULT_INPUTS]);
+      commitInputs('Default inputs');
+    },
+    isDefaultInputs: () => ctrl.config.inputs.length === DEFAULT_INPUTS.length && ctrl.config.inputs.every((s, i) => s.trim() === DEFAULT_INPUTS[i]),
     commit: commitInputs,
     back: () => { desktop?.setMode('main'); panelMode = 'main'; },
     dynamicVars: () => ({ t: 2 * Math.PI * ((ctrl.exprClock % 60) / 60), px: ctrl.pointer[0], py: ctrl.pointer[1] }),

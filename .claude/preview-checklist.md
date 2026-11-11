@@ -72,3 +72,5 @@ Since round 4: the fps fix (merged to main and live), plus your notes on the lay
 ## Round 8
 
 37. **Chip reset buttons.** Open a param from the card (e.g. Z scale): top right shows a bookmark and a diamond with arrow tips, plus two small marks on the bar. Drag the value away: both light up. Bookmark returns it to the preset's value, diamond to the default; each dims when the value is already there. Seed / particle counts show no diamond. Undo reverts a reset.
+38. **Roll one expression.** Inputs band: tap a row to edit it. The top-right dice button now reads "expression"; tapping it replaces only that expression. Back in the list it reads "inputs" again and rolls all unlocked ones.
+39. **Default inputs.** Next to + add input there is a ◇ x, y, r button: it sets the inputs back to x, y, r and is dimmed when they already are.

@@ -9,7 +9,7 @@ import type { GenSettings } from './cppn-expr/generator';
 import { OPS, VARS, VAR_DESC, CONSTS, opByName } from './cppn-expr/optable';
 import { paintThumb } from './cppn-expr/thumb';
 import { buildGeneratorBlock } from './cppn-generator-ui';
-import { DICE_SVG } from '../../../lib/sim-page/icons';
+import { DICE_SVG, BACK_TO_DEFAULT_SVG } from '../../../lib/sim-page/icons';
 import { MAX_INPUTS } from './cppn-expr/compile';
 
 export interface InputsApi {
@@ -26,6 +26,12 @@ export interface InputsApi {
   genSettings(): GenSettings;
   setGenSettings(s: GenSettings): void;
   randomizeInputs(): void;
+  /** A fresh expression for slot `i` alone (records its own undo entry). */
+  randomizeInput(i: number): void;
+  /** Back to the default inputs x, y, r (records its own undo entry; clears input locks). */
+  resetInputs(): void;
+  /** True when the inputs are exactly the defaults. */
+  isDefaultInputs(): boolean;
   /** Record one undo entry. */
   commit(label: string): void;
   back(): void;
@@ -63,11 +69,13 @@ export function buildInputsPage(container: HTMLElement, api: InputsApi): InputsP
   // ── inputs head: count + normalize ──
   const ihead = document.createElement('div');
   ihead.className = 'inputs-head';
-  ihead.innerHTML = `<span class="inputs-count"></span><button class="norm-toggle" title="Map each input channel to −1 … 1 over the unit square">normalize</button>`;
+  ihead.innerHTML = `<span class="inputs-count"></span><span class="inputs-head-btns"><button class="inputs-reset" title="Back to the default inputs x, y, r">${BACK_TO_DEFAULT_SVG}<span>x y r</span></button><button class="norm-toggle" title="Map each input channel to −1 … 1 over the unit square">normalize</button></span>`;
   scroll.appendChild(ihead);
   const countEl = ihead.querySelector<HTMLElement>('.inputs-count')!;
   const normBtn = ihead.querySelector<HTMLButtonElement>('.norm-toggle')!;
   normBtn.addEventListener('click', () => { api.setNormalize(!api.normalize()); api.commit('Normalize'); refresh(); });
+  const resetBtn = ihead.querySelector<HTMLButtonElement>('.inputs-reset')!;
+  resetBtn.addEventListener('click', () => { api.resetInputs(); refresh(); });
 
   // ── rows ──
   const rowsEl = document.createElement('div');
@@ -103,7 +111,7 @@ export function buildInputsPage(container: HTMLElement, api: InputsApi): InputsP
     el.className = 'inputs-row';
     el.innerHTML = `<canvas class="thumb" width="32" height="32" title="Click to enlarge"></canvas><button class="lock" title="Lock: keep through Randomize"></button>
       <div class="field"><input class="expr" spellcheck="false" autocomplete="off" autocapitalize="off"><div class="msg"></div></div>
-      <button class="del" title="Remove input">×</button>`;
+      <button class="reroll1" title="Fresh expression for this input">${DICE_SVG}</button><button class="del" title="Remove input">×</button>`;
     const inp = el.querySelector<HTMLInputElement>('.expr')!;
     const msg = el.querySelector<HTMLElement>('.msg')!;
     const thumb = el.querySelector<HTMLCanvasElement>('.thumb')!;
@@ -129,6 +137,7 @@ export function buildInputsPage(container: HTMLElement, api: InputsApi): InputsP
     });
     el.querySelector('.lock')!.addEventListener('click', () => { api.setLocked(i, !api.isLocked(i)); refresh(); });
     el.querySelector('.del')!.addEventListener('click', () => { api.removeInput(i); api.commit('Remove input'); refresh(); });
+    el.querySelector('.reroll1')!.addEventListener('click', () => { if (row.dirty) { row.dirty = false; api.commit('Input'); } api.randomizeInput(i); refresh(); });
     el.addEventListener('click', (e) => { if (e.altKey && e.target === el) { api.setLocked(i, !api.isLocked(i)); refresh(); } });
     return row;
   }
@@ -166,6 +175,7 @@ export function buildInputsPage(container: HTMLElement, api: InputsApi): InputsP
       paintThumbFor(row, i);
     });
     addBtn.disabled = list.length >= MAX_INPUTS;
+    resetBtn.disabled = api.isDefaultInputs();
   }
 
   // Dynamic thumbnails (t / pointer) repaint slowly while the page is visible.
