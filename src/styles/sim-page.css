@@ -1181,7 +1181,7 @@
 .cppn-enum-row.locked .n::before { content: ''; display: inline-block; width: 10px; height: 10px; background: var(--accent); -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; margin-right: 5px; vertical-align: -1px; }
 
 /* ── Control bar: dice spinner while a compile is in flight ── */
-.sim-viewport.sim-busy .ctrl-btn[data-action="randomize"] :is(.ctrl-icon, .dice-pair) { visibility: hidden; }
+.sim-viewport.sim-busy .ctrl-btn[data-action="randomize"] :is(.ctrl-icon, .reroll-dice) { visibility: hidden; }
 .sim-viewport.sim-busy .ctrl-btn[data-action="randomize"]::after {
   content: ''; opacity: 1; left: 50%; top: 50%; bottom: auto; width: 14px; height: 14px; margin: -8px 0 0 -8px; transform: none;
   background: none; border: 1.5px solid var(--accent); border-right-color: transparent; border-radius: 50%;

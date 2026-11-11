@@ -7,6 +7,7 @@
 
 import { attachHelp, type HelpSection, type HelpRow } from './help-popover';
 import type { UndoHistory } from '../presets/undo-history';
+import { pipsMarkup, randomFaces } from './reroll-dice';
 
 export interface ControlBarOpts {
   randomize?: () => void;
@@ -23,16 +24,16 @@ const interact = (kind: string): void => (window as unknown as { __simTrack?: (k
 export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): ControlBarHandle {
   const dice = document.querySelector<HTMLElement>('[data-action="randomize"]');
   const helpBtn = document.querySelector<HTMLElement>('[data-action="help"]');
-  // Each roll adds a full spin plus whole quarter turns inside the die's tilt: new faces, same pose.
-  const roll = () => dice?.querySelectorAll<HTMLElement>('.die').forEach((d, i) => {
-    const q = () => 90 * Math.floor(Math.random() * 4);
-    const qx = (parseFloat(d.style.getPropertyValue('--qx')) || 0) + (i ? -360 : 360) + q();
-    const qy = (parseFloat(d.style.getPropertyValue('--qy')) || 0) + 360 + q();
-    d.style.setProperty('--qx', `${qx}deg`);
-    d.style.setProperty('--qy', `${qy}deg`);
+  // Each roll swaps the visible faces and turns each die 120° or 240° (opposite ways): same pose, new faces.
+  const roll = () => dice?.querySelectorAll<SVGGElement>('.die').forEach((g, i) => {
+    const pips = g.querySelector('.pips');
+    if (pips) pips.innerHTML = pipsMarkup(i, randomFaces());
+    const a = (parseFloat(g.dataset.turn ?? '0') || 0) + (i ? -120 : 120) * (1 + Math.floor(Math.random() * 2));
+    g.dataset.turn = String(a);
+    g.style.transform = `rotate(${a}deg)`;
   });
   const onDice = () => { interact('randomize'); roll(); opts.randomize?.(); };
-  if (dice && opts.randomize) { dice.hidden = false; dice.addEventListener('click', onDice); }
+  if (dice && opts.randomize) { dice.hidden = false; dice.closest<HTMLElement>('.ctrl-group')?.removeAttribute('hidden'); dice.addEventListener('click', onDice); }
 
   const touchMq = window.matchMedia('(hover: none), (pointer: coarse)');
   let help: ReturnType<typeof attachHelp> | null = null;
