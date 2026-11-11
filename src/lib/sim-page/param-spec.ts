@@ -73,4 +73,8 @@ export interface CustomRowApi {
   setLocked(key: string, on: boolean): void;
   /** Re-render every row (after a change that affects other rows). */
   refresh(): void;
+  /** Phone card: open `spec` in the big drag-the-canvas view, as a tap on a
+   *  plain numeric row does (absent on desktop). Ignores the click that ends
+   *  a row drag. */
+  select?(spec: NumSpec): void;
 }

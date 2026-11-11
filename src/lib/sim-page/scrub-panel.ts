@@ -211,6 +211,7 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
     isLocked: (key) => locks?.isLocked(key) ?? false,
     setLocked: (key, on) => locks?.set(key, on),
     refresh: () => refresh(),
+    select: (spec) => { if (!swallowClick) select(cur === spec ? null : spec); swallowClick = false; },
   };
   const groupHeads: Array<{ g: { name: string }; el: HTMLElement }> = [];
   for (const g of groups) {

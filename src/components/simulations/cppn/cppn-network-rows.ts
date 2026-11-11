@@ -7,6 +7,7 @@
 //   · tap the chip                   → next activation (live, no recompile)
 //   · hold the chip, then slide      → scrub through activations
 //   · long-press the row             → lock the layer (width, activation, position)
+//   · tap the row (phone)            → width in the drag-the-canvas view
 
 import type { CustomRowApi } from '../../../lib/sim-page/param-spec';
 import { fmtParam, sliderFrac } from '../../../lib/sim-page/param-math';
@@ -226,6 +227,12 @@ export function renderNetworkRows(container: HTMLElement, api: CustomRowApi, row
       api.attachLongPress(r, spec.key);
       attachReorder(ix, r, i);
       attachChip(chip, i);
+      // phone: a tap anywhere but the index / chip opens the width in the
+      // full-canvas drag view (a 25px row was too small to grab at 256)
+      r.addEventListener('click', (e) => {
+        if (!api.select || (e.target as HTMLElement).closest('.ix, .chip')) return;
+        api.select(spec);
+      });
       stack.appendChild(r);
       rows.push({ el: r, val: r.querySelector<HTMLElement>('.v')!, chip });
     }
