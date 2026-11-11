@@ -49,7 +49,14 @@ export interface ScrubPanelOpts {
   onClose?: () => void;
   /** Long-press a group header to lock the whole group (`group:<Name>` lock key). */
   groupLocks?: boolean;
+  /** Value of `key` in the loaded preset, for the chip's back-to-preset button. */
+  presetValue?: (key: string) => number | undefined;
 }
+
+// Chip reset glyphs: the mark's own outline opens at a corner and ends in an
+// arrowhead, so the shape loops back (bookmark = loaded preset, diamond = default).
+const BACK_TO_PRESET_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h7v16l-5-4-5 4V7.5"/><path d="M4.5 10 7 7.5 9.5 10"/></svg>';
+const BACK_TO_DEFAULT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 9-9 9-9-9 5-5"/><path d="M4.3 7H8v3.7"/></svg>';
 
 export interface ScrubPanelHandle {
   refresh(): void;
@@ -201,16 +208,34 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
   // visible while scrubbing. ‹ or a plain tap on the canvas returns to the list.
   const chip = document.createElement('div');
   chip.className = 'scrub-chip';
-  chip.innerHTML = `<div class="c-top"><button class="c-back" aria-label="All params">‹</button><span class="c-name"></span><i class="lk"></i></div>
-    <div class="c-val"></div><div class="c-bar"><i></i></div><div class="c-range"><span class="c-min"></span><span class="c-max"></span></div>`;
+  chip.innerHTML = `<div class="c-top"><button class="c-back" aria-label="All params">‹</button><span class="c-name"></span><i class="lk"></i>
+    <button class="c-reset c-to-preset" aria-label="Back to the preset's value" title="Back to the preset's value">${BACK_TO_PRESET_SVG}</button>
+    <button class="c-reset c-to-default" aria-label="Back to the default" title="Back to the default">${BACK_TO_DEFAULT_SVG}</button></div>
+    <div class="c-val"></div><div class="c-track"><div class="c-bar"><i></i></div><i class="c-mark m-preset"></i><i class="c-mark m-default"></i></div>
+    <div class="c-range"><span class="c-min"></span><span class="c-max"></span></div>`;
   chip.hidden = true;
   host.appendChild(chip);
   const chipName = chip.querySelector<HTMLElement>('.c-name')!;
   const chipVal = chip.querySelector<HTMLElement>('.c-val')!;
   const chipBar = chip.querySelector<HTMLElement>('.c-bar i')!;
   chip.querySelector('.c-back')!.addEventListener('click', () => select(null));
+  const toPreset = chip.querySelector<HTMLButtonElement>('.c-to-preset')!;
+  const toDefault = chip.querySelector<HTMLButtonElement>('.c-to-default')!;
+  const markPreset = chip.querySelector<HTMLElement>('.m-preset')!;
+  const markDefault = chip.querySelector<HTMLElement>('.m-default')!;
+  const resetTo = (target: () => number | undefined) => (e: Event) => {
+    e.stopPropagation();
+    const v = target();
+    if (!cur || v === undefined) return;
+    set(cur.key as string, v);
+    history?.push(`${cur.label} reset`);
+    refresh();
+  };
+  const presetOf = (spec: NumSpec) => opts.presetValue?.(spec.key as string);
+  toPreset.addEventListener('click', resetTo(() => cur ? presetOf(cur) : undefined));
+  toDefault.addEventListener('click', resetTo(() => cur?.def));
   chip.querySelector<HTMLElement>('.c-top')!.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.c-back')) return;
+    if ((e.target as HTMLElement).closest('.c-back, .c-reset')) return;
     if (cur && locks) locks.toggle(cur.key as string);
   });
 
@@ -418,6 +443,16 @@ export function createScrubPanel(opts: ScrubPanelOpts): ScrubPanelHandle {
       chip.querySelector<HTMLElement>('.c-min')!.textContent = fmt(cur, cur.min);
       chip.querySelector<HTMLElement>('.c-max')!.textContent = fmt(cur, cur.max);
       chip.classList.toggle('locked', locks?.isLocked(cur.key as string) ?? false);
+      // Back-to-preset / back-to-default: hidden without a target, dimmed when already there.
+      const same = (a: number, b: number) => Math.abs(a - b) <= Math.max(1e-9, cur!.step * 1e-3);
+      const show = (btn: HTMLButtonElement, mark: HTMLElement, t: number | undefined) => {
+        btn.hidden = mark.hidden = t === undefined;
+        if (t === undefined) return;
+        btn.disabled = same(v, t);
+        mark.style.left = `${(frac(cur!, Math.min(cur!.max, Math.max(cur!.min, t))) * 100).toFixed(2)}%`;
+      };
+      show(toPreset, markPreset, presetOf(cur));
+      show(toDefault, markDefault, cur.def);
     }
     for (const { g, el } of groupNotes) el.textContent = g.note!();
     for (const { g, el } of groupHeads) el.classList.toggle('locked', locks?.isLocked(`group:${g.name}`) ?? false);

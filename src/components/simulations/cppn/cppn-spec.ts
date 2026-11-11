@@ -225,27 +225,27 @@ export const CPPN_GROUPS: ParamGroup<FlatKey>[] = [
   // What the network is fed: the expressions (a custom button into the
   // inputs page, attached by the sim setup) and the two scales on them.
   { name: 'Inputs', items: [
-    num('scale', 'Coordinate scale', 0.1, 20, 0.01, { knee: [1, 3] }),
-    num('zScale', 'Z scale', 0, 10, 0.01, { knee: [1, 3] }),
+    num('scale', 'Coordinate scale', 0.1, 20, 0.01, { knee: [1, 3], def: 1 }),
+    num('zScale', 'Z scale', 0, 10, 0.01, { knee: [1, 3], def: 1 }),
   ] },
   // The Network group is a custom block (cppn-network-rows.ts): one row per
   // layer. The sim setup attaches it so it can carry the budget note.
   { name: 'Network', items: [] },
   { name: 'Weights', items: [
     en('distType', 'Distribution', DIST_NAMES, 'cycle', { rebuilds: true }),
-    num('sigma', 'σ (std dev)', 0.1, 5, 0.05, { showIf: isDist(0) }),
-    num('a', 'Range ±a', 0.1, 5, 0.05, { showIf: isDist(1) }),
-    num('glorotScale', 'Glorot scale', 0.1, 5, 0.05, { showIf: isDist(2) }),
-    num('sparsity', 'Sparsity', 0, 0.99, 0.01, { showIf: isDist(3) }),
-    num('magnitude', 'Magnitude', 0.1, 10, 0.1, { showIf: isDist(3) }),
+    num('sigma', 'σ (std dev)', 0.1, 5, 0.05, { showIf: isDist(0), def: 1 }),
+    num('a', 'Range ±a', 0.1, 5, 0.05, { showIf: isDist(1), def: 1 }),
+    num('glorotScale', 'Glorot scale', 0.1, 5, 0.05, { showIf: isDist(2), def: 1 }),
+    num('sparsity', 'Sparsity', 0, 0.99, 0.01, { showIf: isDist(3), def: 0.8 }),
+    num('magnitude', 'Magnitude', 0.1, 10, 0.1, { showIf: isDist(3), def: 2 }),
     num('seed', 'Seed', 0, 4_294_967_295, 1, { int: true, stepDrag: 24 }),
   ] },
   { name: 'Motion', items: [
     en('animate', 'Animate', ['Off', 'On'], 'segmented'),
-    num('speed', 'Speed', 0.005, 0.3, 0.005, { scale: 'log' }),
-    num('spread', 'Spread', 1, 2.5, 0.05),
-    num('depth', 'Depth', 0.02, 0.6, 0.01, { scale: 'log' }),
-    num('falloff', 'Falloff', 0.3, 1, 0.05),
-    num('bands', 'Bands', 1, 4, 1, { int: true }),
+    num('speed', 'Speed', 0.005, 0.3, 0.005, { scale: 'log', def: 0.05 }),
+    num('spread', 'Spread', 1, 2.5, 0.05, { def: 1.3 }),
+    num('depth', 'Depth', 0.02, 0.6, 0.01, { scale: 'log', def: 0.2 }),
+    num('falloff', 'Falloff', 0.3, 1, 0.05, { def: 0.8 }),
+    num('bands', 'Bands', 1, 4, 1, { int: true, def: 4 }),
   ] },
 ];

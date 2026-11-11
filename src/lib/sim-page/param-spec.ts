@@ -16,6 +16,9 @@ export interface NumSpec<K extends string = string> {
   knee?: readonly [number, number];
   /** Integer-valued param: the setter rounds. */
   int?: boolean;
+  /** Hand-set system default: the phone chip's ◇ button returns here. Omit
+   *  for params with no natural home (particle counts, seeds, widths). */
+  def?: number;
   /** Drag moves the value by `step` per this many px instead of mapping
    *  travel onto the range (for a seed, where the range is huge and
    *  neighbouring values are what you want to walk through). */

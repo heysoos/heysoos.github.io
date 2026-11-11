@@ -284,6 +284,7 @@ export async function setupCPPN(
     if (want && !scrub) {
       scrub = createScrubPanel({
         host: viewport,
+        presetValue: (k) => mgr.presetValue(k),
         groups: [...groups, deviceGroup],
         params: flatProxy,
         get: getParam,

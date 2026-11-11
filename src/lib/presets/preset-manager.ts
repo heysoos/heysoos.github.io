@@ -44,6 +44,9 @@ export interface PresetManager<P extends ParamRecord> {
   activePreset(): BasePreset<P> | undefined;
   isBuiltIn(id: string): boolean;
   isDirty(): boolean;
+  /** `key`'s value in the active preset as it was loaded (filled from
+   *  defaults, device-adjusted, locks ignored); undefined with no preset. */
+  presetValue(key: string): number | undefined;
   capture(): PresetBody<P>;
   /** Apply a preset, make it active, record one undo entry. */
   load(preset: BasePreset<P>): Promise<void>;
@@ -123,6 +126,16 @@ export function createPresetManager<P extends ParamRecord>(binding: PresetBindin
       const active = findPreset(activeId);
       if (!active) return false;
       return bodyKey(prepare(cloneBody(bodyOf(active)))) !== bodyKey(binding.capture());
+    },
+
+    presetValue(key) {
+      const active = findPreset(activeId);
+      if (!active) return undefined;
+      const body = cloneBody(bodyOf(active));
+      let filled = { ...body, params: { ...binding.defaults, ...body.params } } as PresetBody<P>;
+      if (binding.prepare) filled = binding.prepare(filled);
+      const v = (filled.params as ParamRecord)[key];
+      return typeof v === 'number' ? v : undefined;
     },
 
     capture: () => cloneBody(binding.capture()),

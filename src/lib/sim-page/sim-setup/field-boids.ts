@@ -121,6 +121,7 @@ export async function setupFieldBoids(
     if (want && !scrub) {
       scrub = createScrubPanel({
         host: viewport,
+        presetValue: (k) => mgr.presetValue(k),
         groups: deviceGroup ? [...FIELD_BOIDS_GROUPS, deviceGroup] : FIELD_BOIDS_GROUPS,
         params: ctrl.params,
         get: (k) => getDevice(k) ?? (ctrl.params as unknown as Record<string, number>)[k],

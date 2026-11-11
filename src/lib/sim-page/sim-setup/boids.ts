@@ -132,6 +132,7 @@ export async function setupBoids(
     if (want && !scrub) {
       scrub = createScrubPanel({
         host: viewport,
+        presetValue: (k) => mgr.presetValue(k),
         groups: BOIDS_GROUPS,
         params: paramView,
         get: getKey,
