@@ -13,6 +13,7 @@
 // frame; it fades when idle. Tap it to reset the view, double-tap to also
 // reset the latent offset.
 
+import { themeVar } from './theme-color';
 import type { CPPNController } from '../../components/simulations/cppn/cppn-controller';
 
 export interface CPPNGesturesHandle { dispose(): void }
@@ -58,7 +59,8 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
   function drawMini(): void {
     const W = mini.width, H = mini.height;
     mctx.clearRect(0, 0, W, H);
-    const aspect = canvas.height > 0 ? canvas.width / canvas.height : 1;
+    // The displayed shape, not the backing store (which can lag a resize or be capped).
+    const aspect = canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : canvas.height > 0 ? canvas.width / canvas.height : 1;
     // Two rectangles in world units: the original frame (centre 0, zoom 1)
     // and the current view. The map is scaled and centred so that the union
     // of the two fills 60% of the box: zoomed in, the frame is the reference
@@ -78,11 +80,13 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     };
     mctx.save();
     const [fX, fY, fW, fH] = rect(0, 0, fx, fy);
-    mctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    mctx.strokeStyle = themeVar('--text-primary', '#fff', host);
+    mctx.globalAlpha = 0.6;
     mctx.lineWidth = 1.5;
     mctx.strokeRect(fX, fY, fW, fH);
+    mctx.globalAlpha = 1;
     const [vX, vY, vW, vH] = rect(ctrl.viewCx, ctrl.viewCy, vx, vy);
-    const accent = getComputedStyle(host).getPropertyValue('--accent').trim() || '#e8702a';
+    const accent = themeVar('--accent', '#e8702a', host);
     mctx.strokeStyle = accent;
     mctx.fillStyle = accent;
     mctx.globalAlpha = 0.3;
@@ -91,7 +95,8 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
     mctx.lineWidth = 2;
     mctx.strokeRect(vX, vY, vW, vH);
     // zoom readout
-    mctx.fillStyle = 'rgba(255,255,255,0.75)';
+    mctx.fillStyle = themeVar('--text-primary', '#fff', host);
+    mctx.globalAlpha = 0.75;
     mctx.font = '600 15px ui-monospace, Menlo, monospace';
     mctx.textAlign = 'right'; mctx.textBaseline = 'bottom';
     const z = ctrl.viewZoom;
@@ -100,6 +105,9 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
   }
   ctrl.onViewChange = () => { drawMini(); wake(); };
   drawMini();
+  // The first draw can run before layout; redraw whenever the canvas changes shape.
+  const miniRO = new ResizeObserver(() => drawMini());
+  miniRO.observe(canvas);
   let lastTap = 0;
   mini.addEventListener('pointerdown', (e) => e.stopPropagation());
   mini.addEventListener('click', (e) => {
@@ -171,6 +179,7 @@ export function attachCPPNGestures(canvas: HTMLCanvasElement, host: HTMLElement,
 
   return {
     dispose() {
+      miniRO.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);

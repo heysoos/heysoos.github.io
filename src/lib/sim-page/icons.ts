@@ -1,13 +1,9 @@
 // src/lib/sim-page/icons.ts
-// Inline SVG icons for panel headers. The dice glyph U+2684 is missing from
-// the site font and rendered as a box, so Randomize draws its own die.
+// Inline SVG icons for panel headers. Randomize uses the same rounded
+// isometric line dice as the capsule's reroll button (reroll-dice.ts).
+import { diceIconSVG } from './reroll-dice';
 
-export const DICE_SVG =
-  '<svg class="ico" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
-  '<rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-  '<circle cx="5" cy="5" r="1.4" fill="currentColor"/><circle cx="11" cy="5" r="1.4" fill="currentColor"/>' +
-  '<circle cx="8" cy="8" r="1.4" fill="currentColor"/>' +
-  '<circle cx="5" cy="11" r="1.4" fill="currentColor"/><circle cx="11" cy="11" r="1.4" fill="currentColor"/></svg>';
+export const DICE_SVG = diceIconSVG();
 
 // Expand / shrink arrows for the phone tab card (⤢ / ⤡ are font glyphs that never sit centred).
 export const EXPAND_SVG =

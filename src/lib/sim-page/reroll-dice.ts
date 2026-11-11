@@ -71,7 +71,29 @@ export function pipsMarkup(i: number, faces: number[]): string {
 
 /** The whole glyph. `faces` is one triple per die (random when omitted). */
 export function rerollDiceSVG(faces: number[][] = DICE.map(randomFaces)): string {
-  const dice = DICE.map((d, i) =>
-    `<g class="die" style="transform-origin:${d.cx}px ${d.cy}px"><path d="${outline(i)}"/><g class="pips">${pipsMarkup(i, faces[i])}</g></g>`).join('');
-  return `<svg class="reroll-dice" viewBox="0 0 30 24" aria-hidden="true">${dice}</svg>`;
+  return `<svg class="reroll-dice" viewBox="0 0 30 24" aria-hidden="true">${diceGroups(faces)}</svg>`;
+}
+
+function diceGroups(faces: number[][], attrs = ''): string {
+  return DICE.map((d, i) =>
+    `<g class="die" style="transform-origin:${d.cx}px ${d.cy}px"><path d="${outline(i)}"${attrs}/><g class="pips"${attrs ? ' fill="currentColor"' : ''}>${pipsMarkup(i, faces[i])}</g></g>`).join('');
+}
+
+/** Small self-styled copy for panel buttons (Randomize): same dice, stroke set inline for its size. */
+export function diceIconSVG(width = 18): string {
+  const h = +(width * 0.8).toFixed(2), sw = +(1.25 * 30 / width).toFixed(2);
+  return `<svg class="ico dice-ico" viewBox="0 0 30 24" width="${width}" height="${h}" overflow="visible" aria-hidden="true">` +
+    diceGroups(DICE.map(randomFaces), ` fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`) + '</svg>';
+}
+
+/** Roll every die under `root`: new visible faces, each turned 120° or 240° (opposite ways), so it lands in the same pose. */
+export function rollDice(root: ParentNode): void {
+  root.querySelectorAll<SVGGElement>('.die').forEach((g) => {
+    const i = [...(g.parentNode?.children ?? [])].indexOf(g);
+    const pips = g.querySelector('.pips');
+    if (pips) pips.innerHTML = pipsMarkup(i, randomFaces());
+    const a = (parseFloat(g.dataset.turn ?? '0') || 0) + (i ? -120 : 120) * (1 + Math.floor(Math.random() * 2));
+    g.dataset.turn = String(a);
+    g.style.transform = `rotate(${a}deg)`;
+  });
 }

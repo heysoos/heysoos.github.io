@@ -1150,22 +1150,28 @@
 .fb-head .h-random .ico, .scrub-head .h-random .ico { flex: none; }
 .fb-head .h-presets { text-transform: none; font-variant-caps: all-small-caps; font-size: 0.72rem; }
 /* Phone card: Presets owns the first header row now that undo / redo moved to the capsule. */
-.scrub-head .h-presets {
-  display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 12px;
-  font-size: 0.8rem; font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 600;
-  color: var(--text-primary); border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
+/* Phone card: Presets, Randomize and the CPPN inputs button are one family of
+   accent buttons: same height, radius, type and colours (--btn-h). */
+.scrub-head .h-presets, .scrub-head .h-random, .cppn-inputs-btn.cppn-layer.in {
+  --btn-h: 36px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--btn-h); min-height: var(--btn-h) !important; padding: 0 12px !important; box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+  font-size: 0.8rem; font-weight: 500; letter-spacing: 0.02em; text-transform: none; font-variant-caps: normal;
 }
 .scrub-list.presets-mode .scrub-head .h-presets { background: transparent; color: var(--accent); }
 .scrub-head.tabbed .h-presets { height: 28px; font-size: 0.68rem; padding: 0 4px; }
 .fb-head .h-close { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .sim-viewport.sim-busy .h-random .ico, .sim-viewport.sim-busy .h-random span { visibility: hidden; }
+.dice-ico .die { transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.25, 1); }
+@media (prefers-reduced-motion: reduce) { .dice-ico .die { transition: none; } }
 
 /* ── CPPN minimap: current coordinate window vs the original frame ── */
 #sim-viewport canvas.cppn-minimap, .sim-viewport canvas.cppn-minimap, .cppn-minimap {
   position: absolute !important; left: auto !important; top: auto !important; right: 1rem; bottom: calc(0.9rem + 36px + 28px); /* above the capsule and its hover labels, same right edge */
   width: 84px !important; height: 84px !important; z-index: 3;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent); border-radius: 6px; background: rgba(0, 0, 0, 0.6);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--bg-primary) 60%, transparent);
   opacity: 0.7; transition: opacity 0.35s ease; cursor: pointer; touch-action: none;
 }
 .cppn-minimap.show, .cppn-minimap:hover { opacity: 1; }
@@ -1248,17 +1254,14 @@
 .cppn-layer.in:hover .go { color: var(--accent); }
 /* Inputs group: the way into the inputs page. Big, accent-coded, easy to hit. */
 .cppn-inputs-btn.cppn-layer.in {
-  display: flex; align-items: center; gap: 10px;
-  min-height: 46px; margin: 4px 0 8px; padding: 6px 12px;
-  border: 1px solid var(--accent); border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text-primary); opacity: 1;
+  display: flex; justify-content: space-between; margin: 4px 0 8px; opacity: 1;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .cppn-inputs-btn.cppn-layer.in:hover, .cppn-inputs-btn.cppn-layer.in:active { background: color-mix(in srgb, var(--accent) 26%, transparent); }
-.cppn-inputs-btn .strip canvas { width: 26px; height: 26px; border-radius: 4px; }
-.cppn-inputs-btn.cppn-layer.in .go { font-size: 0.78rem; color: var(--accent); font-weight: 500; letter-spacing: 0.02em; }
-.cppn-inputs-btn.cppn-layer.in.locked { border-width: 2px; padding: 5px 11px; background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.cppn-inputs-btn.cppn-layer.in .strip { flex: 0 1 auto; }
+.cppn-inputs-btn.cppn-layer.in .strip canvas { width: 20px; height: 20px; border-radius: 4px; }
+.cppn-inputs-btn.cppn-layer.in .go { font-size: inherit; color: inherit; font-weight: inherit; letter-spacing: inherit; }
+.cppn-inputs-btn.cppn-layer.in.locked { border-width: 2px; padding: 0 11px !important; background: color-mix(in srgb, var(--accent) 30%, transparent); }
 .cppn-inputs-btn.locked .strip canvas { outline: 1px solid var(--accent); }
 .cppn-inputs-btn.locked .go::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--accent); -webkit-mask: var(--lock-glyph) center / contain no-repeat; mask: var(--lock-glyph) center / contain no-repeat; }
 /* inputs page */

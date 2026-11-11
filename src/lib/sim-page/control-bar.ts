@@ -7,7 +7,7 @@
 
 import { attachHelp, type HelpSection, type HelpRow } from './help-popover';
 import type { UndoHistory } from '../presets/undo-history';
-import { pipsMarkup, randomFaces } from './reroll-dice';
+import { rollDice } from './reroll-dice';
 
 export interface ControlBarOpts {
   randomize?: () => void;
@@ -24,15 +24,11 @@ const interact = (kind: string): void => (window as unknown as { __simTrack?: (k
 export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): ControlBarHandle {
   const dice = document.querySelector<HTMLElement>('[data-action="randomize"]');
   const helpBtn = document.querySelector<HTMLElement>('[data-action="help"]');
-  // Each roll swaps the visible faces and turns each die 120° or 240° (opposite ways): same pose, new faces.
-  const roll = () => dice?.querySelectorAll<SVGGElement>('.die').forEach((g, i) => {
-    const pips = g.querySelector('.pips');
-    if (pips) pips.innerHTML = pipsMarkup(i, randomFaces());
-    const a = (parseFloat(g.dataset.turn ?? '0') || 0) + (i ? -120 : 120) * (1 + Math.floor(Math.random() * 2));
-    g.dataset.turn = String(a);
-    g.style.transform = `rotate(${a}deg)`;
-  });
+  const roll = () => { if (dice) rollDice(dice); };
   const onDice = () => { interact('randomize'); roll(); opts.randomize?.(); };
+  // Panel Randomize buttons carry the same dice glyph; they tumble too.
+  const onPanelDice = (e: Event) => { const b = (e.target as Element | null)?.closest?.('.h-random, .b-random'); if (b) rollDice(b); };
+  host.ownerDocument.addEventListener('click', onPanelDice, true);
   if (dice && opts.randomize) { dice.hidden = false; dice.closest<HTMLElement>('.ctrl-group')?.removeAttribute('hidden'); dice.addEventListener('click', onDice); }
 
   const touchMq = window.matchMedia('(hover: none), (pointer: coarse)');
@@ -69,6 +65,7 @@ export function wireControlBar(host: HTMLElement, opts: ControlBarOpts): Control
   return {
     dispose() {
       dice?.removeEventListener('click', onDice);
+      host.ownerDocument.removeEventListener('click', onPanelDice, true);
       touchMq.removeEventListener('change', buildHelp);
       help?.dispose();
       undoBtn?.removeEventListener('click', onUndo);
